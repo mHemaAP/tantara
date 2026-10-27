@@ -93,7 +93,7 @@ app.include_router(ai_router)
 from app.routers.search import router as search_router
 app.include_router(search_router)
 class Payload(BaseModel):model_config=ConfigDict(extra="allow")
-class Ask(Payload):question:str=Field(min_length=3,max_length=8000);top_k:int=Field(5,ge=1,le=30);case_id:str|None=None;collection_id:str|None=None;jurisdiction:str|None=None;document_types:list[str]|None=None
+class Ask(Payload):question:str=Field(min_length=3,max_length=8000);top_k:int=Field(5,ge=1,le=30);case_id:str|None=None;collection_id:str|None=None;jurisdiction:str|None=None;document_types:list[str]|None=None;session_id:str|None=None
 
 def audit(actor,action,kind,rid):
     with session_scope() as s:record(s,actor["id"],action,kind,rid)
@@ -123,14 +123,19 @@ def llm_answer(question,hits):
 def ask(req:Ask,user=Depends(current_user)):
     if req.case_id:
         with SessionLocal() as s:owned(s,Case,req.case_id,user)
+    if req.session_id:
+        with SessionLocal() as s:
+            if not s.scalar(select(ResearchSession).where(ResearchSession.id==req.session_id,ResearchSession.owner_id==user["id"])):raise HTTPException(404,"Research session not found")
     try:hits=retrieve(req.question,user,req.top_k,req.case_id,req.jurisdiction,req.document_types)
     except Exception:return {"status":"embedding_unavailable","answer":"Local evidence search is unavailable.","citations":[],"follow_ups":[],"model":{"provider":get_settings().ai_provider,"model":get_settings().local_llm_model},"disclaimer":DISCLAIMER,"research_session_id":None,"message_id":None}
-    sid,mid=str(uuid.uuid4()),str(uuid.uuid4())
+    sid,mid=req.session_id or str(uuid.uuid4()),str(uuid.uuid4())
     if not hits:answer="There is insufficient evidence in the indexed documents to answer this question.";status="no_evidence"
     else:answer=llm_answer(req.question,hits);status="ok" if answer else "model_unavailable";answer=answer or "Relevant documents were found, but the configured language model is unavailable."
     citations=[{"citation_ref":f"[{h['chunk_id']}]","document_id":h["document_id"],"document_title":h["document_title"],"chunk_id":h["chunk_id"],"page_number":h["page_number"],"excerpt":h["snippet"],"retreival_score":h["score"],"source_type":h["source_type"],"jurisdiction":h["jurisdiction"]} for h in hits] if status=="ok" else []
     with session_scope() as s:
-        s.add(ResearchSession(id=sid,owner_id=user["id"],title=req.question[:120],case_id=req.case_id));s.flush();s.add(ResearchMessage(id=mid,owner_id=user["id"],session_id=sid,role="assistant",content=answer,status=status,model={"provider":get_settings().ai_provider,"model":get_settings().local_llm_model}));s.flush()
+        if req.session_id is None:s.add(ResearchSession(id=sid,owner_id=user["id"],title=req.question[:120],case_id=req.case_id));s.flush()
+        s.add(ResearchMessage(id=str(uuid.uuid4()),owner_id=user["id"],session_id=sid,role="user",content=req.question,status=None,model={}));s.flush()
+        s.add(ResearchMessage(id=mid,owner_id=user["id"],session_id=sid,role="assistant",content=answer,status=status,model={"provider":get_settings().ai_provider,"model":get_settings().local_llm_model}));s.flush()
         for c in citations:s.add(Citation(id=str(uuid.uuid4()),owner_id=user["id"],message_id=mid,document_id=c["document_id"],chunk_id=c["chunk_id"],page_number=c["page_number"],excerpt=c["excerpt"],retrieval_score=c["retreival_score"]))
         record(s,user["id"],"generate","ai_answer",mid)
     return {"status":status,"answer":answer,"citations":citations,"follow_ups":[],"model":{"provider":get_settings().ai_provider,"model":get_settings().local_llm_model},"disclaimer":DISCLAIMER,"research_session_id":sid,"message_id":mid}
