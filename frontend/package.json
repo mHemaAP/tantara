@@ -8,8 +8,9 @@
     "start": "next start -H 127.0.0.1 -p 3010",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/features/cases/**/*.{ts,tsx,css}\" \"src/features/clients/**/*.{ts,tsx,css}\" \"src/features/tasks/**/*.{ts,tsx,css}\" \"src/features/calendar/**/*.{ts,tsx,css}\" \"src/features/dashboard/matters/**/*.{ts,tsx,css}\" \"src/app/\\\\(workspace\\\\)/cases/**/*.tsx\" \"src/app/\\\\(workspace\\\\)/clients/**/*.tsx\" \"src/app/\\\\(workspace\\\\)/tasks/**/*.tsx\" \"src/app/\\\\(workspace\\\\)/calendar/**/*.tsx\" \"tests/*.ts\" \"tests/*.mjs\"",
     "gen:api": "node scripts/gen-api.mjs",
-    "screenshots": "node scripts/shoot.mjs",
+    "screenshots": "node tests/capture-owned-routes.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.51.0",
+    "prettier": "^3.5.3",
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
