@@ -1,73 +1,64 @@
 'use client';
+
 import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import {
-  Bell,
-  BookOpen,
-  BriefcaseBusiness,
-  CalendarDays,
-  ChevronDown,
-  Command,
-  FileText,
-  FolderOpen,
-  House,
-  Menu,
-  Search,
-  Settings,
-  Users,
-  X,
-  ArrowRight,
-} from 'lucide-react';
+import { Bell, ChevronDown, Command, House, Menu, Search, Settings, X, ArrowRight } from 'lucide-react';
 import { api, clearToken } from '@/lib/api/client';
 import { toast } from 'sonner';
 import type { Activity } from '@/lib/api/types';
+
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', Icon: House },
   { href: '/settings/profile', label: 'Settings', Icon: Settings },
 ];
+type Hit = { title: string; href: string; kind: string };
+
 export function Shell({ children }: { children: React.ReactNode }) {
-  const path = usePathname(),
-    router = useRouter();
-  const [open, setOpen] = useState(false),
-    [preview, setPreview] = useState(false),
-    [authReady, setAuthReady] = useState(false),
-    [displayName, setDisplayName] = useState('Aarav Mehta'),
-    [displayRole, setDisplayRole] = useState('Advocate'),
-    [notifications, setNotifications] = useState(false),
-    [noticeItems, setNoticeItems] = useState<Activity[]>([]),
-    [palette, setPalette] = useState(false),
-    [q, setQ] = useState(''),
-    [profile, setProfile] = useState(false),
-    [hits, setHits] = useState<Array<{ title: string; href: string; kind: string }>>([]),
-    [busy, setBusy] = useState(false),
-    [offline, setOffline] = useState(false);
+  const path = usePathname();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [displayRole, setDisplayRole] = useState('');
+  const [notifications, setNotifications] = useState(false);
+  const [noticeItems, setNoticeItems] = useState<Activity[]>([]);
+  const [palette, setPalette] = useState(false);
+  const [q, setQ] = useState('');
+  const [profile, setProfile] = useState(false);
+  const [hits, setHits] = useState<Hit[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [offline, setOffline] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const isPreview = localStorage.getItem('tantara_preview') === 'true';
     document.documentElement.dataset.theme = localStorage.getItem('tantara_theme') || 'light';
     document.documentElement.dataset.density = localStorage.getItem('tantara_density') || 'comfortable';
     document.documentElement.dataset.font = localStorage.getItem('tantara_font') || 'inter';
     setPreview(isPreview);
-    const hasToken =
-      !!document.cookie.split('; ').find((x) => x.startsWith('tantara_token=')) ||
-      !!localStorage.getItem('tantara_token');
     if (isPreview) {
+      setDisplayName('Preview workspace');
+      setDisplayRole('Read-only preview');
       setAuthReady(true);
-    } else if (!hasToken) {
-      router.replace('/');
     } else {
-      api
-        .get<{ name: string; role: string }>('/auth/me')
-        .then((u) => {
-          setDisplayName(u.name);
-          setDisplayRole(u.role);
-          setAuthReady(true);
-        })
-        .catch(() => router.replace('/'));
+      const hasToken =
+        !!document.cookie.split('; ').find((x) => x.startsWith('tantara_token=')) ||
+        !!localStorage.getItem('tantara_token');
+      if (!hasToken) router.replace('/');
+      else
+        api
+          .get<{ name: string; role: string }>('/auth/me')
+          .then((user) => {
+            setDisplayName(user.name);
+            setDisplayRole(user.role);
+            setAuthReady(true);
+          })
+          .catch(() => router.replace('/'));
     }
-    const f = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPalette(true);
@@ -78,9 +69,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         setOpen(false);
       }
     };
-    window.addEventListener('keydown', f);
-    return () => window.removeEventListener('keydown', f);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [router]);
+
   const search = async (term: string) => {
     setQ(term);
     if (term.trim().length < 2) {
@@ -97,19 +89,22 @@ export function Shell({ children }: { children: React.ReactNode }) {
           `/search/documents?query=${encodeURIComponent(term)}&page=1&page_size=5`,
         ),
       ]);
-      const h: Array<{ title: string; href: string; kind: string }> = [];
+      const result: Hit[] = [];
       if (cases.status === 'fulfilled')
-        cases.value.items?.forEach((x) => h.push({ title: x.title, href: `/cases/${x.id}`, kind: 'Case' }));
+        cases.value.items?.forEach((x) =>
+          result.push({ title: x.title, href: `/cases/${x.id}`, kind: 'Case' }),
+        );
       if (docs.status === 'fulfilled')
         docs.value.items?.forEach((x) =>
-          h.push({ title: x.document_title, href: `/documents/${x.document_id}`, kind: 'Document' }),
+          result.push({ title: x.document_title, href: `/documents/${x.document_id}`, kind: 'Document' }),
         );
-      setHits(h.slice(0, 8));
+      setHits(result.slice(0, 8));
       if (cases.status === 'rejected' && docs.status === 'rejected') setOffline(true);
     } finally {
       setBusy(false);
     }
   };
+
   const showNotifications = async () => {
     const next = !notifications;
     setNotifications(next);
@@ -136,6 +131,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
             : (i - 1 + links.length) % links.length;
     links[n]?.focus();
   };
+  const initials =
+    displayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '—';
+
   return (
     <div className="workspace">
       <a href="#main" className="skip-link">
@@ -184,53 +187,25 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <button
           aria-label="Open global search"
           className="mobile-toggle search-toggle"
-          style={{ position: 'static' }}
           onClick={() => setPalette(true)}
         >
           <Search size={17} />
         </button>
-        <div
+        <button
+          type="button"
           className="searchbox"
+          aria-label="Open global search"
           onClick={() => setPalette(true)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && setPalette(true)}
         >
-          <Search size={16} style={{ margin: 'auto 0 auto 13px', color: '#64748b' }} />
-          <span
-            aria-label="Search arbitration workspace"
-            style={{ flex: 1, alignContent: 'center', paddingLeft: 14, fontSize: 12, color: '#64748b' }}
-          >
-            Search arbitration cases, documents, provisions, or ask TANTARA…
-          </span>
-          <button aria-label="Search">
+          <Search size={16} />
+          <span>Search arbitration cases, documents, provisions, or ask TANTARA…</span>
+          <span className="search-submit">
             <Search size={17} />
-          </button>
-        </div>
-        <div style={{ position: 'relative' }}>
-          <button
-            aria-label="Notifications"
-            onClick={() => void showNotifications()}
-            style={{
-              position: 'relative',
-              border: 0,
-              background: 'transparent',
-              color: '#334155',
-              cursor: 'pointer',
-            }}
-          >
+          </span>
+        </button>
+        <div className="notification-wrap">
+          <button aria-label="Notifications" onClick={() => void showNotifications()} className="icon-button">
             <Bell size={19} />
-            <span
-              style={{
-                position: 'absolute',
-                width: 7,
-                height: 7,
-                borderRadius: 9,
-                background: '#e11d48',
-                right: 0,
-                top: 0,
-              }}
-            />
           </button>
           {notifications && (
             <div className="notification-pop">
@@ -249,22 +224,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
         </div>
         <div className="user-menu">
-          <button
-            onClick={() => setProfile(!profile)}
-            style={{
-              display: 'flex',
-              gap: 9,
-              alignItems: 'center',
-              border: 0,
-              background: 'transparent',
-              cursor: 'pointer',
-              color: '#0f172a',
-            }}
-          >
-            <span className="user-avatar">AM</span>
-            <span className="user-caption" style={{ textAlign: 'left' }}>
-              <strong style={{ fontSize: 12 }}>{displayName}</strong>
-              <small style={{ display: 'block', fontSize: 10, color: '#64748b' }}>{displayRole}</small>
+          <button onClick={() => setProfile(!profile)} className="user-trigger">
+            <span className="user-avatar">{initials}</span>
+            <span className="user-caption">
+              <strong>{displayName}</strong>
+              <small>{displayRole}</small>
             </span>
             <ChevronDown size={14} />
           </button>
@@ -272,24 +236,31 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="profile-pop">
               <Link href="/settings/profile">Profile</Link>
               <Link href="/settings/profile">Settings</Link>
-              <button
-                onClick={() => {
-                  clearToken();
-                  router.push('/');
-                  toast.success('Signed out');
-                }}
-              >
-                Sign out
-              </button>
+              {!preview && (
+                <button
+                  onClick={() => {
+                    clearToken();
+                    router.push('/');
+                    toast.success('Signed out');
+                  }}
+                >
+                  Sign out
+                </button>
+              )}
             </div>
           )}
         </div>
+        {preview && (
+          <span className="preview-badge" role="status">
+            Read-only preview · Changes disabled
+          </span>
+        )}
       </header>
       <main id="main" className="main">
         {authReady ? (
           children
         ) : (
-          <div className="card" style={{ padding: 22, color: '#64748b' }}>
+          <div className="card" role="status" style={{ padding: 22, color: '#64748b' }}>
             Opening your workspace…
           </div>
         )}
@@ -299,15 +270,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <Dialog.Overlay className="dialog-backdrop" />
           <Dialog.Content className="dialog">
             <Dialog.Title className="sr-only">Global search</Dialog.Title>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="palette-search">
               <Command size={18} />
               <input
                 ref={input}
                 value={q}
-                onChange={(e) => search(e.target.value)}
+                onChange={(e) => void search(e.target.value)}
                 aria-label="Search cases and documents"
                 placeholder="Search cases and documents…"
-                style={{ flex: 1, border: 0, outline: 0, padding: '9px 0' }}
               />
               <button onClick={() => setPalette(false)} aria-label="Close">
                 <X size={17} />
@@ -318,25 +288,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 Backend not reachable at 127.0.0.1:8010
               </div>
             ) : busy ? (
-              <p className="muted">Searching…</p>
-            ) : hits.length > 0 ? (
-              <div style={{ marginTop: 10 }}>
+              <p className="muted" role="status">
+                Searching…
+              </p>
+            ) : hits.length ? (
+              <div className="search-hits">
                 {hits.map((h, i) => (
-                  <Link
-                    key={i}
-                    href={h.href}
-                    onClick={() => setPalette(false)}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      padding: 11,
-                      borderTop: '1px solid #eef1f5',
-                    }}
-                  >
+                  <Link key={i} href={h.href} onClick={() => setPalette(false)}>
                     <span>{h.title}</span>
-                    <small className="muted">
+                    <small>
                       {h.kind}
-                      <ArrowRight size={12} style={{ verticalAlign: 'middle', marginLeft: 6 }} />
+                      <ArrowRight size={12} />
                     </small>
                   </Link>
                 ))}
@@ -349,7 +311,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-      {preview && <div className="mobile-preview">Read-only preview · Changes disabled</div>}
     </div>
   );
 }
