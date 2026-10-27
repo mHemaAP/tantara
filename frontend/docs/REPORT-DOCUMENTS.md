@@ -55,3 +55,12 @@ All captures are in repository-root `docs/screenshots/`. They are settled states
 ## Changed-file commits
 
 Round 2 changes were committed individually, one changed file per commit. Hashes are listed in the final response.
+
+Commit hashes for the Round 2 files (one path per commit):
+
+```text
+654dca9 8eaa815 07d1592 93ab2d6 feceabb f035540 4b7e96a de5f528
+15a8705 8cb0afa 55e403c 91bba4a e3b9435 03b9a8d df96e43 b74a27f
+3b665dc d65de91 08aa7df 2f0c79d 455741d d4ce32c c90d719 1538327
+6f1dc8b 01767fd 1f99d4a 0e5b37b 1e1dad6 094b04e 3e55c1e
+```
