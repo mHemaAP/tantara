@@ -21,6 +21,7 @@ The frontend binds to `127.0.0.1:3010`. Set `NEXT_PUBLIC_API_BASE_URL` in `.env.
 | `pnpm build` | Production build |
 | `pnpm start` | Serve production build on `127.0.0.1:3010` |
 | `pnpm lint` | Run Next ESLint checks |
+| `pnpm format` | Format the complete `src/` tree with Prettier |
 | `pnpm typecheck` | Run strict TypeScript checks |
 | `pnpm test:e2e` | Route, login, settings, responsive, console, and hydration smoke checks |
 | `pnpm screenshots` | Capture `/`, `/dashboard`, `/settings/local-ai` at desktop and mobile sizes |
@@ -70,3 +71,9 @@ Navigation only exposes routes present in this phase. Cases, Research, Drafts, C
 - Pages for later product areas are not implemented in this phase. Dashboard quick actions that depend on them are visibly disabled.
 - The backend brief requests a full user profile/auth contract and institutional management; settings render the backend data available through the contract, while institution editing awaits a write endpoint.
 - The checked-in `src/lib/api/schema.ts` is a compact fallback snapshot. `pnpm gen:api` replaces it with the complete live OpenAPI document when the backend is available.
+
+## Third-party licenses
+
+`public/brand/legal-scales.jpg` is a locally stored Wikimedia Commons photograph by Scotted400, dedicated to the public domain under CC0. Source details are recorded in `public/brand/CREDITS.md`; no image is hotlinked.
+
+Inter and Playfair Display are served from checked-in Latin WOFF2 files through `next/font/local`, so production builds do not need to fetch Google Fonts. Both are licensed under the SIL Open Font License 1.1; the complete license texts are in `src/styles/fonts/`.
