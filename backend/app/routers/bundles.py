@@ -2,6 +2,7 @@
 
 import io
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +12,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import SessionLocal, session_scope
-from app.models import BundleItem, BundleSection, Case, Document, FilingBundle
+from app.models import BundleItem, BundleSection, Case, Document, FilingBundle, Hearing
 from app.repositories.domain import get_owned
 from app.security import current_user
 from app.services.audit import record
@@ -244,11 +245,23 @@ def generate(rid: str, user=Depends(current_user)):
             for field, label in (
                 ("filed_at", "Filing date"),
                 ("notice_date", "Notice date"),
-                ("next_hearing_at", "Next hearing"),
                 ("limitation_date", "Limitation date"),
             )
             if case and getattr(case, field)
         ]
+        if case:
+            next_hearing = s.scalar(
+                select(Hearing.at)
+                .where(
+                    Hearing.owner_id == user["id"],
+                    Hearing.case_id == case.id,
+                    Hearing.at >= datetime.now(UTC).replace(tzinfo=None),
+                )
+                .order_by(Hearing.at)
+                .limit(1)
+            )
+            if next_hearing:
+                date_entries.append(("Next hearing", next_hearing))
         docs = []
         for x in items:
             d = s.get(Document, x["document_id"])
