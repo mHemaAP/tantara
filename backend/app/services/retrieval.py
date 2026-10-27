@@ -67,6 +67,11 @@ class RetrievalService:
             )
             rows = session.execute(stmt).all()
             allowed = {r.id: r for r in rows}
+            expected_vector_ids = set(
+                session.scalars(
+                    select(DocumentChunk.id).join(Document, Document.id == DocumentChunk.document_id)
+                ).all()
+            )
             where = "d.owner_id=:owner"
             tokens = re.findall(r"[\w-]{2,}", question)
             fts_query = " OR ".join('"' + t.replace('"', '""') + '"' for t in tokens) or '""'
@@ -98,7 +103,11 @@ class RetrievalService:
                 )
             except Exception:
                 lexical = []
-        semantic = store().search(query_vector, store().count()) if query_vector is not None else []
+        vector_store = store()
+        indexed_ids = vector_store.id_set()
+        if expected_vector_ids and expected_vector_ids != indexed_ids:
+            status = "embedding_unavailable"
+        semantic = vector_store.search(query_vector, vector_store.count()) if query_vector is not None else []
         semantic_ids = [cid for cid, _ in semantic if cid in allowed]
         return fuse_rankings(allowed, lexical, semantic_ids, top_k), status
 
