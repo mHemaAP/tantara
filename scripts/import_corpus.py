@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Opt-in download of a small official India arbitration statute corpus."""
-import hashlib,json,sys,uuid
+import hashlib,json,sys,uuid,os
 from datetime import datetime,timezone
 from pathlib import Path
 import httpx
@@ -10,6 +10,7 @@ from app.security import current_user
 
 SOURCES=[{"url":"https://www.indiacode.nic.in/bitstream/123456789/1978/1/a1996-26.pdf","publisher":"India Code","title":"The Arbitration and Conciliation Act, 1996","date":"1996-08-16","license":"Government of India legislation; verify reuse terms at source."}]
 def main():
+    os.chdir(ROOT/"backend")
     init_db(); reports=[]; dest=ROOT/"backend/data/corpus"; dest.mkdir(parents=True,exist_ok=True)
     for item in SOURCES:
         try:
