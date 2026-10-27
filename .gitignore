@@ -1,0 +1,12 @@
+AGENTS.md
+sensitive
+INSTRUCTION.md
+frontend.png
+arch.png
+node_modules/
+.next/
+.env.local
+test-results/
+playwright-report/
+
+*.tsbuildinfo
