@@ -302,7 +302,10 @@ def ask(req: Ask, user=Depends(current_user)):
             model=user_ai_settings.get("model"),
         )
         status = "model_unavailable" if not answer else retrieval_status
-        answer = answer or "Relevant documents were found, but the configured language model is unavailable."
+        answer = (
+            answer
+            or "The search could not be completed because the configured language model is unavailable."
+        )
     citations = (
         [
             {
@@ -312,6 +315,7 @@ def ask(req: Ask, user=Depends(current_user)):
                 "chunk_id": h["chunk_id"],
                 "page_number": h["page_number"],
                 "excerpt": h["snippet"],
+                "score": h["score"],
                 "retreival_score": h["score"],
                 "retrieval_score": h["score"],
                 "source_type": h["source_type"],
