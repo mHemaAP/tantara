@@ -86,8 +86,8 @@ from app.routers.community import router as community_router
 app.include_router(community_router)
 from app.routers.strategy import router as strategy_router
 app.include_router(strategy_router)
-from app.routers.documents import router as document_review_router
-app.include_router(document_review_router)
+from app.routers.documents import router as document_router,upload as document_upload
+app.include_router(document_router)
 from app.routers.ai import router as ai_router
 app.include_router(ai_router)
 from app.routers.search import router as search_router
@@ -103,131 +103,6 @@ from app.routers.cases import router as cases_router
 app.include_router(cases_router)
 from app.routers.dashboard import router as dashboard_router
 app.include_router(dashboard_router)
-
-# Background ingestion keeps request handling short and persists every job step.
-INDEX_LOCK=__import__("threading").RLock()
-def _job_update(job_id,**values):
-    with session_scope() as s:
-        job=s.get(IngestionJob,job_id)
-        if job:
-            for k,v in values.items():setattr(job,k,v)
-def process_job(doc_id,job_id,owner_id,data,filename):
-    try:
-        _job_update(job_id,status="extracting",progress=10,steps=[{"key":"extract","label":"Extracting pages","state":"active"}])
-        pages,warnings=DocumentExtractor().extract(filename,data);all_text="\n".join(p["text"] for p in pages)
-        if not all_text.strip():raise ValueError("No text could be extracted")
-        chunks=[];offset=0
-        for p in pages:
-            for ch in chunk_text(p["text"],get_settings().chunk_size_chars,get_settings().chunk_overlap_chars):chunks.append({**ch,"page_number":p["page_number"],"start_char":ch["start_char"]+offset,"end_char":ch["end_char"]+offset})
-            offset+=len(p["text"])+1
-        vectors=embed_documents([x["content"] for x in chunks]);_job_update(job_id,status="indexing",progress=75,steps=[{"key":"extract","label":"Extracting pages","state":"complete"},{"key":"embed","label":"Creating local embeddings","state":"complete"},{"key":"index","label":"Writing search index","state":"active"}])
-        indexed=[]
-        with session_scope() as s:
-            doc=s.get(Document,doc_id);doc.text_content=all_text;doc.page_count=len(pages);doc.warnings=warnings;doc.status="ready"
-            for p in pages:s.add(DocumentPage(id=str(uuid.uuid4()),owner_id=owner_id,document_id=doc_id,page_number=p["page_number"],text=p["text"],ocr_confidence=p.get("ocr_confidence"),warnings=[]))
-            for ix,(ch,vec) in enumerate(zip(chunks,vectors)):
-                row=DocumentChunk(id=str(uuid.uuid4()),document_id=doc_id,chunk_index=ix,content=ch["content"],page_number=ch["page_number"],start_char=ch["start_char"],end_char=ch["end_char"],embedding_blob=__import__("numpy").asarray(vec,dtype="float32").tobytes())
-                s.add(row);indexed.append((row.id,vec))
-        with INDEX_LOCK:store().add(indexed)
-        _job_update(job_id,status="ready",progress=100,steps=[{"key":"extract","label":"Extracting pages","state":"complete"},{"key":"embed","label":"Creating local embeddings","state":"complete"},{"key":"index","label":"Writing search index","state":"complete"}],warnings=warnings,pages=len(pages),chars=len(all_text),error=None)
-    except Exception as exc:
-        logging.warning("Document processing failed (%s)",type(exc).__name__)
-        with SessionLocal() as s:doc=s.get(Document,doc_id);doc.status="failed" if doc else "failed"
-        _job_update(job_id,status="failed",progress=0,error=f"{type(exc).__name__}: processing failed",warnings=[])
-
-@app.post("/api/v1/documents/upload",status_code=202)
-async def upload(file:UploadFile=File(...),title:str|None=Form(None),document_type:str|None=Form(None),jurisdiction:str|None=Form(None),case_id:str|None=Form(None),user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    filename=Path(file.filename or "upload").name;ext=Path(filename).suffix.lower()
-    if ext not in {".pdf",".docx",".txt",".md"}:raise HTTPException(400,"Unsupported document type")
-    data=await file.read(get_settings().max_upload_mb*1024*1024+1)
-    if len(data)>get_settings().max_upload_mb*1024*1024:raise HTTPException(413,"File too large")
-    if not data:raise HTTPException(400,"Uploaded file is empty")
-    if ext==".pdf" and not data.startswith(b"%PDF"):raise HTTPException(400,"File content does not match its extension")
-    if ext==".docx":
-        try:
-            import zipfile,io
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                if "[Content_Types].xml" not in z.namelist() or "word/document.xml" not in z.namelist():raise ValueError()
-        except Exception:raise HTTPException(400,"File content does not match its extension")
-    if ext in {".txt",".md"}:
-        try:
-            if b"\x00" in data:raise UnicodeDecodeError("utf8",data,0,1,"NUL")
-            data.decode("utf-8")
-        except UnicodeDecodeError:raise HTTPException(400,"Text document must be valid UTF-8")
-    filename="".join(ch for ch in filename if ch.isprintable())[:200] or "upload" 
-    if case_id:
-        with SessionLocal() as s:owned(s,Case,case_id,user)
-    digest=hashlib.sha256(data).hexdigest()
-    with SessionLocal() as s:old=s.scalar(select(Document).where(Document.owner_id==user["id"],Document.content_hash==digest))
-    if old:raise HTTPException(409,{"message":"Duplicate document","existing_document":{"id":old.id,"title":old.title}})
-    did,jid=str(uuid.uuid4()),str(uuid.uuid4());path=DocumentStorage().save(data)
-    with session_scope() as s:
-        doc=Document(id=did,owner_id=user["id"],case_id=case_id,title=title or filename,document_type=document_type or "Other",jurisdiction=jurisdiction or "India",filename=filename,stored_path=path,content_hash=digest,status="queued")
-        job=IngestionJob(id=jid,owner_id=user["id"],document_id=did,status="queued",progress=0,steps=[],warnings=[])
-        s.add_all([doc,job]);record(s,user["id"],"create","document",did)
-    pool.submit(process_job,did,jid,user["id"],data,filename)
-    return {"document_id":did,"job_id":jid,"status":"queued","duplicate":False,"document":{"id":did,"title":title or filename,"status":"queued"}}
-
-@app.get("/api/v1/documents")
-def documents(q:str|None=None,status:str|None=None,type:str|None=None,case_id:str|None=None,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),sort:str="-created_at",user=Depends(current_user)):
-    from sqlalchemy import or_
-    with SessionLocal() as s:
-        stmt=select(Document).where(Document.owner_id==user["id"])
-        if q:stmt=stmt.where(Document.title.ilike(f"%{q}%"))
-        if status:stmt=stmt.where(Document.status==status)
-        if type:stmt=stmt.where(Document.document_type==type)
-        if case_id:stmt=stmt.where(Document.case_id==case_id)
-        total=s.scalar(select(func.count()).select_from(stmt.subquery())) or 0;rows=s.scalars(stmt.order_by(Document.created_at.desc()).offset((page-1)*page_size).limit(page_size)).all()
-        return {"items":[{k:v for k,v in serialize(x).items() if k not in {"stored_path","text_content"}} for x in rows],"total":total,"page":page,"page_size":page_size,"pages":(total+page_size-1)//page_size}
-def get_document(did,user):
-    with SessionLocal() as s:return owned(s,Document,did,user)
-@app.get("/api/v1/documents/{did}")
-def document(did:str,user=Depends(current_user)):
-    with SessionLocal() as s:d=owned(s,Document,did,user);out=serialize(d);out.pop("stored_path");out.pop("text_content");return out
-@app.patch("/api/v1/documents/{did}")
-def patch_document(did:str,payload:Payload,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    values=payload.model_dump(exclude_unset=True)
-    if values.get("case_id"):
-        with SessionLocal() as s:owned(s,Case,values["case_id"],user)
-    with session_scope() as s:
-        d=owned(s,Document,did,user);repo_update(s,d,values);record(s,user["id"],"update","document",did);out=serialize(d);out.pop("stored_path");out.pop("text_content");return out
-@app.delete("/api/v1/documents/{did}")
-def delete_document(did:str,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with session_scope() as s:d=owned(s,Document,did,user);path=d.stored_path;chunk_ids=list(s.scalars(select(DocumentChunk.id).where(DocumentChunk.document_id==did)));s.delete(d);record(s,user["id"],"delete","document",did)
-    with INDEX_LOCK:store().remove(chunk_ids)
-    if path and Path(path).parent==(get_settings().data_dir/"uploads").resolve():Path(path).unlink(missing_ok=True)
-    return {"deleted":True}
-@app.get("/api/v1/documents/{did}/job")
-def doc_job(did:str,user=Depends(current_user)):
-    with SessionLocal() as s:
-        owned(s,Document,did,user);j=s.scalar(select(IngestionJob).where(IngestionJob.document_id==did,IngestionJob.owner_id==user["id"]).order_by(IngestionJob.created_at.desc()))
-        if not j:raise HTTPException(404,"Job not found")
-        return {k:getattr(j,k) for k in ("status","progress","steps","warnings","pages","chars","error")}
-@app.post("/api/v1/documents/{did}/retry",status_code=202)
-def retry_doc(did:str,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with session_scope() as s:
-        d=owned(s,Document,did,user)
-        if not Path(d.stored_path).exists():raise HTTPException(404,"Stored upload is unavailable")
-        data=Path(d.stored_path).read_bytes();jid=str(uuid.uuid4());d.status="queued";s.add(IngestionJob(id=jid,owner_id=user["id"],document_id=did,status="queued",steps=[],warnings=[]))
-    pool.submit(process_job,did,jid,user["id"],data,d.filename);return {"job_id":jid,"status":"queued"}
-@app.get("/api/v1/documents/{did}/text")
-def doc_text(did:str,user=Depends(current_user)):
-    with SessionLocal() as s:return {"text":owned(s,Document,did,user).text_content}
-@app.get("/api/v1/documents/{did}/pages")
-def doc_pages(did:str,user=Depends(current_user)):
-    with SessionLocal() as s:
-        owned(s,Document,did,user);rows=s.scalars(select(DocumentPage).where(DocumentPage.document_id==did).order_by(DocumentPage.page_number)).all()
-        return {"pages":[{"page_number":p.page_number,"text":p.text,"ocr_confidence":p.ocr_confidence,"warnings":p.warnings} for p in rows]}
-@app.get("/api/v1/documents/{did}/file")
-def doc_file(did:str,request:Request,user=Depends(current_user)):
-    with SessionLocal() as s:d=owned(s,Document,did,user);path=d.stored_path;filename=d.filename
-    # FileResponse implements single byte-range requests for local previews.
-    return FileResponse(path,filename=filename,media_type=mimetypes.guess_type(filename)[0] or "application/octet-stream")
 
 # FTS5 + FAISS reciprocal-rank fusion is the single retrieval path.
 def retrieve(question,user,top_k=5,case_id=None,jurisdiction=None,document_types=None):
@@ -273,6 +148,6 @@ def settings_embeddings(user=Depends(current_user)):return ai_status(user)["vect
 # Legacy root adapters retain their API names.
 @app.post("/ingest/file")
 async def legacy_ingest(file:UploadFile=File(...),title:str=Form(...),document_type:str=Form("template"),jurisdiction:str=Form("India"),source_label:str|None=Form(None),user=Depends(current_user)):
-    return await upload(file,title,document_type,jurisdiction,None,user)
+    return await document_upload(file,title,document_type,jurisdiction,None,user)
 @app.post("/query")
 def legacy_query(req:Ask,user=Depends(current_user)):return ask(req,user)
