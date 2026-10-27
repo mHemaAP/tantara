@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,ConfigDict
-from sqlalchemy import select,func
+from sqlalchemy import select,func,exists,String
 from app.db import SessionLocal,session_scope
 from app.models import *
 from app.repositories.domain import ENTITY_MODELS,fields_for,serialize,get_owned,list_owned,create as repo_create,update as repo_update
@@ -22,13 +22,19 @@ def assert_write_role(user,cls):
 def list_domain(cls,user,**kwargs):
     with SessionLocal() as s:return list_owned(s,cls,user["id"],**kwargs)
 def register_crud(path,cls):
-    async def listing(q:str|None=None,status:str|None=None,case_id:str|None=None,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),sort:str="created_at",from_:str|None=Query(None,alias="from"),to:str|None=None,user=Depends(current_user)):
+    async def listing(q:str|None=None,status:str|None=None,case_id:str|None=None,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),sort:str="created_at",from_:str|None=Query(None,alias="from"),to:str|None=None,tag:str|None=None,kind:str|None=None,saved:bool|None=None,user=Depends(current_user)):
         filters=[]
         if cls is Hearing:
             try:
                 if from_:filters.append(Hearing.at>=datetime.fromisoformat(from_.replace("Z","+00:00")).replace(tzinfo=None))
                 if to:filters.append(Hearing.at<=datetime.fromisoformat(to.replace("Z","+00:00")).replace(tzinfo=None))
             except ValueError:raise HTTPException(400,"from and to must be ISO dates")
+        if cls is CommunityPost:
+            from app.models import SavedItem
+            if kind:filters.append(CommunityPost.kind==kind)
+            if tag:filters.append(CommunityPost.tags.cast(String).like(f'%"{tag}"%'))
+            if saved is True:filters.append(exists(select(SavedItem.id).where(SavedItem.owner_id==user["id"],SavedItem.item_type=="community_post",SavedItem.item_id==CommunityPost.id)))
+            if saved is False:filters.append(~exists(select(SavedItem.id).where(SavedItem.owner_id==user["id"],SavedItem.item_type=="community_post",SavedItem.item_id==CommunityPost.id)))
         with SessionLocal() as s:
             result=list_owned(s,cls,user["id"],q=q,status=status,case_id=case_id,page=page,page_size=page_size,sort=sort,extra_filters=filters)
             for item in result["items"]:
@@ -40,6 +46,8 @@ def register_crud(path,cls):
         assert_write_role(user,cls);values=payload.model_dump(exclude_unset=True);allowed=fields_for(cls)-{"id","created_at","updated_at","owner_id","is_demo"};values={k:v for k,v in values.items() if k in allowed}
         if cls is Case and values.get("client_id"):
             with SessionLocal() as s:owned(s,Client,values["client_id"],user)
+        if cls is CommunityPost and values.get("case_ref"):
+            with SessionLocal() as s:owned(s,Case,values["case_ref"],user)
         if values.get("case_id"):
             with SessionLocal() as s:owned(s,Case,values["case_id"],user)
         with session_scope() as s:
@@ -57,6 +65,8 @@ def register_crud(path,cls):
             with SessionLocal() as s:owned(s,Case,values["case_id"],user)
         if cls is Case and values.get("client_id"):
             with SessionLocal() as s:owned(s,Client,values["client_id"],user)
+        if cls is CommunityPost and values.get("case_ref"):
+            with SessionLocal() as s:owned(s,Case,values["case_ref"],user)
         with session_scope() as s:
             row=owned(s,cls,rid,user);repo_update(s,row,values);record(s,user["id"],"update",cls.__tablename__,rid);return serialize(row)
     def delete(rid:str,user=Depends(current_user)):
