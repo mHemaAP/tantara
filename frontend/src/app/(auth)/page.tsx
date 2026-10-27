@@ -11,7 +11,7 @@ import { endpoints } from '@/lib/api/endpoints';
 import { persistToken } from '@/lib/api/client';
 const schema = z.object({
   email: z.string().email('Enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 type Form = z.infer<typeof schema>;
 export default function Home() {
@@ -48,12 +48,9 @@ export default function Home() {
     <main className="home-layout">
       <section className="hero">
         <div className="hero-content">
-          <div style={{ fontSize: 13, opacity: 0.9 }}>Welcome to</div>
+          <div className="hero-welcome">Welcome to</div>
           <h1 style={{ letterSpacing: '.18em', marginTop: 8 }}>
-            <span className="brandmark" aria-hidden="true">
-              T
-            </span>{' '}
-            TANTARA
+            <img className="brandmark" src="/brand/t-mark.svg" alt="" /> TANTARA
           </h1>
           <p>
             AI-Powered Legal Workspace
@@ -87,7 +84,7 @@ export default function Home() {
       </section>
       <section className="card login-card" id="login">
         <div className="brand" style={{ padding: 0, color: '#0f172a' }}>
-          <span className="brandmark">T</span>
+          <img className="brandmark" src="/brand/t-mark.svg" alt="" />
           <span className="brandword" style={{ color: '#0f172a' }}>
             TANTARA
           </span>
@@ -104,6 +101,8 @@ export default function Home() {
               id="email"
               type="email"
               autoComplete="username"
+              aria-invalid={Boolean(errors.email)}
+              aria-describedby={errors.email ? 'email-error' : undefined}
               suppressHydrationWarning
               {...register('email')}
             />
@@ -120,6 +119,8 @@ export default function Home() {
                 id="password"
                 type={show ? 'text' : 'password'}
                 autoComplete="current-password"
+                aria-invalid={Boolean(errors.password)}
+                aria-describedby={errors.password ? 'password-error' : undefined}
                 suppressHydrationWarning
                 className="login-password"
                 {...register('password')}
@@ -156,7 +157,7 @@ export default function Home() {
           <br />
           advocate@tantara.local · tantara-local
         </div>
-        <p style={{ fontSize: 10, lineHeight: 1.5, color: '#64748b', marginTop: 18 }}>
+        <p style={{ fontSize: 12, lineHeight: 1.5, color: '#64748b', marginTop: 18 }}>
           For legal research assistance only. Verify all authorities and advice against primary sources.
         </p>
       </section>
