@@ -105,7 +105,6 @@ class Case(Owned, Base):
     status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     filed_at: Mapped[datetime | None] = mapped_column(DateTime)
-    next_hearing_at: Mapped[datetime | None] = mapped_column(DateTime)
     notice_date: Mapped[datetime | None] = mapped_column(DateTime)
     limitation_date: Mapped[datetime | None] = mapped_column(DateTime)
     __table_args__ = (
@@ -214,6 +213,7 @@ class DocumentChunk(Base):
     start_char: Mapped[int | None] = mapped_column(Integer)
     end_char: Mapped[int | None] = mapped_column(Integer)
     embedding_blob: Mapped[bytes | None] = mapped_column(LargeBinary)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     __table_args__ = (
         UniqueConstraint("document_id", "chunk_index", name="uq_document_chunk_index"),
         Index("ix_chunks_page", "document_id", "page_number"),
