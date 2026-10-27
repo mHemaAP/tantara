@@ -16,12 +16,12 @@ def require(ok,message):
 def run():
     password=os.environ.get("TANTARA_ADMIN_PASSWORD","tantara-local")
     with httpx.Client(base_url=BASE,timeout=120,trust_env=False) as client:
-        status=client.get("/ai/status")
+        status=client.get("/health")
         require(status.is_success,f"API unavailable: {status.status_code} {status.text}")
-        ai=status.json()
-        if not ai["llm"]["reachable"]:raise RuntimeError("SKIPPED Workflow A: configured local LLM is unreachable")
         login=client.post("/auth/login",json={"email":"advocate@tantara.local","password":password})
         require(login.is_success,f"Login failed: {login.text}");client.headers["Authorization"]="Bearer "+login.json()["access_token"]
+        ai_response=client.get("/ai/status");require(ai_response.is_success,ai_response.text);ai=ai_response.json()
+        if not ai["llm"]["reachable"]:raise RuntimeError("SKIPPED Workflow A: configured local LLM is unreachable")
         # Workflow A: source PDF -> background extraction -> embedding/index -> grounded answer.
         matter=client.post("/cases",json={"title":"E2E Evidence Matter "+uuid.uuid4().hex[:8],"status":"active","forum":"SIAC","seat":"Mumbai, India"})
         require(matter.is_success,f"Case create failed: {matter.text}");case_a=matter.json()["id"]
