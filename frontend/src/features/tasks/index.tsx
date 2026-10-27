@@ -1,1 +1,224 @@
-'use client';import {useState} from 'react';import {useQuery,useQueryClient} from '@tanstack/react-query';import {api} from '@/lib/api/client';import {endpoints} from '@/lib/api/endpoints';import '../cases/styles.css';type Task={id:string;title:string;status:string;priority?:string;due_at?:string;notes?:string;case_id?:string};export default function TasksPage(){const [show,S]=useState(false),[title,T]=useState(''),[due,D]=useState('');const qc=useQueryClient();const q=useQuery({queryKey:['tasks'],queryFn:()=>api.get<{items:Task[];total:number}>('/tasks?page_size=100')});const complete=async(t:Task)=>{const old=q.data;qc.setQueryData(['tasks'],({...old!,items:old!.items.map(x=>x.id===t.id?{...x,status:x.status==='done'?'open':'done'}:x)}) as {items:Task[];total:number});try{await api.patch(`/tasks/${t.id}`,{status:t.status==='done'?'todo':'done'})}catch{qc.setQueryData(['tasks'],old);alert('Task update failed; previous status restored.')}};const groups=[['Overdue',(t:Task)=>!!t.due_at&&new Date(t.due_at)<new Date()&&t.status!=='done'],['Today',(t:Task)=>!!t.due_at&&new Date(t.due_at).toDateString()===new Date().toDateString()&&t.status!=='done'],['This week',(t:Task)=>!!t.due_at&&new Date(t.due_at)>new Date()&&t.status!=='done'],['Done',(t:Task)=>t.status==='done']] as const;return <section className="matter-wrap"><div className="matter-head"><div><h1 className="matter-title">Tasks</h1><p className="subheading">Your casework, organized</p></div><button className="matter-action" onClick={()=>S(true)}>＋ New task</button></div>{q.isError?<div className="matter-error">Tasks are unavailable. Check the workspace API connection.</div>:q.isLoading?<div className="matter-card matter-skeleton"/>:groups.map(([name,filter])=><section className="matter-card" style={{marginBottom:12,padding:14}} key={name}><h2 style={{fontSize:15}}>{name} <small>{q.data?.items.filter(filter).length}</small></h2>{q.data?.items.filter(filter).map(t=><label key={t.id} style={{display:'flex',gap:10,padding:9,borderTop:'1px solid #edf0f5'}}><input type="checkbox" checked={t.status==='done'} onChange={()=>void complete(t)}/><span style={{textDecoration:t.status==='done'?'line-through':'none'}}>{t.title}<small style={{display:'block'}}>{t.due_at||'No due date'} · {t.priority||'Normal'}</small></span></label>)}</section>)}{show&&<div className="dialog" role="dialog"><h2>New task</h2><form onSubmit={async e=>{e.preventDefault();try{await endpoints.tasks.create({title,due_at:due||null,status:'open'});S(false);T('');D('');await q.refetch()}catch(err){alert(err instanceof Error?err.message:'Unable to create task')}}}><label>Title<input required value={title} onChange={e=>T(e.target.value)}/></label><label>Due date and time<input type="datetime-local" value={due} onChange={e=>D(e.target.value)}/></label><button className="matter-action">Save task</button><button type="button" onClick={()=>S(false)}>Cancel</button></form></div>}</section>}
+"use client";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { endpoints } from "@/lib/api/endpoints";
+import * as Dialog from "@radix-ui/react-dialog";
+import Link from "next/link";
+import "../cases/styles.css";
+import { taskGroup } from "./grouping";
+
+type Task = {
+  id: string;
+  title: string;
+  status: string;
+  priority?: string;
+  due_at?: string | null;
+  notes?: string;
+  case_id?: string;
+  case_title?: string;
+};
+const groups = [
+  "Overdue",
+  "Today",
+  "This week",
+  "Later",
+  "No due date",
+  "Done",
+];
+export default function TasksPage() {
+  const [show, setShow] = useState(false);
+  const [title, setTitle] = useState("");
+  const [due, setDue] = useState("");
+  const [now] = useState(() => new Date());
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["tasks"],
+    queryFn: () => endpoints.tasks.list("?page_size=100"),
+  });
+  const [preview, setPreview] = useState(false);
+  useEffect(
+    () => setPreview(localStorage.getItem("tantara_preview") === "true"),
+    [],
+  );
+  const complete = async (t: Task) => {
+    if (preview || localStorage.getItem("tantara_preview") === "true") return;
+    const old = q.data;
+    if (!old) return;
+    qc.setQueryData(["tasks"], {
+      ...old,
+      items: (old.items as Task[]).map((x: Task) =>
+        x.id === t.id
+          ? { ...x, status: x.status === "done" ? "open" : "done" }
+          : x,
+      ),
+    });
+    try {
+      await endpoints.tasks.update(t.id, {
+        status: t.status === "done" ? "todo" : "done",
+      });
+    } catch {
+      qc.setQueryData(["tasks"], old);
+      window.alert("Task update failed; previous status restored.");
+    }
+  };
+  const items: Task[] = (q.data?.items || []) as Task[];
+  return (
+    <section className="matter-wrap">
+      <div className="matter-head">
+        <div>
+          <h1 className="matter-title">Tasks</h1>
+          <p className="subheading">Your casework, organized</p>
+        </div>
+        <button
+          className="matter-action"
+          disabled={preview}
+          title={
+            preview ? "Changes are disabled in read-only preview" : undefined
+          }
+          onClick={() => setShow(true)}
+        >
+          ＋ New task
+        </button>
+      </div>
+      {q.isError ? (
+        <div className="matter-error">
+          Tasks are unavailable.{" "}
+          <button onClick={() => void q.refetch()}>Retry</button>
+        </div>
+      ) : q.isLoading ? (
+        <div className="matter-card matter-skeleton" />
+      ) : (
+        <div className="task-groups">
+          {groups.map((name) => {
+            const tasks = items.filter((task) => taskGroup(task, now) === name);
+            return (
+              <section className="matter-card task-group" key={name}>
+                <h2>
+                  {name} <small>{tasks.length}</small>
+                </h2>
+                {tasks.length ? (
+                  tasks.map((task) => (
+                    <div className="task-row" key={task.id}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Complete ${task.title}`}
+                        checked={
+                          task.status === "done" || task.status === "completed"
+                        }
+                        disabled={preview}
+                        title={
+                          preview
+                            ? "Changes are disabled in read-only preview"
+                            : undefined
+                        }
+                        onChange={() => void complete(task)}
+                      />
+                      <div className="task-row-copy">
+                        <strong>{task.title}</strong>
+                        <small>
+                          {task.due_at
+                            ? new Intl.DateTimeFormat("en-IN", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                                timeZone: "Asia/Kolkata",
+                              }).format(new Date(task.due_at))
+                            : "No due date"}
+                          {name === "Overdue" ? " · Overdue" : ""} ·{" "}
+                          {task.priority || "Normal"}
+                          {task.case_id && (
+                            <>
+                              {" "}
+                              ·{" "}
+                              <Link href={`/cases/${task.case_id}`}>
+                                {task.case_title || "Open linked case"}
+                              </Link>
+                            </>
+                          )}
+                        </small>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="task-group-empty">No tasks</p>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
+      <Dialog.Root open={show} onOpenChange={setShow}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="matter-dialog-overlay" />
+          <Dialog.Content className="matter-dialog">
+            <Dialog.Title>New task</Dialog.Title>
+            <Dialog.Description>
+              Create a task for your casework.
+            </Dialog.Description>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (
+                  preview ||
+                  localStorage.getItem("tantara_preview") === "true"
+                )
+                  return;
+                try {
+                  await endpoints.tasks.create({
+                    title,
+                    due_at: due || null,
+                    status: "open",
+                  });
+                  setShow(false);
+                  setTitle("");
+                  setDue("");
+                  await q.refetch();
+                } catch (err) {
+                  window.alert(
+                    err instanceof Error
+                      ? err.message
+                      : "Unable to create task",
+                  );
+                }
+              }}
+            >
+              <label>
+                Title
+                <input
+                  aria-label="Task title"
+                  required
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </label>
+              <label>
+                Due date and time
+                <input
+                  aria-label="Due date and time"
+                  type="datetime-local"
+                  value={due}
+                  onChange={(e) => setDue(e.target.value)}
+                />
+              </label>
+              <div className="matter-dialog-actions">
+                <button type="button" onClick={() => setShow(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="matter-action"
+                  disabled={preview}
+                  title={
+                    preview
+                      ? "Changes are disabled in read-only preview"
+                      : undefined
+                  }
+                >
+                  Save task
+                </button>
+              </div>
+            </form>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </section>
+  );
+}
