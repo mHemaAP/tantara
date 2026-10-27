@@ -1,5 +1,6 @@
 """Hybrid retrieval: owner-scoped SQLite BM25 plus persistent FAISS, fused by RRF."""
-from sqlalchemy import select,text,re
+import re
+from sqlalchemy import select,text
 from app.db import SessionLocal
 from app.models import Document,DocumentChunk
 from app.services.vector_store import store
