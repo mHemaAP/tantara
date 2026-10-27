@@ -46,26 +46,6 @@ export function CaseList({
     queryKey: ["cases", query],
     queryFn: () => casesApi.list(query),
   });
-  // The cases collection has no computed hearing projection. One bounded
-  // hearings request supplies the visible rows without per-case N+1 calls.
-  const hearingData = useQuery({
-    queryKey: ["case-list-hearings"],
-    queryFn: () => casesApi.hearingsForList(),
-  });
-  const nextHearingByCase = useMemo(() => {
-    const result = new Map<string, string>();
-    for (const hearing of hearingData.data?.items ?? []) {
-      if (!hearing.case_id || !hearing.at) continue;
-      const previous = result.get(hearing.case_id);
-      if (
-        !previous ||
-        new Date(hearing.at).getTime() < new Date(previous).getTime()
-      ) {
-        result.set(hearing.case_id, hearing.at);
-      }
-    }
-    return result;
-  }, [hearingData.data]);
   const rows = data.data?.items ?? [];
   const countQuery = useQuery({
     queryKey: ["cases", "counts"],
@@ -222,12 +202,14 @@ export function CaseList({
             </button>
           </div>
         ) : rows.length === 0 ? (
-          <div className="matter-empty">No matters yet</div>
+          <div className="matter-empty">
+            {q ? "No matching cases" : "No matters yet"}
+          </div>
         ) : (
           <div
             className="matter-table-scroll"
             role="region"
-            aria-label="Cases table; scroll horizontally to view all columns"
+            aria-label="Cases table"
             tabIndex={0}
           >
             <table className="matter-table">
@@ -280,22 +262,18 @@ export function CaseList({
                   <tr key={c.id}>
                     <td>
                       <Link href={`/cases/${c.id}`}>{c.title}</Link>
-                      {c.is_demo && (
-                        <small style={{ display: "block", color: "#667085" }}>
-                          Sample workspace data
-                        </small>
-                      )}
                     </td>
                     <td>{c.forum || c.institution || "—"}</td>
                     <td>
-                      {nextHearingByCase.get(c.id) || c.next_hearing_at
-                        ? new Date(
-                            nextHearingByCase.get(c.id) || c.next_hearing_at!,
-                          ).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })
+                      {c.next_hearing_at
+                        ? new Date(c.next_hearing_at).toLocaleDateString(
+                            "en-IN",
+                            {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )
                         : "—"}
                     </td>
                     <td>
@@ -359,6 +337,29 @@ export function CaseList({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {!data.isLoading && !data.isError && rows.length > 0 && (
+          <div className="matter-mobile-cards" aria-label="Cases">
+            {rows.map((c) => (
+              <article className="matter-mobile-case" key={c.id}>
+                <Link href={`/cases/${c.id}`}>{c.title}</Link>
+                <span>{c.forum || c.institution || "—"}</span>
+                <span>
+                  Next hearing:{" "}
+                  {c.next_hearing_at
+                    ? new Date(c.next_hearing_at).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "—"}
+                </span>
+                <span className={`status-pill ${matterStatusClass(c.status)}`}>
+                  {matterStatusLabel(c.status)}
+                </span>
+              </article>
+            ))}
           </div>
         )}
         <footer className="matter-foot">
