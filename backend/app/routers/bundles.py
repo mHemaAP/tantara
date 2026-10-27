@@ -16,7 +16,11 @@ class Items(BaseModel):items:list[dict]=Field(default_factory=list)
 class Sections(BaseModel):sections:list[dict]=Field(default_factory=list)
 
 def _items(s,bundle,user):
-    rows=s.scalars(select(BundleItem).where(BundleItem.bundle_id==bundle.id,BundleItem.owner_id==user["id"]).order_by(BundleItem.order)).all();out=[]
+    rows=s.scalars(select(BundleItem).where(BundleItem.bundle_id==bundle.id,BundleItem.owner_id==user["id"]).order_by(BundleItem.order)).all()
+    section_rows=s.scalars(select(BundleSection).where(BundleSection.bundle_id==bundle.id,BundleSection.owner_id==user["id"]).order_by(BundleSection.order)).all()
+    section_order={item.title:index for index,item in enumerate(section_rows)}
+    if section_order:rows.sort(key=lambda item:(section_order.get(item.section,len(section_order)),item.order))
+    out=[]
     for x in rows:
         d=s.scalar(select(Document).where(Document.id==x.document_id,Document.owner_id==user["id"]))
         if not d:continue
