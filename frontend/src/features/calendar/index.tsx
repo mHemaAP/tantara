@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import "../cases/styles.css";
@@ -55,6 +55,9 @@ function eventList(data: unknown): Event[] {
 export default function CalendarPage() {
   const [cursor, setCursor] = useState(() => todayInZone());
   const [view, setView] = useState<"Month" | "Week" | "Agenda">("Month");
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 650px)").matches) setView("Agenda");
+  }, []);
   const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
   const firstDay =
     view === "Week"
