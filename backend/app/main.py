@@ -90,6 +90,8 @@ from app.routers.documents import router as document_review_router
 app.include_router(document_review_router)
 from app.routers.ai import router as ai_router
 app.include_router(ai_router)
+from app.routers.search import router as search_router
+app.include_router(search_router)
 class Payload(BaseModel):model_config=ConfigDict(extra="allow")
 class Ask(Payload):question:str=Field(min_length=3,max_length=8000);top_k:int=Field(5,ge=1,le=30);case_id:str|None=None;collection_id:str|None=None;jurisdiction:str|None=None;document_types:list[str]|None=None
 
@@ -316,10 +318,6 @@ def doc_file(did:str,request:Request,user=Depends(current_user)):
 def retrieve(question,user,top_k=5,case_id=None,jurisdiction=None,document_types=None):
     from app.services.retrieval import retrieval_service
     return retrieval_service.search(question,user["id"],top_k,case_id,jurisdiction,document_types)
-@app.get("/api/v1/search/documents")
-def search_documents(query:str,page:int=Query(1,ge=1),page_size:int=Query(10,ge=1,le=100),case_ids:str|None=None,document_types:str|None=None,user=Depends(current_user)):
-    hits=retrieve(query,user,page*page_size,case_ids.split(",")[0] if case_ids else None,document_types=document_types.split(",") if document_types else None);total=len(hits)
-    return {"items":hits[(page-1)*page_size:page*page_size],"total":total,"page":page,"page_size":page_size,"pages":(total+page_size-1)//page_size}
 DISCLAIMER="AI-generated research assistance only. Verify against current authoritative law and original sources; professional legal review is required."
 def llm_answer(question,hits):
     s=get_settings();prompt="Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers.\nQuestion: "+question+"\n\n"+"\n\n".join(f"[{h['chunk_id']} p.{h['page_number']}] {h['snippet']}" for h in hits)
