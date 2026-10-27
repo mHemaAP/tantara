@@ -48,6 +48,10 @@ export default function DocumentsPage() {
   });
 
   useEffect(() => {
+    if (documents.data?.total === 0 && status) setStatus('');
+  }, [documents.data?.total, status]);
+
+  useEffect(() => {
     const active =
       documents.data?.items.filter((document) => ['queued', 'processing'].includes(document.status)) ?? [];
     if (!active.length) return;
