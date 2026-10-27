@@ -11,7 +11,8 @@ import { documentHref } from '@/features/documents/links';
 
 type SearchHit = {
   document_id: string;
-  title: string;
+  document_title?: string;
+  title?: string;
   page_number: number;
   text?: string;
   snippet?: string;
@@ -83,6 +84,10 @@ export default function SearchPage() {
                   unavailable.
                 </p>
               )}
+              <p className="search-score-note">
+                Relevance is a fusion rank score used to order passages, not a confidence value. OCR
+                confidence is shown separately for scanned-page text.
+              </p>
               {hits.data.items.map((hit, index) => {
                 const relevance = hit.retrieval_score ?? hit.retreival_score ?? hit.score;
                 return (
@@ -93,7 +98,7 @@ export default function SearchPage() {
                     <div className="search-hit-main">
                       <div className="search-hit-title">
                         <Link href={documentHref(hit.document_id, hit.page_number)}>
-                          {hit.title || 'Untitled document'}
+                          {hit.document_title || hit.title || 'Untitled document'}
                         </Link>
                         <span>Page {hit.page_number}</span>
                       </div>
