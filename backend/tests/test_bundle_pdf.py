@@ -52,7 +52,9 @@ def test_bundle_labels_rotation_and_page_count_are_preserved(client):
         client.put(
             f"/api/v1/bundles/{bundle['id']}/items",
             headers=headers,
-            json={"items": [{"document_id": document_id, "section": "Evidence"}]},
+            json={
+                "items": [{"document_id": document_id, "section": "Evidence", "page_start": 2, "page_end": 2}]
+            },
         ).status_code
         == 200
     )
@@ -60,18 +62,23 @@ def test_bundle_labels_rotation_and_page_count_are_preserved(client):
     assert generated.status_code == 202
     response = client.get(f"/api/v1/bundles/{bundle['id']}/download", headers=headers)
     reader = PdfReader(io.BytesIO(response.content))
-    assert len(reader.pages) == 6
+    requested_source_pages = 2 - 2 + 1
+    assert len(reader.pages) == 4 + requested_source_pages
     assert generated.json()["pages"] == len(reader.pages)
     assert reader.page_labels == [
         "Bundle 1",
         "Bundle 2",
         "Bundle 3",
         "Bundle 4",
-        "Bundle 5 · Mixed Size Exhibit source p. 1",
-        "Bundle 6 · Mixed Size Exhibit source p. 2",
+        "Bundle 5 · Mixed Size Exhibit source p. 2",
     ]
-    assert [page.rotation for page in reader.pages] == [0] * 6
+    assert [page.rotation for page in reader.pages] == [0] * 5
+    outline_titles = [item.title for item in reader.outline]
+    assert "Evidence" in outline_titles and "Mixed Size Exhibit" in outline_titles
+    assert reader.pages[-1].extract_text().find("Second page content") >= 0
+    assert reader.pages[-1].extract_text().find("First page content") == -1
     ranged = client.get(
         f"/api/v1/bundles/{bundle['id']}/download", headers={**headers, "Range": "bytes=0-99"}
     )
     assert ranged.status_code == 206 and ranged.content == response.content[:100]
+    assert ranged.headers["content-range"] == f"bytes 0-99/{len(response.content)}"
