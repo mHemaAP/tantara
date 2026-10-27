@@ -20,14 +20,22 @@ def activity(user=Depends(current_user)):
 def upcoming(days:int=Query(30,ge=1,le=365),user=Depends(current_user)):
     start=datetime.now();end=start+timedelta(days=days)
     with SessionLocal() as s:
-        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();ts=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end,Task.status!="done")).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all()
+        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();ts=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end,Task.status!="done")).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all();cases=s.scalars(select(Case).where(Case.owner_id==user["id"])).all()
         out=[{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.at.isoformat(),"due_in_days":(x.at.date()-date.today()).days} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.due_at.isoformat(),"due_in_days":(x.due_at.date()-date.today()).days} for x in ts if x.due_at]+[{"id":x.id,"type":"event","title":x.type,"case_id":x.case_id,"case_title":None,"at":x.occurred_at.isoformat(),"due_in_days":(x.occurred_at.date()-date.today()).days} for x in events]
+        for case in cases:
+            for field,label in (("filed_at","Filing date"),("notice_date","Notice date"),("limitation_date","Limitation date")):
+                at=getattr(case,field)
+                if at and start<=at<=end:out.append({"id":f"{case.id}:{field}","type":"event" if field=="filed_at" else "deadline","title":label,"case_id":case.id,"case_title":case.title,"at":at.isoformat(),"due_in_days":(at.date()-date.today()).days})
     return sorted(out,key=lambda x:x["at"])
 @router.get("/calendar")
 def calendar(from_:datetime|None=Query(None,alias="from"),to:datetime|None=None,user=Depends(current_user)):
     start=from_ or datetime.min;end=to or datetime.max
     with SessionLocal() as s:
-        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();tasks=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end)).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all()
+        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();tasks=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end)).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all();cases=s.scalars(select(Case).where(Case.owner_id==user["id"])).all()
     items=[{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"at":x.at.isoformat()} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"at":x.due_at.isoformat()} for x in tasks if x.due_at]+[{"id":x.id,"type":"event","title":x.type,"case_id":x.case_id,"at":x.occurred_at.isoformat()} for x in events]
+    for case in cases:
+        for field,label in (("filed_at","Filing date"),("notice_date","Notice date"),("limitation_date","Limitation date")):
+            at=getattr(case,field)
+            if at and start<=at<=end:items.append({"id":f"{case.id}:{field}","type":"event" if field=="filed_at" else "deadline","title":label,"case_id":case.id,"at":at.isoformat()})
     return sorted(items,key=lambda x:x["at"])
 
