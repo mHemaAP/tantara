@@ -7,7 +7,7 @@ from pydantic import BaseModel,Field,ConfigDict
 from sqlalchemy import select
 from app.config import get_settings
 from app.db import SessionLocal,session_scope
-from app.models import FilingBundle,BundleItem,Document,Case
+from app.models import FilingBundle,BundleItem,BundleSection,Document,Case
 from app.repositories.domain import get_owned,serialize
 from app.security import current_user
 from app.services.audit import record
@@ -44,9 +44,16 @@ def set_items(rid:str,payload:Items,user=Depends(current_user)):
 @router.put("/{rid}/sections")
 def set_sections(rid:str,payload:Sections,user=Depends(current_user)):
     if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with SessionLocal() as s:b=get_owned(s,FilingBundle,rid,user["id"])
-    if not b:raise HTTPException(404,"Bundle not found")
-    return {"sections":payload.sections}
+    with session_scope() as s:
+        b=get_owned(s,FilingBundle,rid,user["id"])
+        if not b:raise HTTPException(404,"Bundle not found")
+        s.query(BundleSection).filter_by(bundle_id=rid,owner_id=user["id"]).delete(synchronize_session=False)
+        for i,item in enumerate(payload.sections):
+            title=item.get("title")
+            if not isinstance(title,str) or not title.strip():raise HTTPException(400,"Each bundle section requires a title")
+            s.add(BundleSection(id=str(uuid.uuid4()),owner_id=user["id"],bundle_id=rid,title=title.strip(),order=item.get("order",i)))
+        b.status="draft";record(s,user["id"],"update","bundle_sections",rid)
+        return {"sections":[{"title":x.get("title"),"order":x.get("order",i)} for i,x in enumerate(payload.sections)]}
 @router.get("/{rid}/preview")
 def preview(rid:str,user=Depends(current_user)):
     from pypdf import PdfReader
@@ -60,7 +67,10 @@ def preview(rid:str,user=Depends(current_user)):
             if x["pages"]==0:warnings.append(f"Could not read PDF: {x['title']}");continue
             section=x["section"];entry={"document_id":x["document_id"],"title":x["title"],"start_page":offset,"end_page":offset+x["pages"]-1,"pages":x["pages"]}
             sections.setdefault(section,[]).append(entry);offset+=x["pages"]
-        return {"sections":[{"title":k,"items":v} for k,v in sections.items()],"total_pages":offset-1,"warnings":warnings}
+        stored=s.scalars(select(BundleSection).where(BundleSection.bundle_id==rid,BundleSection.owner_id==user["id"]).order_by(BundleSection.order)).all()
+        section_order={x.title:i for i,x in enumerate(stored)}
+        ordered=sorted(sections.items(),key=lambda x:section_order.get(x[0],len(section_order)))
+        return {"sections":[{"title":k,"items":v} for k,v in ordered],"total_pages":offset-1,"warnings":warnings}
 @router.post("/{rid}/generate",status_code=202)
 def generate(rid:str,user=Depends(current_user)):
     if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
