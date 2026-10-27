@@ -9,7 +9,8 @@ from sqlalchemy import select,func
 from app.config import get_settings
 from app.db import SessionLocal,session_scope
 from app.models import Document,DocumentPage,DocumentChunk,IngestionJob,Case,ExtractionField
-from app.repositories.domain import serialize,owned,get_owned,update as repo_update
+from app.repositories.domain import serialize,get_owned,update as repo_update
+from app.routers.domain import owned
 from app.security import current_user
 from app.services.audit import record
 from app.services.vector_store import store
