@@ -35,3 +35,68 @@ def test_fusion_does_not_fabricate_scores_for_unretrieved_rows():
         )
     }
     assert fuse_rankings(rows, [], [], 5) == []
+
+
+def test_retrieval_applies_case_owner_and_metadata_filters(client):
+    import time
+
+    login = client.post(
+        "/api/v1/auth/login", json={"email": "advocate@tantara.local", "password": "tantara-local"}
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+    owner_id = login["user"]["id"]
+    case = client.post("/api/v1/cases", headers=headers, json={"title": "Retrieval scoped case"}).json()
+    uploaded = client.post(
+        "/api/v1/documents/upload",
+        headers=headers,
+        data={"case_id": case["id"], "document_type": "Award", "jurisdiction": "India"},
+        files={
+            "file": (
+                "retrieval.txt",
+                b"Distinct retrieval marker arbitration award in India.",
+                "text/plain",
+            )
+        },
+    )
+    assert uploaded.status_code == 202
+    did = uploaded.json()["document_id"]
+    for _ in range(100):
+        job = client.get(f"/api/v1/documents/{did}/job", headers=headers).json()
+        if job["status"] in {"ready", "failed"}:
+            break
+        time.sleep(0.05)
+    assert job["status"] == "ready"
+
+    from app.db import session_scope
+    from app.models import User
+    from app.security import create_token, hash_password
+    from app.services.retrieval import retrieval_service
+
+    single, status = retrieval_service.search_with_status(
+        "Distinct retrieval marker",
+        owner_id,
+        case_id=case["id"],
+        jurisdiction="India",
+        document_types=["Award"],
+    )
+    assert status == "ok" and any(hit["document_id"] == did for hit in single)
+    filtered, _ = retrieval_service.search_with_status(
+        "Distinct retrieval marker", owner_id, case_ids=["another-case"], jurisdiction="India"
+    )
+    assert filtered == []
+    other_id = "retrieval-other-owner"
+    with session_scope() as session:
+        session.add(
+            User(
+                id=other_id,
+                name="Other searcher",
+                email="retrieval-other@example.local",
+                password_hash=hash_password("retrieval-test-password"),
+                role="advocate",
+            )
+        )
+    other = {"Authorization": f"Bearer {create_token(other_id)}"}
+    private_results = client.get(
+        "/api/v1/search/documents", headers=other, params={"query": "Distinct retrieval marker"}
+    )
+    assert private_results.status_code == 200 and private_results.json()["items"] == []
