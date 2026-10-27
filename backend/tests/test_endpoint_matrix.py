@@ -28,6 +28,13 @@ def _researcher_headers():
     return {"Authorization": f"Bearer {create_token(user_id)}"}
 
 
+def _assert_list_envelope(payload):
+    assert set(payload) >= {"items", "total", "page", "page_size", "pages"}
+    assert isinstance(payload["items"], list)
+    assert payload["total"] >= len(payload["items"])
+    assert payload["page"] >= 1 and payload["page_size"] >= 1 and payload["pages"] >= 0
+
+
 @pytest.mark.parametrize(
     ("path", "create", "patch"),
     [
@@ -48,10 +55,11 @@ def test_domain_crud_role_isolation_validation_and_pagination(client, path, crea
     record_id = created.json()["id"]
     assert client.get(f"/api/v1/{path}/{record_id}", headers=owner).status_code == 200
     assert client.patch(f"/api/v1/{path}/{record_id}", headers=owner, json=patch).status_code == 200
-    assert (
-        client.get(f"/api/v1/{path}", headers=owner, params={"page": 999, "page_size": 100}).json()["items"]
-        == []
-    )
+    listing = client.get(f"/api/v1/{path}", headers=owner).json()
+    _assert_list_envelope(listing)
+    out_of_range = client.get(f"/api/v1/{path}", headers=owner, params={"page": 999, "page_size": 100}).json()
+    _assert_list_envelope(out_of_range)
+    assert out_of_range["items"] == []
 
     invalid = client.post(f"/api/v1/{path}", headers=owner, json={"unexpected_field": True})
     assert invalid.status_code == 422
@@ -96,7 +104,14 @@ def test_case_participant_event_strategy_and_autofill_routes(client):
     )
     assert event.status_code == 200
     eid = event.json()["id"]
-    assert client.get(f"/api/v1/cases/{cid}/events", headers=headers).json()["total"] == 1
+    events = client.get(f"/api/v1/cases/{cid}/events", headers=headers).json()
+    _assert_list_envelope(events)
+    assert events["total"] == 1
+    out_of_range_events = client.get(
+        f"/api/v1/cases/{cid}/events", headers=headers, params={"page": 999, "page_size": 20}
+    ).json()
+    _assert_list_envelope(out_of_range_events)
+    assert out_of_range_events["items"] == []
     assert client.get(f"/api/v1/cases/{cid}/events/{eid}", headers=headers).status_code == 200
     assert (
         client.patch(
@@ -131,7 +146,14 @@ def test_ai_session_saved_community_and_settings_routes(client):
     session = client.post("/api/v1/ai/sessions", headers=headers, json={"title": "Matrix research"})
     assert session.status_code == 200
     sid = session.json()["id"]
-    assert client.get("/api/v1/ai/sessions", headers=headers).status_code == 200
+    sessions = client.get("/api/v1/ai/sessions", headers=headers)
+    assert sessions.status_code == 200
+    _assert_list_envelope(sessions.json())
+    empty_sessions = client.get(
+        "/api/v1/ai/sessions", headers=headers, params={"page": 999, "page_size": 20}
+    ).json()
+    _assert_list_envelope(empty_sessions)
+    assert empty_sessions["items"] == []
     assert client.get(f"/api/v1/ai/sessions/{sid}", headers=headers).status_code == 200
     assert (
         client.patch(
@@ -149,8 +171,15 @@ def test_ai_session_saved_community_and_settings_routes(client):
         ).status_code
         == 200
     )
-    saved = client.get("/api/v1/ai/saved", headers=headers).json()["items"]
+    saved_response = client.get("/api/v1/ai/saved", headers=headers).json()
+    _assert_list_envelope(saved_response)
+    saved = saved_response["items"]
     assert saved
+    empty_saved = client.get(
+        "/api/v1/ai/saved", headers=headers, params={"page": 999, "page_size": 20}
+    ).json()
+    _assert_list_envelope(empty_saved)
+    assert empty_saved["items"] == []
     assert client.delete(f"/api/v1/ai/saved/{saved[0]['id']}", headers=headers).status_code == 200
     assert client.delete(f"/api/v1/ai/sessions/{sid}", headers=headers).status_code == 200
 
@@ -163,7 +192,14 @@ def test_ai_session_saved_community_and_settings_routes(client):
     pid = post.json()["id"]
     reply = client.post(f"/api/v1/community/posts/{pid}/replies", headers=headers, json={"body": "Reply"})
     rid = reply.json()["id"]
-    assert client.get(f"/api/v1/community/posts/{pid}/replies", headers=headers).json()["total"] == 1
+    replies = client.get(f"/api/v1/community/posts/{pid}/replies", headers=headers).json()
+    _assert_list_envelope(replies)
+    assert replies["total"] == 1
+    empty_replies = client.get(
+        f"/api/v1/community/posts/{pid}/replies", headers=headers, params={"page": 999, "page_size": 20}
+    ).json()
+    _assert_list_envelope(empty_replies)
+    assert empty_replies["items"] == []
     assert client.post(f"/api/v1/community/posts/{pid}/save", headers=headers).json()["saved"] is True
     assert client.delete(f"/api/v1/community/posts/{pid}/replies/{rid}", headers=headers).status_code == 200
     assert client.post(f"/api/v1/community/posts/{pid}/save", headers=headers).json()["saved"] is False
@@ -181,7 +217,9 @@ def test_ai_session_saved_community_and_settings_routes(client):
     assert client.get("/api/v1/settings/database", headers=headers).status_code == 200
     assert client.get("/api/v1/settings/database/stats", headers=headers).status_code == 200
     assert client.post("/api/v1/settings/database/backup", headers=headers).status_code == 200
-    assert client.get("/api/v1/settings/security", headers=headers).status_code == 200
+    security_events = client.get("/api/v1/settings/security", headers=headers)
+    assert security_events.status_code == 200
+    _assert_list_envelope(security_events.json())
     assert client.get("/api/v1/settings/data/import", headers=headers).json()["status"] == "not_imported"
     assert client.get("/api/v1/settings/embeddings", headers=headers).status_code == 200
     assert client.get("/api/v1/ai/status", headers=headers).status_code == 200
