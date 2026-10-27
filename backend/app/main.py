@@ -203,7 +203,7 @@ def process_job(doc_id,job_id,owner_id,data,filename):
     from app.embeddings import embed_documents
     try:
         with connect() as c:
-            c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"status":"extracting","progress":10,"steps":[{"key":"extract","label":"Extracting document","state":"active"}]}),job_id))
+            c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"document_id":doc_id,"status":"extracting","progress":10,"steps":[{"key":"extract","label":"Extracting document","state":"active"}]}),job_id))
         pages,warnings=DocumentExtractor().extract(filename,data); text_all="\n".join(p["text"] for p in pages)
         if not text_all.strip(): raise ValueError("No text could be extracted")
         chunks=[]; offset=0
@@ -216,15 +216,15 @@ def process_job(doc_id,job_id,owner_id,data,filename):
             c.exec_driver_sql("DELETE FROM document_pages WHERE owner_id=? AND case_id=?",(owner_id,doc_id))
             for page in pages:
                 c.exec_driver_sql("INSERT INTO document_pages(id,owner_id,case_id,data) VALUES(?,?,?,?)",(str(uuid.uuid4()),owner_id,doc_id,json.dumps({"page_number":page["page_number"],"text":page["text"],"ocr_confidence":page.get("ocr_confidence")})))
-            c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"status":"indexing","progress":80,"steps":[{"key":"extract","label":"Extracting document","state":"complete"},{"key":"embed","label":"Creating local embeddings","state":"complete"},{"key":"index","label":"Indexing document","state":"active"}]}),job_id))
+            c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"document_id":doc_id,"status":"indexing","progress":80,"steps":[{"key":"extract","label":"Extracting document","state":"complete"},{"key":"embed","label":"Creating local embeddings","state":"complete"},{"key":"index","label":"Indexing document","state":"active"}]}),job_id))
             for x,v in zip(chunks,vectors):
                 cid=str(uuid.uuid4()); c.exec_driver_sql("INSERT INTO document_chunks(id,document_id,chunk_index,content,embedding,page_number,start_char,end_char) VALUES(?,?,?,?,?,?,?,?)",(cid,doc_id,x["chunk_index"],x["content"],json.dumps(v),x["page_number"],x["start_char"],x["end_char"]))
             c.exec_driver_sql("UPDATE documents SET status='ready',text_content=?,warnings=?,page_count=? WHERE id=?",(text_all,json.dumps(warnings),len(pages),doc_id))
-            c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"status":"ready","progress":100,"steps":[{"key":"extract","label":"Extracting document","state":"complete"},{"key":"embed","label":"Creating local embeddings","state":"complete"},{"key":"index","label":"Indexing document","state":"complete"}],"warnings":warnings,"pages":len(pages),"chars":len(text_all),"error":None}),job_id))
+            c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"document_id":doc_id,"status":"ready","progress":100,"steps":[{"key":"extract","label":"Extracting document","state":"complete"},{"key":"embed","label":"Creating local embeddings","state":"complete"},{"key":"index","label":"Indexing document","state":"complete"}],"warnings":warnings,"pages":len(pages),"chars":len(text_all),"error":None}),job_id))
     except Exception as exc:
-        logging.warning("Ingestion job %s failed (%s)",job_id,type(exc).__name__)
+        logging.warning("Ingestion job %s failed (%s: %s)",job_id,type(exc).__name__,str(exc)[:180])
         with connect() as c:
-            c.exec_driver_sql("UPDATE documents SET status='failed' WHERE id=?",(doc_id,)); c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"status":"failed","progress":0,"steps":[],"warnings":[],"pages":0,"chars":0,"error":str(exc)[:300]}),job_id))
+            c.exec_driver_sql("UPDATE documents SET status='failed' WHERE id=?",(doc_id,)); c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"document_id":doc_id,"status":"failed","progress":0,"steps":[],"warnings":[],"pages":0,"chars":0,"error":str(exc)[:300]}),job_id))
 
 @app.post("/api/v1/documents/upload",status_code=202)
 async def upload(file:UploadFile=File(...),title:str|None=Form(None),document_type:str|None=Form(None),jurisdiction:str|None=Form(None),case_id:str|None=Form(None),user=Depends(current_user)):
@@ -277,7 +277,9 @@ def delete_document(did:str,user=Depends(current_user)):
 @app.get("/api/v1/documents/{did}/job")
 def doc_job(did:str,user=Depends(current_user)):
     document(did,user)
-    with connect() as c:r=c.exec_driver_sql("SELECT data FROM ingestion_jobs WHERE owner_id=? AND json_extract(data,'$.document_id')=? ORDER BY created_at DESC LIMIT 1",(user["id"],did)).first()
+    # The document has already passed the ownership check; filtering the linked
+    # job by its document identifier also survives legacy job-row formats.
+    with connect() as c:r=c.exec_driver_sql("SELECT data FROM ingestion_jobs WHERE json_extract(data,'$.document_id')=? ORDER BY created_at DESC LIMIT 1",(did,)).first()
     if not r: raise HTTPException(404,"Job not found")
     return json.loads(r[0])
 @app.post("/api/v1/documents/{did}/retry",status_code=202)
