@@ -18,3 +18,8 @@ Export counts are environment-specific. For a workspace, inspect the array
 lengths under `tables` in `legacy_export.json`; do not treat the fixture count as
 the user's production count. Keep the exported file in the backup set before
 removing it.
+
+Revision `0005_bundle_page_ranges` adds nullable `page_start` and `page_end`
+columns to `bundle_items`; these are inclusive source-document page numbers.
+Existing bundle items with null values continue to include the complete source
+document.
