@@ -10,7 +10,7 @@ class CaseCreate(RequestModel):title:str=Field(min_length=1,max_length=300);refe
 class HearingCreate(RequestModel):title:str=Field(min_length=1,max_length=300);at:datetime;case_id:str|None=None;mode:Literal["offline","online","virtual"]="online";venue:str|None=None;forum:str|None=None;status:str="scheduled";notes:str|None=None
 class TaskCreate(RequestModel):title:str=Field(min_length=1,max_length=300);case_id:str|None=None;notes:str|None=None;due_at:datetime|None=None;priority:Literal["low","medium","high"]="medium";status:Literal["todo","in_progress","done"]="todo";assignee:str|None=None
 class DraftCreate(RequestModel):title:str=Field(min_length=1,max_length=300);case_id:str|None=None;document_type:str;status:str="draft";content_markdown:str="";template_id:str|None=None
-class BundleCreate(RequestModel):name:str=Field(min_length=1,max_length=300);case_id:str|None=None;settings:dict=Field(default_factory=dict);status:str="draft"
+class BundleCreate(RequestModel):name:str=Field(min_length=1,max_length=300);case_id:str|None=None;settings:dict=Field(default_factory=lambda:{"cover_page":True,"index":True,"synopsis":True,"list_of_dates":True});status:str="draft"
 class NoteCreate(RequestModel):title:str="";case_id:str|None=None;body:str="";kind:str="note"
 class CommunityPostCreate(RequestModel):title:str=Field(min_length=1,max_length=300);body:str=Field(min_length=1);kind:Literal["discussion","question"]="discussion";case_ref:str|None=None;tags:list[str]=Field(default_factory=list)
 CREATE_SCHEMAS={"clients":ClientCreate,"cases":CaseCreate,"hearings":HearingCreate,"tasks":TaskCreate,"drafts":DraftCreate,"bundles":BundleCreate,"notes":NoteCreate,"community/posts":CommunityPostCreate}
