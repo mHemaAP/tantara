@@ -95,9 +95,11 @@ def ai_settings(user=Depends(current_user)):
     }
     with SessionLocal() as db:
         values = _get(db, user["id"], "ai", default)
+    base_url = values.get("base_url") or s.local_llm_base_url
+    model = values.get("model") or s.local_llm_model
     started = datetime.now(UTC)
     try:
-        response = httpx.get(s.local_llm_base_url.rstrip("/") + "/models", timeout=2)
+        response = httpx.get(base_url.rstrip("/") + "/models", timeout=2)
         reachable = response.is_success
     except httpx.HTTPError:
         reachable = False
@@ -105,7 +107,8 @@ def ai_settings(user=Depends(current_user)):
         **values,
         "runtime_status": {
             "provider": s.ai_provider,
-            "model": s.local_llm_model,
+            "base_url": base_url,
+            "model": model,
             "reachable": reachable,
             "checked_at": started.isoformat(),
         },
