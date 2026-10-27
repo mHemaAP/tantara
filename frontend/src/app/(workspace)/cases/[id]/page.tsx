@@ -26,7 +26,12 @@ export default function CaseOverviewPage() {
     queryKey: ['cases', 'overview', id],
     queryFn: () => api.get<Overview>(`/cases/${id}/overview`),
   });
-  if (q.isLoading) return <div className="card surface">Loading case overview…</div>;
+  if (q.isLoading)
+    return (
+      <div className="card surface" role="status">
+        Loading case overview…
+      </div>
+    );
   if (q.isError)
     return (
       <div className="offline">
