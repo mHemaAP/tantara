@@ -29,10 +29,12 @@ export function PdfDocumentViewer({
   const requestedPage = Math.max(1, Number(searchParams.get('page')) || 1);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef(new Map<number, HTMLElement>());
+  const manualScrollRef = useRef(false);
   const [pdf, setPdf] = useState<PdfDocument | null>(null);
   const [pages, setPages] = useState<PdfPageEntry[]>([]);
   const [pageNumber, setPageNumber] = useState(requestedPage);
   const [scale, setScale] = useState(1);
+  const [fitScale, setFitScale] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -82,6 +84,26 @@ export function PdfDocumentViewer({
     };
   }, [documentId, requestedPage]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    const pageWidth = pages[0]?.width;
+    if (!container || !pageWidth) return;
+    const updateFit = () => {
+      const containerStyle = getComputedStyle(container);
+      const horizontalPadding =
+        parseFloat(containerStyle.paddingLeft) + parseFloat(containerStyle.paddingRight);
+      const pageGutters = 22;
+      const available = Math.max(180, container.clientWidth - horizontalPadding - pageGutters);
+      const nextFit = Math.min(1, available / pageWidth);
+      setFitScale(nextFit);
+      setScale(nextFit);
+    };
+    updateFit();
+    const observer = new ResizeObserver(updateFit);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [pages]);
+
   const goToPage = useCallback(
     (target: number) => {
       const bounded = Math.min(Math.max(target, 1), pages.length || 1);
@@ -107,6 +129,7 @@ export function PdfDocumentViewer({
   useEffect(() => {
     if (!pdf || !pages.length) return;
     let cancelled = false;
+    const activeRenderTasks: import('pdfjs-dist').RenderTask[] = [];
     const render = async () => {
       const pdfjs = await import('pdfjs-dist');
       await Promise.all(
@@ -135,6 +158,7 @@ export function PdfDocumentViewer({
             viewport,
             transform: pixelRatio !== 1 ? [pixelRatio, 0, 0, pixelRatio, 0, 0] : undefined,
           });
+          activeRenderTasks.push(renderTask);
           await renderTask.promise;
           if (cancelled) return;
           const textContent = await pageProxy.getTextContent();
@@ -146,6 +170,11 @@ export function PdfDocumentViewer({
           await textLayer.render();
         }),
       );
+      if (!cancelled && searchParams.has('page')) {
+        const container = containerRef.current;
+        const target = pageRefs.current.get(requestedPage);
+        if (container && target) scrollPageInsideViewer(container, target);
+      }
     };
     void render().catch((renderError) => {
       if (!cancelled)
@@ -153,24 +182,34 @@ export function PdfDocumentViewer({
     });
     return () => {
       cancelled = true;
+      activeRenderTasks.forEach((renderTask) => renderTask.cancel());
     };
-  }, [pdf, pages, scale]);
+  }, [pdf, pages, scale, requestedPage, searchParams]);
 
   useEffect(() => {
     if (!pages.length) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
-        const visiblePage = Number(visible?.target.getAttribute('data-page-card'));
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        if (searchParams.has('page') && !manualScrollRef.current) return;
+        const container = containerRef.current;
+        if (!container) return;
+        const containerBounds = container.getBoundingClientRect();
+        const visiblePage = [...pageRefs.current.entries()]
+          .map(([page, element]) => ({ page, bounds: element.getBoundingClientRect() }))
+          .filter(({ bounds }) => bounds.top < containerBounds.bottom && bounds.bottom > containerBounds.top)
+          .sort(
+            (left, right) =>
+              Math.abs(left.bounds.top - containerBounds.top) -
+              Math.abs(right.bounds.top - containerBounds.top),
+          )[0]?.page;
         if (visiblePage) setPageNumber(visiblePage);
       },
       { root: containerRef.current, threshold: [0.25, 0.5, 0.75] },
     );
     pageRefs.current.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [pages]);
+  }, [pages, searchParams]);
 
   if (loading)
     return (
@@ -222,20 +261,40 @@ export function PdfDocumentViewer({
             </button>
           </div>
           <div className="pdf-zoom-controls">
-            <button aria-label="Zoom out" onClick={() => setScale((value) => Math.max(0.5, value - 0.15))}>
+            <button
+              aria-label="Zoom out"
+              onClick={() => setScale((value) => Math.max(fitScale * 0.5, value - fitScale * 0.15))}
+            >
               <Minus size={16} />
             </button>
-            <span>{Math.round(scale * 100)}%</span>
-            <button aria-label="Zoom in" onClick={() => setScale((value) => Math.min(2.5, value + 0.15))}>
+            <span>{Math.round((scale / fitScale) * 100)}%</span>
+            <button
+              aria-label="Zoom in"
+              onClick={() => setScale((value) => Math.min(fitScale * 2.5, value + fitScale * 0.15))}
+            >
               <Plus size={16} />
             </button>
-            <button aria-label="Fit width" onClick={() => setScale(1)}>
+            <button aria-label="Fit width" onClick={() => setScale(fitScale)}>
               <RotateCcw size={15} />
             </button>
           </div>
         </div>
       )}
-      <div className="pdf-pages-scroll" ref={containerRef}>
+      <div
+        className="pdf-pages-scroll"
+        ref={containerRef}
+        onWheel={() => {
+          manualScrollRef.current = true;
+        }}
+        onTouchStart={() => {
+          manualScrollRef.current = true;
+        }}
+        onKeyDown={(event) => {
+          if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' '].includes(event.key)) {
+            manualScrollRef.current = true;
+          }
+        }}
+      >
         {visiblePages.map((page) => (
           <article
             className={`pdf-page-card ${page.pageNumber === requestedPage ? 'pdf-page-deep-link' : ''}`}
