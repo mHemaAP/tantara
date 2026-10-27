@@ -47,4 +47,43 @@
 - Calendar has month and agenda views; Week currently shares the month grid, and the add-hearing dialog and explicit timezone conversion are incomplete.
 - The case form omits assigned team selection because no corresponding field is present in the running API schema. Dispute category is free text rather than a metadata select.
 - `devIndicators` remains enabled in `next.config.ts`; that shared configuration file is outside this lane's allowed edit paths. Requested screenshots were captured from the production build, so they do not include the development indicator.
-- The report lists verification results; commit hashes are recorded in the final response after per-file commits.
+- Per-file commits are listed below.
+
+## Per-file commits
+
+- `4af7659` — cases route
+- `d706902` — active cases route
+- `8a3545b` — pending cases route
+- `fef2a01` — archived cases route
+- `d2c92cb` — new case route
+- `d399ae9` — case edit route
+- `2099898` — case detail workspace
+- `71f79cb` — clients directory route
+- `bdf939d` — client detail route
+- `1c58851` — tasks route
+- `8d9d8f8` — calendar route
+- `88b8449` — case API wrappers
+- `0d494e8` — cases styles
+- `1a50e4f` — cases table
+- `adc14df` — case forms
+- `9902d51` — strategy editor
+- `d6c7707` — client API wrappers
+- `af17c0a` — client directory
+- `24b6d1f` — tasks workspace
+- `c599782` — calendar workspace
+- `2c79e22` — dashboard Matters card
+- `40e3a7f` — dashboard insertion
+- `d6d3177` — Playwright server configuration
+- `dfd6506` — API smoke fixtures
+- `dc38a7d` — route smoke coverage
+- `c1608aa` — real API workflow test
+- `620dbac`, `1fabb28` — screenshot helper and CORS proxy
+- `8872a93` — cases desktop screenshot
+- `8630a2b` — cases mobile screenshot
+- `77cc907` — case detail screenshot
+- `b42678f` — clients screenshot
+- `b472e12` — tasks screenshot
+- `22cd744` — calendar desktop screenshot
+- `3ec45ac` — calendar mobile screenshot
+- `cf9291b` — dashboard screenshot
+- `f152d7a` — this report
