@@ -1,5 +1,6 @@
 """TANTARA local-first API wiring. Domain state is persisted through typed ORM models."""
 import hashlib, json, logging, mimetypes, os, re, uuid
+from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -25,7 +26,14 @@ from app.chunking import chunk_text
 from app.embeddings import embed_documents, embed_query
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
-app=FastAPI(title="TANTARA Local Workspace API",version="1.1.0")
+@asynccontextmanager
+async def lifespan(_app):
+    init_db()
+    from app.services.index_maintenance import reconcile_index
+    state=reconcile_index()
+    logging.info("TANTARA started: AI=%s embeddings=%s vector=faiss consistent=%s database=sqlite",get_settings().ai_provider,get_settings().embedding_provider,state["consistent"])
+    yield
+app=FastAPI(title="TANTARA Local Workspace API",version="1.1.0",lifespan=lifespan)
 settings=get_settings()
 app.add_middleware(CORSMiddleware,allow_origins=[x.strip() for x in settings.cors_origins.split(",") if x.strip()],allow_credentials=True,allow_methods=["GET","POST","PATCH","PUT","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type","Range"],expose_headers=["Content-Range","Accept-Ranges"])
 pool=ThreadPoolExecutor(max_workers=2,thread_name_prefix="tantara-ingest")
@@ -45,12 +53,6 @@ async def route_rate_limit(request:Request,call_next):
     return await call_next(request)
 
 
-@app.on_event("startup")
-def startup():
-    init_db()
-    from app.services.index_maintenance import reconcile_index
-    state=reconcile_index()
-    logging.info("TANTARA started: AI=%s embeddings=%s vector=faiss consistent=%s database=sqlite",get_settings().ai_provider,get_settings().embedding_provider,state["consistent"])
 @app.exception_handler(HTTPException)
 async def http_error(request,exc):
     code={401:"unauthorized",403:"forbidden",404:"not_found",409:"duplicate",413:"too_large",422:"validation_error",429:"rate_limited",503:"model_unavailable"}.get(exc.status_code,"request_error")
