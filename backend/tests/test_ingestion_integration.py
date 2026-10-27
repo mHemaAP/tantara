@@ -102,7 +102,10 @@ def test_corrupt_empty_retry_and_oversize_paths(client):
     assert wait_job(client, headers, did)["status"] == "ready"
     blank = upload(client, headers, "blank.pdf", text_pdf(""))
     assert blank.status_code == 202
-    assert wait_job(client, headers, blank.json()["document_id"])["status"] == "failed"
+    blank_id = blank.json()["document_id"]
+    assert wait_job(client, headers, blank_id)["status"] == "failed"
+    blank_pages = client.get(f"/api/v1/documents/{blank_id}/pages", headers=headers).json()["pages"]
+    assert blank_pages and "manual review required" in blank_pages[0]["warnings"][0]["warning"]
     settings = get_settings()
     old = settings.max_upload_mb
     settings.max_upload_mb = 1
