@@ -1,1 +1,2 @@
-import CalendarPage from '@/features/calendar';export default CalendarPage;
+import CalendarPage from "@/features/calendar";
+export default CalendarPage;
