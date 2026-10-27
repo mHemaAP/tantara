@@ -48,6 +48,12 @@ def test_bundle_labels_rotation_and_page_count_are_preserved(client):
         headers=headers,
         json={"case_id": case["id"], "name": "Integrity Bundle"},
     ).json()
+    sections = client.put(
+        f"/api/v1/bundles/{bundle['id']}/sections",
+        headers=headers,
+        json={"sections": [{"title": "Evidence", "order": 1}]},
+    )
+    assert sections.status_code == 200 and sections.json()["sections"][0]["title"] == "Evidence"
     assert (
         client.put(
             f"/api/v1/bundles/{bundle['id']}/items",
@@ -58,6 +64,9 @@ def test_bundle_labels_rotation_and_page_count_are_preserved(client):
         ).status_code
         == 200
     )
+    preview = client.get(f"/api/v1/bundles/{bundle['id']}/preview", headers=headers)
+    assert preview.status_code == 200 and preview.json()["total_pages"] == 5
+    assert preview.json()["sections"][0]["title"] == "Evidence"
     generated = client.post(f"/api/v1/bundles/{bundle['id']}/generate", headers=headers)
     assert generated.status_code == 202
     response = client.get(f"/api/v1/bundles/{bundle['id']}/download", headers=headers)
