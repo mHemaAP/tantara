@@ -63,22 +63,24 @@
 }
 
 .document-metadata .metadata-definition-row {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(100px, 0.42fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
   min-width: 0;
   padding: 0;
   border: 0;
 }
 
 .document-metadata dt {
-  display: inline;
-  margin-right: 8px;
+  display: block;
   color: #75819a;
   font-size: 11px;
   font-weight: 600;
 }
 
 .document-metadata dd {
-  display: inline;
+  display: block;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -86,6 +88,15 @@
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.metadata-review-state {
+  grid-column: 1 / -1;
+}
+
+.metadata-review-state dd {
+  color: #4338ca;
+  font-weight: 650;
 }
 
 .metadata-hash-row {
@@ -116,8 +127,7 @@
 }
 
 .ai-read-panel {
-  position: sticky;
-  top: 80px;
+  position: static;
   min-width: 0;
   padding: 16px;
 }
@@ -149,9 +159,8 @@
 .ai-read-fields {
   display: grid;
   gap: 0;
-  max-height: 70vh;
   margin-top: 8px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .ai-read-field {
@@ -200,6 +209,43 @@
   margin-top: 5px;
   color: #8a93a4;
   font-size: 10px;
+}
+
+.ai-read-value blockquote {
+  margin: 2px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid #c8c6ff;
+  white-space: pre-wrap;
+}
+
+.ai-read-value ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.ai-read-not-found {
+  color: #75819a;
+  font-style: italic;
+}
+
+.ai-read-error-category {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 13px;
+  color: #82313b;
+  background: #fff4f4;
+  border: 1px solid #f2d8dc;
+  border-radius: 9px;
+}
+
+.ai-read-error-category p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ai-read-error-category button {
+  justify-self: start;
 }
 
 .ai-read-error,
@@ -301,11 +347,6 @@
   margin: 5px 0 0;
 }
 
-.skip-link:not(:focus) {
-  top: -80px;
-  left: 8px;
-}
-
 @media (max-width: 1050px) {
   .document-detail-columns {
     grid-template-columns: minmax(0, 1fr);
@@ -313,10 +354,6 @@
 
   .ai-read-panel {
     position: static;
-  }
-
-  .ai-read-fields {
-    max-height: none;
   }
 }
 
@@ -327,6 +364,10 @@
 
   .document-metadata dl {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-metadata .metadata-review-state {
+    grid-column: auto;
   }
 
   .ai-read-heading {
