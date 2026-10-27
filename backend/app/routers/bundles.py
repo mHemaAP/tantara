@@ -117,5 +117,6 @@ def generate(rid:str,user=Depends(current_user)):
 def download(rid:str,user=Depends(current_user)):
     with SessionLocal() as s:b=get_owned(s,FilingBundle,rid,user["id"]);path=b.output_path if b else None
     if not b:raise HTTPException(404,"Bundle not found")
-    if not path or not Path(path).exists():raise HTTPException(404,"Bundle has not been generated")
-    return FileResponse(path,filename=f"{rid}.pdf",media_type="application/pdf")
+    safe_path=Path(path).resolve() if path else None
+    if not safe_path or safe_path.parent!=(get_settings().data_dir/"bundles").resolve() or not safe_path.is_file():raise HTTPException(404,"Bundle has not been generated")
+    return FileResponse(safe_path,filename=f"{rid}.pdf",media_type="application/pdf")
