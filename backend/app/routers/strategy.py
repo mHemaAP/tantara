@@ -21,7 +21,15 @@ def _case(s,cid,user):
 def autofill(cid:str,user=Depends(current_user)):
     with SessionLocal() as s:
         c=_case(s,cid,user);keys=("title","reference_number","claimant","respondent","forum","seat","governing_law","dispute_category","claim_amount","claim_currency","description","filed_at","next_hearing_at","notice_date","limitation_date")
-        return {"fields":[{"key":k,"label":k.replace("_"," ").title(),"value":getattr(c,k),"provenance":"verified","source":"Case record"} for k in keys if getattr(c,k) is not None]}
+        fields=[{"key":k,"label":k.replace("_"," ").title(),"value":getattr(c,k),"provenance":"verified","source":"Case record"} for k in keys if getattr(c,k) is not None]
+        docs=s.scalars(select(Document).where(Document.owner_id==user["id"],Document.case_id==cid)).all();doc_ids=[d.id for d in docs]
+        if doc_ids:
+            rows=s.scalars(select(ExtractionField).where(ExtractionField.owner_id==user["id"],ExtractionField.document_id.in_(doc_ids)).order_by(ExtractionField.created_at.desc())).all()
+            seen={x["key"] for x in fields}
+            for row in rows:
+                if row.key not in seen:
+                    doc=next((d for d in docs if d.id==row.document_id),None);fields.append({"key":row.key,"label":row.key.replace("_"," ").title(),"value":row.value,"provenance":row.provenance,"source":doc.title if doc else row.source});seen.add(row.key)
+        return {"fields":fields}
 @router.post("/autofill/preview")
 def autofill_preview(cid:str,payload:Keys,user=Depends(current_user)):
     current=autofill(cid,user);wanted=set(payload.keys);return {"fields":[x for x in current["fields"] if x["key"] in wanted]}
@@ -34,7 +42,7 @@ def autofill_apply(cid:str,payload:Fields,user=Depends(current_user)):
         for item in payload.fields:
             key=item.get("key");provenance=item.get("provenance")
             if key not in allowed or provenance not in {"verified","extracted_reviewed","ai_suggested"}:skipped.append(key);continue
-            if getattr(c,key) is not None and provenance=="ai_suggested":skipped.append(key);continue
+            if getattr(c,key) is not None and provenance!="verified":skipped.append(key);continue
             if provenance=="ai_suggested":skipped.append(key);continue
             setattr(c,key,item.get("value"));applied.append(key)
         record(s,user["id"],"apply","case_autofill",cid,{"applied":applied,"skipped":skipped})
