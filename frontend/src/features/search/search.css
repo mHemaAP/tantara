@@ -130,3 +130,8 @@
     margin: 2px 0 0;
   }
 }
+.search-score-note {
+  margin: 8px 0 12px;
+  color: #6b7890;
+  font-size: 11px;
+}
