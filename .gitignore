@@ -1,0 +1,12 @@
+AGENTS.md
+INSTRUCTION.md
+sensitive/
+*.png
+data/
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.env
+*.db
+*.log
