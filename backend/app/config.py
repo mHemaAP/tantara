@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,7 +16,7 @@ DEFAULT_CORS_ORIGINS = ",".join(
 
 
 class Settings(BaseSettings):
-    database_url: str = f"sqlite:///{ROOT / 'data' / 'tantara.db'}"
+    database_url: str | None = None
     data_dir: Path = Field(
         default=ROOT / "data", validation_alias=AliasChoices("TANTARA_DATA_DIR", "DATA_DIR")
     )
@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(str(ROOT / ".env"), str(ROOT / "env_example")), extra="ignore"
     )
+
+    @model_validator(mode="after")
+    def resolve_workspace_paths(self):
+        self.data_dir = self.data_dir.expanduser().resolve()
+        if not self.database_url:
+            self.database_url = f"sqlite:///{self.data_dir / 'tantara.db'}"
+        return self
 
 
 @lru_cache
