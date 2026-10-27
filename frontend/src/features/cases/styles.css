@@ -270,6 +270,20 @@
   gap: 3px;
   font-size: 14px;
 }
+.task-edit-title {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #172554;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.task-edit-title:disabled {
+  cursor: default;
+}
 .task-row-copy small {
   color: #64748b;
   font-size: 12px;
@@ -339,6 +353,58 @@
 .case-record-list dd {
   margin: 0;
   font-size: 13px;
+}
+.case-record-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.case-record-actions button {
+  border: 1px solid #dce2eb;
+  border-radius: 6px;
+  padding: 5px 9px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+.case-record-editor-wrap {
+  margin-top: 16px;
+}
+.case-record-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e7eaf0;
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+.case-record-editor h3,
+.case-record-editor .matter-dialog-actions {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.case-record-editor label {
+  display: grid;
+  gap: 6px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 600;
+}
+.case-record-editor input,
+.case-record-editor select,
+.case-record-editor textarea {
+  min-width: 0;
+  border: 1px solid #dce2eb;
+  border-radius: 7px;
+  padding: 9px 10px;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+}
+.case-record-editor textarea {
+  min-height: 72px;
 }
 .case-inline-empty {
   padding: 18px 8px;
