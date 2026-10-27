@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.db import SessionLocal, session_scope
-from app.models import AppPreference, Case, Document, ExtractionField
+from app.models import AppPreference, Case, Document, ExtractionField, Hearing
 from app.repositories.domain import get_owned
 from app.security import current_user
 from app.services.audit import record
@@ -57,7 +57,6 @@ def autofill(cid: str, user=Depends(current_user)):
             "claim_currency",
             "description",
             "filed_at",
-            "next_hearing_at",
             "notice_date",
             "limitation_date",
         )
@@ -72,6 +71,26 @@ def autofill(cid: str, user=Depends(current_user)):
             for k in keys
             if getattr(c, k) is not None
         ]
+        next_hearing = s.scalar(
+            select(Hearing.at)
+            .where(
+                Hearing.owner_id == user["id"],
+                Hearing.case_id == cid,
+                Hearing.at >= datetime.now(UTC).replace(tzinfo=None),
+            )
+            .order_by(Hearing.at)
+            .limit(1)
+        )
+        if next_hearing:
+            fields.append(
+                {
+                    "key": "next_hearing_at",
+                    "label": "Next Hearing",
+                    "value": next_hearing,
+                    "provenance": "verified",
+                    "source": "Hearing record",
+                }
+            )
         docs = s.scalars(
             select(Document).where(Document.owner_id == user["id"], Document.case_id == cid)
         ).all()
@@ -122,7 +141,6 @@ def autofill_apply(cid: str, payload: Fields, user=Depends(current_user)):
         "claim_currency",
         "description",
         "filed_at",
-        "next_hearing_at",
         "notice_date",
         "limitation_date",
         "reference_number",
