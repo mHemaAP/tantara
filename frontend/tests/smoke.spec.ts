@@ -1,12 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { installApiFixtures } from './api-fixtures.mjs';
 
 test.setTimeout(90000);
 const routes = [
   '/',
   '/dashboard',
-  '/cases/case-1',
-  '/documents/doc-1',
   '/settings/profile',
   '/settings/workspace',
   '/settings/local-ai',
@@ -16,18 +13,38 @@ const routes = [
   '/settings/appearance',
   '/settings/security',
 ];
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('tantara_token', 'e2e-fixture-token'));
-  await installApiFixtures(page);
+let authToken = '';
+test.beforeEach(async ({ page, request }) => {
+  const apiBase = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8010'}/api/v1`;
+  const response = await request.post(`${apiBase}/auth/login`, {
+    data: { email: 'advocate@tantara.local', password: 'tantara-local' },
+  });
+  expect(response.ok()).toBeTruthy();
+  const { access_token: token } = await response.json();
+  authToken = token;
+  await page.addInitScript((value) => localStorage.setItem('tantara_token', value), token);
 });
 
-test('existing routes render without console or hydration errors and overflow', async ({ page }) => {
+test('existing routes render without console or hydration errors and overflow', async ({ page, request }) => {
   const errors: string[] = [];
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(message.text());
   });
   page.on('pageerror', (error) => errors.push(error.message));
-  for (const route of routes) {
+  const apiBase = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8010'}/api/v1`;
+  const headers = { Authorization: `Bearer ${authToken}` };
+  const [caseResponse, documentResponse] = await Promise.all([
+    request.get(`${apiBase}/cases`, { headers }),
+    request.get(`${apiBase}/documents`, { headers }),
+  ]);
+  const caseItems = (await caseResponse.json()).items;
+  const documentItems = (await documentResponse.json()).items;
+  const liveRoutes = [
+    ...routes,
+    ...(caseItems[0] ? [`/cases/${caseItems[0].id}`] : []),
+    ...(documentItems[0] ? [`/documents/${documentItems[0].id}`] : []),
+  ];
+  for (const route of liveRoutes) {
     await page.goto(route);
     await expect(page.locator('body')).not.toBeEmpty();
     await page.waitForTimeout(100);
