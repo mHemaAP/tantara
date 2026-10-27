@@ -48,7 +48,12 @@ export default function DocumentDetailPage() {
       toast.error(e instanceof Error ? e.message : 'Unable to download document');
     }
   };
-  if (doc.isLoading) return <div className="card surface">Loading document…</div>;
+  if (doc.isLoading)
+    return (
+      <div className="card surface" role="status">
+        Loading document…
+      </div>
+    );
   if (doc.isError)
     return (
       <div className="offline">
@@ -88,7 +93,7 @@ export default function DocumentDetailPage() {
       </div>
       {text.isLoading ? (
         <div className="card surface" style={{ marginTop: 18 }}>
-          Loading extracted text…
+          <span role="status">Loading extracted text…</span>
         </div>
       ) : text.isError ? (
         <div className="offline" style={{ marginTop: 18 }}>
