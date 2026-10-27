@@ -18,14 +18,16 @@ const login = await fetch(`${api}/auth/login`, {
 if (!login.ok) throw new Error(`API login failed: ${login.status}`);
 const token = (await login.json()).access_token;
 const auth = { Authorization: `Bearer ${token}` };
-const casesResponse = await fetch(`${api}/cases?page_size=1`, {
+const casesResponse = await fetch(`${api}/cases?page_size=100`, {
   headers: auth,
 });
 if (!casesResponse.ok)
   throw new Error(`Case lookup failed: ${casesResponse.status}`);
-const firstCase = (await casesResponse.json()).items?.[0];
+const firstCase = (await casesResponse.json()).items?.find(
+  (item) => item.next_hearing_at,
+);
 if (!firstCase)
-  throw new Error("Seeded API returned no case for detail capture");
+  throw new Error("Seeded API returned no case with a future hearing");
 
 await mkdir("docs/screenshots", { recursive: true });
 const browser = await chromium.launch({ headless: true });
@@ -134,10 +136,13 @@ async function makePage(view, failure = false) {
   if (view.settled === "calendar")
     await page.waitForFunction(
       () =>
-        (document.querySelectorAll("[data-calendar-day]").length >= 7 &&
-          document.querySelector('[data-calendar-settled="true"]')) ||
+        (document.querySelector('[data-calendar-settled="true"]') &&
+          (document.querySelectorAll("[data-calendar-day]").length >= 7 ||
+            document.querySelector("[data-calendar-agenda-settled='true']"))) ||
         document.querySelector(".matter-error"),
     );
+  if (view.settled === "calendar" && view.viewport.width <= 650)
+    await page.waitForSelector("[data-calendar-agenda-settled='true']");
   if (view.settled === "detail")
     await page.waitForFunction(
       () =>
@@ -154,6 +159,15 @@ async function makePage(view, failure = false) {
         document.querySelector(".task-groups") ||
         document.querySelector(".matter-error, .matter-empty"),
     );
+  await page.waitForFunction(() => {
+    if (document.querySelector("nextjs-dev-tools-indicator")) return false;
+    return ![...document.querySelectorAll("nextjs-portal")].some((host) => {
+      const badge = host.shadowRoot?.querySelector(
+        'button[aria-label="Open issues overlay"]',
+      );
+      return !!badge && badge.getBoundingClientRect().width > 0;
+    });
+  });
   return { context, page };
 }
 
@@ -162,6 +176,17 @@ try {
     const { context, page } = await makePage(view, view.failure || false);
     if (await page.locator(".matter-skeleton").count())
       throw new Error(`${view.name} still contains skeletons`);
+    const visibleDevBadge = await page.evaluate(() => {
+      if (document.querySelector("nextjs-dev-tools-indicator")) return true;
+      return [...document.querySelectorAll("nextjs-portal")].some((host) => {
+        const badge = host.shadowRoot?.querySelector(
+          'button[aria-label="Open issues overlay"]',
+        );
+        return !!badge && badge.getBoundingClientRect().width > 0;
+      });
+    });
+    if (visibleDevBadge)
+      throw new Error(`${view.name} contains a Next.js dev indicator`);
     if (
       !view.failure &&
       (view.route.startsWith("/cases") || view.route === "/dashboard") &&
@@ -197,7 +222,7 @@ try {
       .fill(`tantara-no-such-${name}-${Date.now()}`);
     await page
       .getByText(
-        name.startsWith("cases") ? "No matters yet" : "No matching clients",
+        name.startsWith("cases") ? "No matching cases" : "No matching clients",
       )
       .waitFor();
     await page.screenshot({
