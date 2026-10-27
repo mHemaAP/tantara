@@ -47,6 +47,8 @@ def health():return {"status":"ok","service":"TANTARA Local Workspace API","vers
 from app.routers.auth import router as auth_router
 from app.routers.meta import router as meta_router
 app.include_router(auth_router);app.include_router(meta_router)
+from app.routers.drafts import router as drafts_router
+app.include_router(drafts_router)
 class Payload(BaseModel):model_config=ConfigDict(extra="allow")
 class Ask(Payload):question:str=Field(min_length=3,max_length=8000);top_k:int=Field(5,ge=1,le=30);case_id:str|None=None;collection_id:str|None=None;jurisdiction:str|None=None;document_types:list[str]|None=None
 
