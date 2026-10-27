@@ -1,18 +1,49 @@
-# TANTARA API v1
+# TANTARA backend API
 
-Base URL: `http://127.0.0.1:8010/api/v1`. Send `Authorization: Bearer <access_token>`. Login is `POST /auth/login` with `{email,password}`; `/auth/me` returns the current user. Errors use `{error:{code,message}}`. List responses use `{items,total,page,page_size,pages}`.
+Base URL: `http://127.0.0.1:8010/api/v1`. Authenticated routes use `Authorization: Bearer <access_token>`. Root `/health`, `/ingest/file`, and `/query` are retained as legacy adapters. See the committed [OpenAPI snapshot](../backend/openapi.json) for operation schemas.
+
+## Contract conventions
+
+- List responses are `{items,total,page,page_size,pages}`; supported domain filters include `q`, `status`, `case_id`, `page`, `page_size`, and `sort`. Documents also accept `type`; hearings accept `from` and `to`; community posts accept `tag`, `kind`, and `saved`.
+- Errors use `{error:{code,message,details?}}`. Common statuses: 400 invalid domain input, 401 missing/invalid token, 403 role denial, 404 missing or not-owned record, 409 duplicate/unique conflict, 413 upload limit, 422 request validation, 429 in-memory rate limit, 503 optional model failure.
+- Records are owner-scoped. Case deletion archives the case; document deletion removes its file and all index rows.
+
+## Authentication and metadata
+
+- `POST /auth/login`, `GET /auth/me`
+- `GET /meta/institutions`, `/meta/case-statuses`, `/meta/dispute-categories`, `/meta/document-types`, `/meta/jurisdictions`
 
 ## Workspace
 
-- `GET /health`; `GET /meta/{institutions|case-statuses|dispute-categories|document-types|jurisdictions}`
-- `GET /dashboard/summary`, `/dashboard/activity`, `/dashboard/upcoming?days=30`
-- CRUD `/clients`, `/cases`, `/hearings`, `/tasks`, `/drafts`, `/bundles`, `/community/posts`; list filters include `q,status,case_id,page,page_size,sort` where applicable.
-- `GET /clients/{id}/cases`; `GET /cases/{id}/overview`; case participants at `/cases/{id}/participants`; events at `/cases/{id}/events`; `/calendar?from&to`.
-- Documents: `POST /documents/upload` (multipart); `GET /documents`; `GET|PATCH|DELETE /documents/{id}`; `/job`, `/retry`, `/ai-read`, `/extraction`, `/file`, `/pages`, `/text`; `GET /search/documents?query=...`.
-- AI: `POST /ai/ask`; `GET|POST /ai/sessions`, `GET|PATCH|DELETE /ai/sessions/{id}`, `POST /ai/sessions/{id}/messages`; saved items `/ai/saved`; `GET /ai/status`.
-- Drafts: `GET /draft-templates`; `/drafts/{id}/versions`; `POST /drafts/generate`; `/drafts/{id}/regenerate-section`; `/drafts/{id}/export?format=docx|pdf`.
-- Case tools: `/cases/{id}/autofill`, `/autofill/preview`, `/autofill/apply`, `/strategy`, `/strategy/generate`.
-- Bundles: `/bundles/{id}/items`, `/sections`, `/preview`, `/generate`, `/download` (bundle generation is not yet implemented).
-- Settings: `/settings/profile`, `/workspace`, `/ai`, `/embeddings`, `/database`, `/database/stats`, `/database/backup`, `/data/import`, `/appearance`, `/security`, `/password`.
+- CRUD `/clients`; `GET /clients/{id}/cases`
+- CRUD `/cases`; `GET /cases/{id}/overview`
+- `POST /cases/{id}/participants`; `PATCH|DELETE /cases/{id}/participants/{participant_id}`
+- CRUD `/cases/{id}/events`
+- CRUD `/hearings` and `/tasks`
+- `GET /calendar?from=&to=`
+- `GET /dashboard/summary`, `/dashboard/activity`, `/dashboard/upcoming?days=`
 
-All record queries are scoped to the authenticated local owner. Uploads have extension/content checks, a configured byte limit, and content-hash filenames. AI answers require retrieved local evidence and citations are derived from indexed chunk identifiers. Generated content must be reviewed by a legal professional.
+## Documents and search
+
+- `POST /documents/upload` (multipart: `file`, optional title/type/jurisdiction/case_id), `GET /documents`, `GET|PATCH|DELETE /documents/{id}`
+- `GET /documents/{id}/job`, `POST /documents/{id}/retry`
+- `GET /documents/{id}/file` (Range), `/pages`, `/text`
+- `POST|GET /documents/{id}/ai-read`, `PATCH /documents/{id}/extraction`
+- `GET /search/documents?query=&case_ids=&document_types=&page=&page_size=`
+
+## AI, drafting, bundles, and strategy
+
+- `POST /ai/ask`; `GET /ai/status`; `GET|POST /ai/sessions`; `GET|PATCH|DELETE /ai/sessions/{id}`; `POST /ai/sessions/{id}/messages`; `GET|POST /ai/saved`; `DELETE /ai/saved/{id}`
+- `GET /draft-templates`; CRUD `/drafts`; `POST /drafts/generate`; `GET|POST /drafts/{id}/versions`; `POST /drafts/{id}/regenerate-section`; `GET /drafts/{id}/export?format=docx|pdf`
+- CRUD `/bundles`; `PUT /bundles/{id}/items`; `PUT /bundles/{id}/sections`; `GET /bundles/{id}/preview`; `POST /bundles/{id}/generate`; `GET /bundles/{id}/download`
+- `GET /cases/{id}/autofill`; `POST /cases/{id}/autofill/preview`; `POST /cases/{id}/autofill/apply`
+- `GET|PUT /cases/{id}/strategy`; `POST /cases/{id}/strategy/generate`
+
+## Community and settings
+
+- CRUD `/community/posts`; `GET|POST /community/posts/{id}/replies`; `DELETE /community/posts/{id}/replies/{reply_id}`; `POST /community/posts/{id}/save`
+- `GET|PATCH /settings/profile`, `/settings/workspace`, `/settings/appearance`, `/settings/ai`
+- `GET /settings/embeddings`, `/settings/database`, `/settings/database/stats`, `POST /settings/database/backup`, `GET /settings/security`, `POST /settings/password`
+- `GET|POST /settings/data/import` (optional corpus runner)
+
+AI answers return `ok|no_evidence|model_unavailable|embedding_unavailable`. Empty retrieval returns an explicit insufficient-evidence answer and no citations. Citations are populated from returned database chunks, including their actual page numbers and retrieval scores.
