@@ -1,10 +1,10 @@
 # TANTARA local backend
 
-FastAPI workspace API with SQLite transactions, local file storage, local MiniLM embeddings, FTS5 search and a local OpenAI compatible LLM. Cloud adapters are optional and disabled by default. The database and upload data remain under `backend/data/`.
+FastAPI API for the TANTARA arbitration workspace. The default mode runs without paid cloud services: SQLite stores typed domain rows, FastEmbed creates local 384 dimensional vectors, FAISS provides persistent nearest neighbor search, SQLite FTS5 provides BM25 search, and the local OpenAI compatible model generates answers.
 
-## Setup
+## Local setup
 
-Use Python 3.12 (the ONNX runtime wheels are not available for the machine's Python 3.14):
+Use Python 3.12. ONNX Runtime wheels are not available for this machine's system Python 3.14.
 
 ```sh
 uv venv --python 3.12 backend/.venv
@@ -12,31 +12,82 @@ uv pip install -p backend/.venv/bin/python -r backend/requirements.txt -r backen
 cp backend/.env.example backend/.env
 ```
 
-The default local account is `advocate@tantara.local` / `tantara-local`. Set `TANTARA_ADMIN_PASSWORD` before first startup or run `scripts/seed.py --empty`. At first startup the server creates SQLite WAL storage and a random 48-byte JWT key in `backend/data/.secret` with mode 0600.
+The database, FAISS index, uploads, and corpus files are under `backend/data/`. On first boot the application runs `alembic upgrade head`, enables SQLite WAL and foreign keys, and creates `backend/data/.secret` with mode 0600. The bootstrap advocate is `advocate@tantara.local`; the initial password is `TANTARA_ADMIN_PASSWORD` (default: `tantara-local`). Change it through `POST /api/v1/settings/password`.
 
-Run only on loopback:
+Run on loopback only:
 
 ```sh
 cd backend
 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
 
-OpenAPI is served at `/openapi.json`; the checked-in `backend/openapi.json` is the frontend generation snapshot. The API prefix is `/api/v1`; legacy `/health`, `/ingest/file` and `/query` are retained.
+The API prefix is `/api/v1`. Root `/health`, `/ingest/file`, and `/query` remain for legacy clients. The OpenAPI document is served at `/openapi.json`; `openapi.json` in this directory is the committed snapshot.
 
-## Environment
+## Configuration
 
-See `.env.example`. Local defaults use the OpenAI-compatible endpoint `http://192.168.0.101:8080/v1`, model `MiniCPM5-2B`, FastEmbed `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions), SQLite/FTS5, and local file storage. The LLM endpoint can be changed with `LOCAL_LLM_BASE_URL` and `LOCAL_LLM_MODEL`. `AI_PROVIDER=anthropic`, `EMBEDDING_PROVIDER=voyage`, or Supabase require `ENABLE_CLOUD_PROVIDERS=true` and relevant credentials. No credentials are required to start.
+See `.env.example`. Local defaults:
 
-## Data and operations
+- `AI_PROVIDER=local`, `LOCAL_LLM_BASE_URL=http://192.168.0.101:8080/v1`, `LOCAL_LLM_MODEL=MiniCPM5-2B`
+- `EMBEDDING_PROVIDER=fastembed`, `FASTEMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2`, `EMBEDDING_DIMENSIONS=384`
+- `VECTOR_BACKEND=faiss`, SQLite, `ENABLE_CLOUD_PROVIDERS=false`
+- `MAX_UPLOAD_MB=25`, `CORS_ORIGINS=http://localhost:3010`
 
-`python scripts/seed.py --demo` inserts a clearly flagged workspace sample. `--empty` retains only the bootstrap user. `python scripts/import_corpus.py` attempts one public India Code Act PDF and records retrieval outcome, hash, source, and reuse note in `backend/data/corpus/manifest.json`; it is optional.
+Anthropic, Voyage, and Supabase libraries remain optional adapters. They are disabled unless explicitly selected and configured. The local LLM's embeddings endpoint is not used.
 
-Alembic commands from `backend/`: `.venv/bin/alembic upgrade head`. SQLite FTS triggers mirror chunk inserts, updates and deletes; document deletion removes chunks (and FTS rows via trigger), the stored original, and ingestion jobs. Embeddings are stored alongside chunks in SQLite for this first local backend. SQLite is transactional; DuckDB is not used for transactional data.
+## Storage and retrieval
 
-## Tests
+`app/models.py` contains SQLAlchemy 2.x models for users, cases, clients, hearings, tasks, documents, document pages/chunks, drafts and versions, research, bundles, community, preferences, ingestion jobs, audit events, and extraction fields. Request handlers use per-operation SQLAlchemy sessions and typed repository methods. Active domain tables have real columns, foreign keys, checks, and indexes; vector values are held in FAISS and a rebuild-only float32 BLOB on each chunk. FTS5 triggers track chunk insert/update/delete.
 
-Run `.venv/bin/pytest -q` from `backend/`. Live workflow smoke script: start the loopback server, then `backend/.venv/bin/python backend/tests/e2e_flows.py`. It currently exercises client→case→participant→hearing/task→reopen persistence. The upload workflow requires an explicit source document and is not auto-run with fabricated legal material.
+Ingestion runs in a thread pool. Job state and page-aware extraction results are persisted. PDF, DOCX, Markdown, and UTF-8 text are supported. Scanned PDFs use pypdfium2 and RapidOCR when their runtime models load. Document deletion removes its upload, rows, FTS entries, and FAISS vectors. The hybrid RetrievalService filters by owner and requested case/jurisdiction/document type, combines FTS5 BM25 and FAISS ranks with reciprocal rank fusion, and returns citations tied to actual chunks/pages.
+
+Reconcile and rebuild the index:
+
+```sh
+cd backend
+.venv/bin/python ../scripts/rebuild_index.py
+```
+
+## Demo workspace and corpus
+
+`--demo` creates 12 demo cases, clients, participants, hearings, tasks, notes, drafts/versions, a community post, four locally generated PDF fixtures, and a merged bundle. PDFs go through the normal extraction and indexing pipeline; one fixture is image-only and exercises OCR.
+
+```sh
+cd backend
+.venv/bin/python ../scripts/seed.py --demo
+.venv/bin/python ../scripts/seed.py --empty
+```
+
+`--empty` retains the advocate account and clears its workspace records and vectors.
+
+Corpus import is optional and probes sources at runtime, checks robots.txt, stores source/reuse metadata, records failures, and continues:
+
+```sh
+cd backend
+.venv/bin/python ../scripts/import_corpus.py
+```
+
+The last host run indexed the official UNCITRAL arbitration page. Wikisource's robots endpoint returned 403, LCIA robots.txt disallowed the requested page, India Code timed out, and the Supreme Court/SIAC hosts failed to connect. These outcomes are recorded in `backend/data/corpus/manifest.json`; no mirror is labeled as an official edition.
+
+## Tests and live workflows
+
+```sh
+cd backend
+.venv/bin/pytest -q
+```
+
+Live Workflow A (PDF upload → extract/index → local LLM answer → page citation) and Workflow B (client/case relationships → persistence → merged PDF and Range request) run against an already started server:
+
+```sh
+.venv/bin/python tests/e2e_flows.py
+```
+
+The current test suite has 16 passing tests covering core authentication/CRUD, upload/delete consistency, page-aware PDF/DOCX/OCR extraction, retry and upload limits, AI Read provenance, duplicate conflicts, RBAC ownership, no-evidence behavior, migration cutover/idempotency, and RRF ranking. It is not yet a complete per-endpoint status-code and filtering matrix.
 
 ## Known limitations
 
-This foundation provides the principal local API paths and owner scoping, but some workflow endpoints currently persist compact JSON domain records rather than normalized, field-by-field SQLAlchemy mappings. OCR executes on scanned PDFs when OCR runtime models can be loaded; confidence is retained per page when available. Hybrid ranking combines FTS5 ranks and local cosine scores without a separately persisted FAISS index. Bundle PDF assembly, robust multipart range streaming, true generated case strategy, corpus-to-index automation, rate limiting, multi-user role authorization policies, and complete per-endpoint contract tests remain unfinished. Generated drafts use conspicuous review placeholders; they are not model-generated legal advice.
+- Prototype JSON records are retained as `*_legacy_0002` archive tables during cutover; users are preserved, but legacy case/client/task payloads are not automatically mapped into typed rows. Review or export those archives before removing them.
+- Corpus results depend on network and publisher policy. In the latest probe only UNCITRAL was indexed; the other attempted sources were blocked or unavailable as recorded above.
+- Rate limits are in-memory per process and reset at restart. Multi-worker deployments need a shared limiter.
+- Bundle page numbering is not yet applied as a page overlay. Generated front matter and bookmarks are real; source PDF pages preserve their original rotation and dimensions.
+- Strategy suggestions are excerpt-grounded outlines, not autonomous legal analysis. Drafts retain review markers and require counsel verification.
+- Tests do not yet exhaustively exercise every endpoint's 401/403/404/409/422 behavior, all sort/filter combinations, upload size boundaries, or every OCR/DOCX/corrupt/retry permutation.
