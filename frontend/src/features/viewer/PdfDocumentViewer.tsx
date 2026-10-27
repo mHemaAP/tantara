@@ -9,6 +9,15 @@ import './viewer.css';
 type PdfPageEntry = { pageNumber: number; width: number; height: number };
 type PdfDocument = import('pdfjs-dist').PDFDocumentProxy;
 
+function scrollPageInsideViewer(container: HTMLDivElement, page: HTMLElement) {
+  const containerBounds = container.getBoundingClientRect();
+  const pageBounds = page.getBoundingClientRect();
+  container.scrollTo({
+    top: container.scrollTop + pageBounds.top - containerBounds.top,
+    behavior: 'smooth',
+  });
+}
+
 export function PdfDocumentViewer({
   documentId,
   firstPageOnly = false,
@@ -33,6 +42,7 @@ export function PdfDocumentViewer({
     const loadPdf = async () => {
       try {
         const pdfjs = await import('pdfjs-dist');
+        if (!active) return;
         pdfjs.GlobalWorkerOptions.workerSrc = new URL(
           'pdfjs-dist/build/pdf.worker.min.mjs',
           import.meta.url,
@@ -76,7 +86,9 @@ export function PdfDocumentViewer({
     (target: number) => {
       const bounded = Math.min(Math.max(target, 1), pages.length || 1);
       setPageNumber(bounded);
-      pageRefs.current.get(bounded)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const page = pageRefs.current.get(bounded);
+      const container = containerRef.current;
+      if (page && container) scrollPageInsideViewer(container, page);
     },
     [pages.length],
   );
@@ -85,7 +97,10 @@ export function PdfDocumentViewer({
     if (!pdf || pages.length === 0) return;
     const target = pageRefs.current.get(requestedPage);
     if (!target) return;
-    const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    const frame = requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (container) scrollPageInsideViewer(container, target);
+    });
     return () => cancelAnimationFrame(frame);
   }, [pdf, pages, requestedPage]);
 
