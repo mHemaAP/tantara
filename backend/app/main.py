@@ -31,7 +31,10 @@ pool=ThreadPoolExecutor(max_workers=2,thread_name_prefix="tantara-ingest")
 
 @app.on_event("startup")
 def startup():
-    init_db(); logging.info("TANTARA started: AI=%s embeddings=%s vector=faiss database=sqlite",get_settings().ai_provider,get_settings().embedding_provider)
+    init_db()
+    from app.services.index_maintenance import reconcile_index
+    state=reconcile_index()
+    logging.info("TANTARA started: AI=%s embeddings=%s vector=faiss consistent=%s database=sqlite",get_settings().ai_provider,get_settings().embedding_provider,state["consistent"])
 @app.exception_handler(HTTPException)
 async def http_error(request,exc):
     code={401:"unauthorized",403:"forbidden",404:"not_found",409:"duplicate",413:"too_large",422:"validation_error",429:"rate_limited",503:"model_unavailable"}.get(exc.status_code,"request_error")
@@ -299,7 +302,7 @@ def ai_status(user=Depends(current_user)):
     s=get_settings();start=__import__("time").monotonic()
     try:r=httpx.get(s.local_llm_base_url.rstrip("/")+"/models",timeout=2);reachable=r.is_success
     except Exception:reachable=False
-    with SessionLocal() as db:n=db.scalar(select(func.count(DocumentChunk.id)).join(Document).where(Document.owner_id==user["id"])) or 0
+    with SessionLocal() as db:n=db.scalar(select(func.count(DocumentChunk.id))) or 0
     vectors=store().count()
     return {"llm":{"provider":s.ai_provider,"base_url":s.local_llm_base_url,"model":s.local_llm_model,"reachable":reachable,"latency_ms":round((__import__("time").monotonic()-start)*1000)},"embeddings":{"provider":s.embedding_provider,"model":s.fastembed_model,"dims":s.embedding_dimensions,"ready":True},"vector":{"backend":"faiss","chunks":n,"vectors":vectors,"consistent":n==vectors}}
 @app.get("/api/v1/settings/embeddings")
