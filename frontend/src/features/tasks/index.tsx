@@ -102,7 +102,9 @@ export default function TasksPage() {
       {q.isError ? (
         <div className="matter-error">
           Tasks are unavailable.{" "}
-          <button onClick={() => void q.refetch()}>Retry</button>
+          <button className="task-retry" onClick={() => void q.refetch()}>
+            Retry
+          </button>
         </div>
       ) : q.isLoading ? (
         <div className="matter-card matter-skeleton" />
@@ -110,29 +112,30 @@ export default function TasksPage() {
         <div className="task-groups">
           {groups.map((name) => {
             const tasks = items.filter((task) => taskGroup(task, now) === name);
+            if (!tasks.length) return null;
             return (
               <section className="matter-card task-group" key={name}>
                 <h2>
                   {name} <small>{tasks.length}</small>
                 </h2>
-                {tasks.length ? (
-                  tasks.map((task) => (
-                    <div className="task-row" key={task.id}>
-                      <input
-                        type="checkbox"
-                        aria-label={`Complete ${task.title}`}
-                        checked={
-                          task.status === "done" || task.status === "completed"
-                        }
-                        disabled={preview}
-                        title={
-                          preview
-                            ? "Changes are disabled in read-only preview"
-                            : undefined
-                        }
-                        onChange={() => void complete(task)}
-                      />
-                      <div className="task-row-copy">
+                {tasks.length
+                  ? tasks.map((task) => (
+                      <div className="task-row" key={task.id}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Complete ${task.title}`}
+                          checked={
+                            task.status === "done" ||
+                            task.status === "completed"
+                          }
+                          disabled={preview}
+                          title={
+                            preview
+                              ? "Changes are disabled in read-only preview"
+                              : undefined
+                          }
+                          onChange={() => void complete(task)}
+                        />
                         <button
                           className="task-edit-title"
                           disabled={preview}
@@ -145,7 +148,7 @@ export default function TasksPage() {
                         >
                           {task.title}
                         </button>
-                        <small>
+                        <span className="task-due">
                           {task.due_at
                             ? new Intl.DateTimeFormat("en-IN", {
                                 dateStyle: "medium",
@@ -153,24 +156,28 @@ export default function TasksPage() {
                                 timeZone: "Asia/Kolkata",
                               }).format(new Date(task.due_at))
                             : "No due date"}
-                          {name === "Overdue" ? " · Overdue" : ""} ·{" "}
+                          {name === "Overdue" ? " · Overdue" : ""}
+                        </span>
+                        <span
+                          className={`task-priority priority-${(task.priority || "normal").toLowerCase()}`}
+                        >
                           {task.priority || "Normal"}
-                          {task.case_id && (
-                            <>
-                              {" "}
-                              ·{" "}
-                              <Link href={`/cases/${task.case_id}`}>
-                                {task.case_title || "Open linked case"}
-                              </Link>
-                            </>
-                          )}
-                        </small>
+                        </span>
+                        {task.case_id ? (
+                          <Link
+                            className="task-case"
+                            href={`/cases/${task.case_id}`}
+                          >
+                            {task.case_title || "Open linked case"}
+                          </Link>
+                        ) : (
+                          <span className="task-case muted">
+                            No linked case
+                          </span>
+                        )}
                       </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="task-group-empty">No tasks</p>
-                )}
+                    ))
+                  : null}
               </section>
             );
           })}
