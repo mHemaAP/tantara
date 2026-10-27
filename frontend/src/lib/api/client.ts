@@ -14,7 +14,21 @@ export function authToken(): string | null {
   const c = document.cookie.split('; ').find((x) => x.startsWith('tantara_token='));
   return c?.slice('tantara_token='.length) ?? localStorage.getItem('tantara_token');
 }
+export function isReadOnlyPreview(): boolean {
+  return typeof window !== 'undefined' && window.localStorage.getItem('tantara_preview') === 'true';
+}
 async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSignal): Promise<T> {
+  if (
+    isReadOnlyPreview() &&
+    path !== '/auth/login' &&
+    ['POST', 'PATCH', 'PUT', 'DELETE'].includes((init.method ?? 'GET').toUpperCase())
+  ) {
+    throw new ApiError(
+      403,
+      'read_only_preview',
+      'Changes are disabled in read-only preview. Sign in to make changes.',
+    );
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 20000);
   signal?.addEventListener('abort', () => controller.abort(), { once: true });
