@@ -1,7 +1,7 @@
 """Create the normalized identity/document baseline and FTS5 index."""
 from alembic import op
 from app.models import Base
-revision="0001_baseline";down_revision=None;branch_labels=None;depends_on=None
+revision="0001_baseline";down_revision="0001_local_workspace";branch_labels=None;depends_on=None
 
 def upgrade():
     bind=op.get_bind()
