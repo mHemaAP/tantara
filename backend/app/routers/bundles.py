@@ -28,6 +28,7 @@ def _items(s,bundle,user):
     return out
 @router.put("/{rid}/items")
 def set_items(rid:str,payload:Items,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:
         b=get_owned(s,FilingBundle,rid,user["id"])
         if not b:raise HTTPException(404,"Bundle not found")
@@ -42,6 +43,7 @@ def set_items(rid:str,payload:Items,user=Depends(current_user)):
         return {"items":[{"document_id":d.id,"order":x.get("order",i),"section":x.get("section","Documents")} for d,x,i in incoming]}
 @router.put("/{rid}/sections")
 def set_sections(rid:str,payload:Sections,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with SessionLocal() as s:b=get_owned(s,FilingBundle,rid,user["id"])
     if not b:raise HTTPException(404,"Bundle not found")
     return {"sections":payload.sections}
@@ -61,6 +63,7 @@ def preview(rid:str,user=Depends(current_user)):
         return {"sections":[{"title":k,"items":v} for k,v in sections.items()],"total_pages":offset-1,"warnings":warnings}
 @router.post("/{rid}/generate",status_code=202)
 def generate(rid:str,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     from pypdf import PdfReader,PdfWriter
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
