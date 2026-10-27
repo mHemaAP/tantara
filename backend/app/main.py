@@ -207,13 +207,15 @@ app.include_router(dashboard_router)
 def retrieve(question, user, top_k=5, case_id=None, jurisdiction=None, document_types=None):
     from app.services.retrieval import retrieval_service
 
-    return retrieval_service.search(question, user["id"], top_k, case_id, jurisdiction, document_types)
+    return retrieval_service.search_with_status(
+        question, user["id"], top_k, case_id, jurisdiction, document_types
+    )
 
 
 DISCLAIMER = "AI-generated research assistance only. Verify against current authoritative law and original sources; professional legal review is required."
 
 
-def llm_answer(question, hits):
+def llm_answer(question, hits, base_url=None, model=None):
     s = get_settings()
     prompt = (
         "Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers.\nQuestion: "
@@ -224,9 +226,9 @@ def llm_answer(question, hits):
     try:
         if s.ai_provider == "local":
             r = httpx.post(
-                s.local_llm_base_url.rstrip("/") + "/chat/completions",
+                (base_url or s.local_llm_base_url).rstrip("/") + "/chat/completions",
                 json={
-                    "model": s.local_llm_model,
+                    "model": model or s.local_llm_model,
                     "messages": [
                         {"role": "system", "content": "You are a careful legal research assistant."},
                         {"role": "user", "content": prompt},
@@ -265,7 +267,9 @@ def ask(req: Ask, user=Depends(current_user)):
             ):
                 raise HTTPException(404, "Research session not found")
     try:
-        hits = retrieve(req.question, user, req.top_k, req.case_id, req.jurisdiction, req.document_types)
+        hits, retrieval_status = retrieve(
+            req.question, user, req.top_k, req.case_id, req.jurisdiction, req.document_types
+        )
     except Exception:
         return {
             "status": "embedding_unavailable",
@@ -282,8 +286,18 @@ def ask(req: Ask, user=Depends(current_user)):
         answer = "There is insufficient evidence in the indexed documents to answer this question."
         status = "no_evidence"
     else:
-        answer = llm_answer(req.question, hits)
-        status = "ok" if answer else "model_unavailable"
+        with SessionLocal() as s:
+            preference = s.scalar(
+                select(AppPreference).where(AppPreference.owner_id == user["id"], AppPreference.key == "ai")
+            )
+            user_ai_settings = preference.value if preference else {}
+        answer = llm_answer(
+            req.question,
+            hits,
+            base_url=user_ai_settings.get("base_url"),
+            model=user_ai_settings.get("model"),
+        )
+        status = "model_unavailable" if not answer else retrieval_status
         answer = answer or "Relevant documents were found, but the configured language model is unavailable."
     citations = (
         [
@@ -301,7 +315,7 @@ def ask(req: Ask, user=Depends(current_user)):
             }
             for h in hits
         ]
-        if status == "ok"
+        if status in {"ok", "embedding_unavailable"}
         else []
     )
     with session_scope() as s:
