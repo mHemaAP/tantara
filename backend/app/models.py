@@ -95,7 +95,7 @@ class Citation(Owned,Base):
     message_id: Mapped[str]=mapped_column(ForeignKey("research_messages.id",ondelete="CASCADE"),index=True); document_id: Mapped[str]=mapped_column(ForeignKey("documents.id",ondelete="CASCADE"),index=True); chunk_id: Mapped[str]=mapped_column(ForeignKey("document_chunks.id",ondelete="CASCADE"),index=True); page_number: Mapped[int|None]=mapped_column(Integer); excerpt: Mapped[str]=mapped_column(Text); retrieval_score: Mapped[float]=mapped_column(Float)
 class FilingBundle(Owned,Base):
     __tablename__="filing_bundles"
-    case_id: Mapped[str|None]=mapped_column(ForeignKey("cases.id",ondelete="CASCADE"),index=True); name: Mapped[str]=mapped_column(String(300),nullable=False); settings: Mapped[dict]=mapped_column(JSON,default=dict); status: Mapped[str]=mapped_column(String(24),default="draft"); output_path: Mapped[str|None]=mapped_column(Text)
+    case_id: Mapped[str|None]=mapped_column(ForeignKey("cases.id",ondelete="CASCADE"),index=True); name: Mapped[str]=mapped_column(String(300),nullable=False); settings: Mapped[dict]=mapped_column(JSON,default=lambda:{"cover_page":True,"index":True,"synopsis":True,"list_of_dates":True}); status: Mapped[str]=mapped_column(String(24),default="draft"); output_path: Mapped[str|None]=mapped_column(Text)
 class BundleSection(Owned,Base):
     __tablename__="bundle_sections"
     bundle_id: Mapped[str]=mapped_column(ForeignKey("filing_bundles.id",ondelete="CASCADE"),index=True); title: Mapped[str]=mapped_column(String(240),nullable=False); order: Mapped[int]=mapped_column(Integer,default=0)
