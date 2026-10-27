@@ -81,7 +81,7 @@ browserTest(
 );
 
 browserTest(
-  "case table resolves next hearing from one hearings collection request",
+  "case API projects the earliest future hearing and the list renders it",
   async ({ page, request }) => {
     const login = await request.post(`${base}/auth/login`, {
       data: {
@@ -112,15 +112,28 @@ browserTest(
       at: string;
     }>;
     browserExpect(hearings.length).toBeGreaterThan(0);
-    const hearing = hearings.find((item) =>
-      caseRows.some((row) => row.id === item.case_id),
-    );
+    const hearing = hearings
+      .filter((item) => new Date(item.at) >= new Date())
+      .find((item) => caseRows.some((row) => row.id === item.case_id));
     browserExpect(
       hearing,
       "seeded hearings should be linked to a listed case",
     ).toBeTruthy();
     const linkedCase = caseRows.find((row) => row.id === hearing!.case_id)!;
-    browserExpect(linkedCase.next_hearing_at || null).toBeNull();
+    const futureHearings = hearings
+      .filter(
+        (item) =>
+          item.case_id === linkedCase.id && new Date(item.at) >= new Date(),
+      )
+      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    browserExpect(futureHearings.length).toBeGreaterThan(0);
+    browserExpect(linkedCase.next_hearing_at).toBe(futureHearings[0].at);
+    for (const item of caseRows) {
+      if (item.next_hearing_at)
+        browserExpect(
+          new Date(item.next_hearing_at).getTime(),
+        ).toBeGreaterThanOrEqual(Date.now() - 60_000);
+    }
     await page.addInitScript((value) => {
       localStorage.setItem("tantara_token", value as string);
       document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
@@ -136,5 +149,48 @@ browserTest(
         year: "numeric",
       }).format(new Date(hearing!.at)),
     );
+    await page.goto(`/cases/${linkedCase.id}`);
+    await browserExpect(page.locator(".data-list")).toContainText(
+      new Intl.DateTimeFormat("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).format(new Date(linkedCase.next_hearing_at!)),
+    );
+  },
+);
+
+browserTest(
+  "client case count zero is displayed as a real zero",
+  async ({ page, request }) => {
+    const login = await request.post(`${base}/auth/login`, {
+      data: {
+        email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+        password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+      },
+    });
+    browserExpect(login.ok()).toBeTruthy();
+    const token = (await login.json()).access_token;
+    const response = await request.get(`${base}/clients?page_size=100`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    browserExpect(response.ok()).toBeTruthy();
+    const clients = (await response.json()).items as Array<{
+      id: string;
+      name: string;
+      case_count?: number;
+    }>;
+    const zero = clients.find((client) => client.case_count === 0);
+    browserExpect(
+      zero,
+      "seed includes a client whose real case_count is zero",
+    ).toBeTruthy();
+    await page.addInitScript((value) => {
+      localStorage.setItem("tantara_token", value as string);
+      document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+    }, token);
+    await page.goto("/clients");
+    const row = page.getByRole("row").filter({ hasText: zero!.name });
+    await browserExpect(row.locator("td").nth(2)).toHaveText("0");
   },
 );
