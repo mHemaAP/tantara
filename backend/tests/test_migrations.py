@@ -13,13 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _upgrade(path, tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path}")
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TANTARA_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("DATA_DIR", raising=False)
     config.get_settings.cache_clear()
+    if db._engine is not None:
+        db._engine.dispose()
     db._engine = None
+    db._SessionLocal = None
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(ROOT / "alembic"))
     command.upgrade(cfg, "head")
     command.upgrade(cfg, "head")
+    config.get_settings.cache_clear()
     return create_engine(f"sqlite:///{path}")
 
 
@@ -37,6 +42,7 @@ def test_fresh_upgrade_is_idempotent(tmp_path, monkeypatch):
     } <= names
     assert "data" not in {c["name"] for c in inspect(engine).get_columns("cases")}
     assert "embedding" not in {c["name"] for c in inspect(engine).get_columns("document_chunks")}
+    engine.dispose()
 
 
 def test_prototype_json_rows_are_exported_and_user_kept(tmp_path, monkeypatch):
@@ -59,3 +65,4 @@ def test_prototype_json_rows_are_exported_and_user_kept(tmp_path, monkeypatch):
         assert "cases_legacy_0002" not in inspect(engine).get_table_names()
     exported = json.loads((tmp_path / "archive" / "legacy_export.json").read_text())
     assert exported["tables"]["cases_legacy_0002"][0]["data"] == '{"title":"legacy"}'
+    engine.dispose()
