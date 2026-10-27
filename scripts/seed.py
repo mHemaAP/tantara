@@ -9,7 +9,7 @@ from app.db import init_db,SessionLocal,session_scope
 from app.config import get_settings
 from app.security import hash_password
 from app.models import (User,Client,Case,CaseParticipant,Hearing,Task,Note,Draft,DraftVersion,
-                        FilingBundle,BundleItem,Document,IngestionJob,ResearchSession,ResearchMessage,CommunityPost)
+                        FilingBundle,BundleItem,Document,IngestionJob,ResearchSession,ResearchMessage,CommunityPost,AuditEvent,AppPreference,SavedItem,AIConversation,ExtractionField,CaseEvent,CaseParticipant,DraftVersion,CommunityReply)
 from app.services.vector_store import store
 from app.routers.documents import process_job
 from sqlalchemy import select,delete,func
@@ -49,10 +49,16 @@ def main():
             root=User(id=str(uuid.uuid4()),name="Aarav Mehta",email="advocate@tantara.local",password_hash=hash_password(s.tantara_admin_password),role="advocate",avatar_initials="AM",title="Advocate");db.add(root);db.flush()
         owner=root.id
         if args.empty:
-            for model in (Case,Client,Document,Draft,Task,Hearing,Note,FilingBundle,ResearchSession,CommunityPost):
-                db.execute(delete(model).where(model.owner_id==owner))
+            paths=[x[0] for x in db.execute(select(Document.stored_path).where(Document.owner_id==owner)).all()]
+            for model in (AuditEvent,AppPreference,SavedItem,AIConversation,ExtractionField,CaseEvent,CaseParticipant,DraftVersion,CommunityReply,IngestionJob,ResearchMessage,ResearchSession,BundleItem,FilingBundle,Document,Draft,Task,Hearing,Note,CommunityPost,Case,Client):
+                if hasattr(model,"owner_id"):db.execute(delete(model).where(model.owner_id==owner))
             db.execute(delete(User).where(User.email.in_(["researcher@tantara.local","staff@tantara.local"])))
-            print("Empty typed workspace ready; local advocate account retained.");return
+            for stored in paths:
+                path=Path(stored)
+                if path.parent==(s.data_dir/"uploads").resolve():path.unlink(missing_ok=True)
+            db.flush()
+            from app.services.index_maintenance import rebuild_index
+            print("Empty typed workspace ready; local advocate account retained; vector index:",rebuild_index());return
         if db.scalar(select(func.count(Case.id)).where(Case.owner_id==owner,Case.is_demo.is_(True))):print("Demo workspace already seeded.");return
         users=[]
         for email,name,role in (("researcher@tantara.local","Mira Shah","researcher"),("staff@tantara.local","Dev Patel","staff")):
