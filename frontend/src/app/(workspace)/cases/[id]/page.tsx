@@ -353,7 +353,18 @@ export default function CaseDetailPage() {
                     facts.arbitration_agreement_details,
                   ],
                   ["Description", facts.description],
-                  ["Next hearing", facts.next_hearing_at],
+                  [
+                    "Next hearing",
+                    facts.next_hearing_at
+                      ? new Date(
+                          String(facts.next_hearing_at),
+                        ).toLocaleDateString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })
+                      : undefined,
+                  ],
                 ].map(([label, value]) => (
                   <div key={String(label)}>
                     <dt>{String(label)}</dt>
