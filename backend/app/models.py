@@ -300,6 +300,8 @@ class BundleItem(Owned, Base):
     document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
     section: Mapped[str] = mapped_column(String(240), default="Documents")
     order: Mapped[int] = mapped_column(Integer, default=0)
+    page_start: Mapped[int | None] = mapped_column(Integer)
+    page_end: Mapped[int | None] = mapped_column(Integer)
     __table_args__ = (UniqueConstraint("bundle_id", "document_id", name="uq_bundle_document"),)
 
 
