@@ -1,1 +1,4 @@
-import {CaseList} from '@/features/cases/components/case-list';export default function ActiveCasesPage(){return <CaseList initialStatus="active"/>}
+import { CaseList } from "@/features/cases/components/case-list";
+export default function ActiveCasesPage() {
+  return <CaseList initialStatus="active" />;
+}
