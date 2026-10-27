@@ -67,4 +67,4 @@ One file per commit, on `luna/frontend-research`:
 - `e327b2a` model-unavailable capture
 - `2806c6e` mobile capture
 - `d7fcded` implementation report
-- `REPORT-COMMITS` report commit list update
+- `ddf6611` report commit list update
