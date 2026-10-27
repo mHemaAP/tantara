@@ -22,7 +22,9 @@ def _items(s,bundle,user):
         if not d:continue
         try:
             from pypdf import PdfReader
-            pages=len(PdfReader(d.stored_path).pages)
+            upload_path=Path(d.stored_path).resolve()
+            if upload_path.parent!=(get_settings().data_dir/"uploads").resolve():raise ValueError("Unsafe source path")
+            pages=len(PdfReader(upload_path).pages)
         except Exception:pages=0
         out.append({"document_id":d.id,"title":d.title,"section":x.section,"order":x.order,"pages":pages})
     return out
@@ -60,7 +62,7 @@ def preview(rid:str,user=Depends(current_user)):
     with SessionLocal() as s:
         b=get_owned(s,FilingBundle,rid,user["id"])
         if not b:raise HTTPException(404,"Bundle not found")
-        items=_items(s,b,user);settings=b.settings or {};front=sum(bool(settings.get(k)) for k in ("cover_page","index","synopsis","list_of_dates"));offset=front+1
+        items=_items(s,b,user);settings={"cover_page":True,"index":True,"synopsis":True,"list_of_dates":True,**(b.settings or {})};front=sum(bool(settings.get(k)) for k in ("cover_page","index","synopsis","list_of_dates"));offset=front+1
         sections={};warnings=[]
         for x in items:
             d=s.get(Document,x["document_id"])
@@ -80,11 +82,14 @@ def generate(rid:str,user=Depends(current_user)):
     with SessionLocal() as s:
         b=get_owned(s,FilingBundle,rid,user["id"])
         if not b:raise HTTPException(404,"Bundle not found")
-        items=_items(s,b,user);settings=b.settings or {};case=s.get(Case,b.case_id) if b.case_id else None;case_title=case.title if case else "Arbitration Filing"
+        items=_items(s,b,user);settings={"cover_page":True,"index":True,"synopsis":True,"list_of_dates":True,**(b.settings or {})};case=s.get(Case,b.case_id) if b.case_id else None;case_title=case.title if case else "Arbitration Filing"
         docs=[]
         for x in items:
             d=s.get(Document,x["document_id"])
-            try:reader=PdfReader(d.stored_path)
+            try:
+                upload_path=Path(d.stored_path).resolve()
+                if upload_path.parent!=(get_settings().data_dir/"uploads").resolve():continue
+                reader=PdfReader(upload_path)
             except Exception:continue
             docs.append((x,reader))
     front=[]
