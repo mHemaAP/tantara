@@ -1,12 +1,12 @@
 """Local workspace profile, preferences, database operations, and audit views."""
 import shutil,uuid,subprocess,sys,json,sqlite3
-from datetime import datetime
+from datetime import datetime,timezone
 from pathlib import Path
 from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,ConfigDict
 from sqlalchemy import select,func
 from app.config import get_settings
-from app.db import SessionLocal,session_scope
+from app.db import SessionLocal,session_scope,engine as get_engine
 from app.models import User,AppPreference,AuditEvent,Client,Case,Document,DocumentChunk,Draft,Task
 from app.security import current_user,hash_password
 from app.services.audit import record
@@ -63,8 +63,8 @@ def db_stats(user=Depends(current_user)):
 def backup(user=Depends(current_user)):
     src=get_settings().data_dir/"tantara.db"
     if not src.exists():raise HTTPException(404,"Database not initialized")
-    dest=get_settings().data_dir/f"backup-{datetime.utcnow():%Y%m%d%H%M%S}.db"
-    source=SessionLocal().get_bind().raw_connection();target=sqlite3.connect(dest)
+    dest=get_settings().data_dir/f"backup-{datetime.now(timezone.utc):%Y%m%d%H%M%S}.db"
+    source=get_engine().raw_connection();target=sqlite3.connect(dest)
     try:source.driver_connection.backup(target);target.commit()
     finally:target.close();source.close()
     return {"path":dest.name,"bytes":dest.stat().st_size}
