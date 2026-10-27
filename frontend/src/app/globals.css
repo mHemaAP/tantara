@@ -135,14 +135,9 @@ a {
 }
 .brandmark {
   width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(145deg, #263d80, #111d3c);
-  color: #d4b16a;
-  display: grid;
-  place-items: center;
-  font: 700 23px var(--font-serif);
-  border: 1px solid #34466e;
+  height: 36px;
+  object-fit: contain;
+  flex: none;
 }
 .brandword {
   font:
@@ -187,14 +182,14 @@ a {
   border-radius: 12px;
   overflow: hidden;
   min-height: 206px;
-  background: #131a29 url('/brand/legal-scales.jpg') center 35% / cover no-repeat;
+  background:
+    linear-gradient(to top, #06101f 0%, rgba(6, 16, 31, 0.94) 45%, rgba(6, 16, 31, 0.62) 100%),
+    url('/brand/legal-scales.jpg') center 35% / cover no-repeat;
   display: flex;
   align-items: end;
   padding: 13px;
-  background-blend-mode: normal;
 }
 .sidebar-art div {
-  background: linear-gradient(0deg, #06101f 5%, #06101fdd 60%, transparent);
   margin: -13px;
   padding: 55px 13px 13px;
   width: 100%;
@@ -209,8 +204,9 @@ a {
 }
 .sidebar-art small {
   display: block;
-  color: #9fb0c9;
-  line-height: 1.6;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.5;
   margin-top: 8px;
 }
 .main {
@@ -286,6 +282,45 @@ a {
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
   margin-top: 16px;
   align-items: start;
+}
+.dashboard-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+.dashboard-primary,
+.dashboard-aside {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  align-content: start;
+}
+.dashboard-primary .metric-grid {
+  margin-top: 0;
+}
+.secondary-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.secondary-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  min-height: 30px;
+}
+.secondary-summary-item strong {
+  color: #0f172a;
+  font-size: 16px;
+}
+.workspace-tools-note {
+  margin: 0;
+  font-size: 13px;
 }
 .section-title {
   font-size: 15px;
@@ -370,16 +405,6 @@ a {
 }
 .ask-scope[open] summary {
   margin-bottom: 6px;
-}
-.secondary-summary {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-.secondary-summary .card {
-  padding: 9px 13px;
-  font-size: 12px;
 }
 .form-row select {
   background: #ffffff17;
@@ -479,6 +504,10 @@ a {
   font-size: 13px;
   color: #475569;
 }
+.settings-nav a:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
 .settings-nav a[aria-current='page'] {
   color: #3730a3;
   background: #eef0ff;
@@ -486,6 +515,38 @@ a {
 .settings-card {
   padding: 23px;
   min-height: 350px;
+}
+.settings-form {
+  max-width: 720px;
+}
+.connection-block {
+  max-width: 720px;
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #eef1f5;
+  padding-top: 16px;
+}
+.connection-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.connection-summary {
+  color: #334155;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.technical-details pre {
+  margin: 8px 0 0;
+  color: #475569;
+  font:
+    12px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 .field {
   display: grid;
@@ -514,12 +575,12 @@ a {
 .hero {
   text-align: center;
   background:
-    linear-gradient(rgba(4, 10, 18, 0.53), rgba(4, 10, 18, 0.68)),
+    linear-gradient(180deg, rgba(4, 10, 18, 0.68), rgba(4, 10, 18, 0.58) 55%, rgba(4, 10, 18, 0.85)),
     url('/brand/legal-scales.jpg') center/cover;
-  border-radius: 18px;
+  border-radius: 12px;
   min-height: 460px;
   color: white;
-  padding: 38px;
+  padding: 32px 24px 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -534,18 +595,26 @@ a {
   margin: 0;
 }
 .hero p {
-  line-height: 1.55;
+  line-height: 1.5;
   max-width: 350px;
-  color: #e5e7eb;
+  color: #fff;
+  font-size: 14px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.hero-welcome {
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.5;
 }
 .home-layout {
   display: grid;
   grid-template-columns: 1.05fr 0.95fr;
   gap: 18px;
   max-width: 1120px;
-  min-height: calc(100vh - 48px);
+  min-height: 0;
   margin: 24px auto;
-  align-items: stretch;
+  align-items: center;
 }
 .login-card {
   padding: 34px;
@@ -556,8 +625,12 @@ a {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-top: auto;
-  padding-top: 18px;
+  padding: 16px 12px 20px;
   border-top: 1px solid #ffffff26;
+  background: rgba(3, 9, 18, 0.88);
+  margin-left: -24px;
+  margin-right: -24px;
+  width: calc(100% + 48px);
 }
 .home-tiles a,
 .home-tiles > div {
@@ -739,7 +812,11 @@ a {
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .dashboard-columns {
+  .secondary-summary {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-columns,
+  .dashboard-main {
     grid-template-columns: 1fr;
   }
   .main {
@@ -759,20 +836,42 @@ a {
     grid-template-columns: 1fr;
   }
   .settings-nav {
+    position: relative;
     display: flex;
     overflow: auto;
     gap: 4px;
+    scrollbar-width: thin;
+    scroll-behavior: smooth;
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%);
+  }
+  .settings-nav::after {
+    content: '';
+    position: sticky;
+    right: 0;
+    flex: 0 0 24px;
+    margin-left: -24px;
+    background: linear-gradient(90deg, transparent, #fff);
+    pointer-events: none;
   }
   .settings-nav a {
     white-space: nowrap;
+    min-height: 44px;
+    flex: 0 0 auto;
   }
   .home-layout {
     grid-template-columns: 1fr;
     margin: 12px;
+    min-height: 0;
+    align-items: center;
   }
   .hero {
     min-height: 340px;
     padding: 20px;
+  }
+  .home-tiles {
+    margin-left: -20px;
+    margin-right: -20px;
+    width: calc(100% + 40px);
   }
   .hero-actions {
     display: flex;
@@ -786,6 +885,11 @@ a {
   }
   .home-tiles {
     grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (min-width: 761px) and (max-width: 1023px) {
+  .dashboard-primary .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 760px) {
@@ -916,9 +1020,17 @@ a {
 .search-toggle {
   display: none;
 }
-@media (max-width: 1023px) {
+@media (max-width: 760px) {
   .search-toggle {
     display: grid !important;
+    position: static;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+  }
+  .mobile-toggle:not(.search-toggle) {
+    width: 44px;
+    height: 44px;
   }
 }
 html[data-theme='dark'] {
@@ -1151,10 +1263,9 @@ html[data-font='serif'] body {
   flex: none;
 }
 .hero .brandmark {
-  display: inline-grid;
+  display: inline-block;
   width: 34px;
-  height: 34px;
+  height: 36px;
   margin-right: 8px;
   vertical-align: middle;
-  letter-spacing: 0;
 }
