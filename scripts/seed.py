@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Create a repeatable local demo workspace or an empty local user."""
-import argparse,json,uuid
+import argparse,json,uuid,os
 from datetime import date,timedelta
 from pathlib import Path
 import sys
@@ -12,6 +12,7 @@ from app.security import hash_password
 def put(c,table,owner,data,case_id=None):
     c.exec_driver_sql(f"INSERT INTO {table}(id,owner_id,case_id,data,is_demo) VALUES(?,?,?,?,1)",(str(uuid.uuid4()),owner,case_id,json.dumps(data)))
 def main():
+    os.chdir(Path(__file__).resolve().parents[1]/"backend")
     p=argparse.ArgumentParser(); g=p.add_mutually_exclusive_group(required=True); g.add_argument("--demo",action="store_true"); g.add_argument("--empty",action="store_true"); a=p.parse_args(); init_db()
     with connect() as c:
         root=c.exec_driver_sql("SELECT id FROM users WHERE email='advocate@tantara.local'").first()
