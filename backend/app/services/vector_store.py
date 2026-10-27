@@ -42,6 +42,8 @@ class FaissStore:
             return [(self.ids[i],float(score)) for score,i in zip(scores[0],idx[0]) if i>=0]
     def count(self):
         with self.lock:return len(self.ids)
+    def id_set(self):
+        with self.lock:return set(self.ids)
 
 def store():
     global _store
