@@ -374,7 +374,7 @@ def ask(req:Ask,user=Depends(current_user)):
     else:answer=llm_answer(req.question,hits);status="ok" if answer else "model_unavailable";answer=answer or "Relevant documents were found, but the configured language model is unavailable."
     citations=[{"citation_ref":f"[{h['chunk_id']}]","document_id":h["document_id"],"document_title":h["document_title"],"chunk_id":h["chunk_id"],"page_number":h["page_number"],"excerpt":h["snippet"],"retreival_score":h["score"],"source_type":h["source_type"],"jurisdiction":h["jurisdiction"]} for h in hits] if status=="ok" else []
     with session_scope() as s:
-        s.add(ResearchSession(id=sid,owner_id=user["id"],title=req.question[:120],case_id=req.case_id));s.add(ResearchMessage(id=mid,owner_id=user["id"],session_id=sid,role="assistant",content=answer,status=status,model={"provider":get_settings().ai_provider,"model":get_settings().local_llm_model}))
+        s.add(ResearchSession(id=sid,owner_id=user["id"],title=req.question[:120],case_id=req.case_id));s.flush();s.add(ResearchMessage(id=mid,owner_id=user["id"],session_id=sid,role="assistant",content=answer,status=status,model={"provider":get_settings().ai_provider,"model":get_settings().local_llm_model}));s.flush()
         for c in citations:s.add(Citation(id=str(uuid.uuid4()),owner_id=user["id"],message_id=mid,document_id=c["document_id"],chunk_id=c["chunk_id"],page_number=c["page_number"],excerpt=c["excerpt"],retrieval_score=c["retreival_score"]))
         record(s,user["id"],"generate","ai_answer",mid)
     return {"status":status,"answer":answer,"citations":citations,"follow_ups":[],"model":{"provider":get_settings().ai_provider,"model":get_settings().local_llm_model},"disclaimer":DISCLAIMER,"research_session_id":sid,"message_id":mid}
