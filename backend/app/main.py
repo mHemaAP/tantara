@@ -9,6 +9,7 @@ from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Fo
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select, func, text
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +29,21 @@ app=FastAPI(title="TANTARA Local Workspace API",version="1.1.0")
 settings=get_settings()
 app.add_middleware(CORSMiddleware,allow_origins=[x.strip() for x in settings.cors_origins.split(",") if x.strip()],allow_credentials=True,allow_methods=["GET","POST","PATCH","PUT","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type","Range"],expose_headers=["Content-Range","Accept-Ranges"])
 pool=ThreadPoolExecutor(max_workers=2,thread_name_prefix="tantara-ingest")
+_RATE_BUCKETS={};_RATE_LOCK=__import__("threading").Lock()
+@app.middleware("http")
+async def route_rate_limit(request:Request,call_next):
+    if request.url.path in {"/health","/api/v1/health"}:return await call_next(request)
+    key=(request.client.host if request.client else "local",request.url.path,int(__import__("time").time()//60))
+    limit=20 if request.url.path.endswith("/documents/upload") else 300
+    with _RATE_LOCK:
+        count=_RATE_BUCKETS.get(key,0)+1;_RATE_BUCKETS[key]=count
+        if len(_RATE_BUCKETS)>5000:
+            minute=int(__import__("time").time()//60)
+            for bucket in list(_RATE_BUCKETS):
+                if bucket[2]<minute-1:_RATE_BUCKETS.pop(bucket,None)
+    if count>limit:return JSONResponse(status_code=429,content={"error":{"code":"rate_limited","message":"Request rate limit exceeded"}})
+    return await call_next(request)
+
 
 @app.on_event("startup")
 def startup():
@@ -38,11 +54,21 @@ def startup():
 @app.exception_handler(HTTPException)
 async def http_error(request,exc):
     code={401:"unauthorized",403:"forbidden",404:"not_found",409:"duplicate",413:"too_large",422:"validation_error",429:"rate_limited",503:"model_unavailable"}.get(exc.status_code,"request_error")
-    return JSONResponse(status_code=exc.status_code,content={"error":{"code":code,"message":str(exc.detail)}})
+    detail=exc.detail
+    if isinstance(detail,dict):
+        message=detail.get("message","Request failed");extra={k:v for k,v in detail.items() if k!="message"}
+    else:message=str(detail);extra={}
+    error={"code":code,"message":message}
+    if extra:error["details"]=extra
+    return JSONResponse(status_code=exc.status_code,content={"error":error})
 @app.exception_handler(RequestValidationError)
-async def validation_error(request,exc):return JSONResponse(status_code=422,content={"error":{"code":"validation_error","message":"Request validation failed","details":exc.errors()}})
+async def validation_error(request,exc):return JSONResponse(status_code=422,content={"error":{"code":"validation_error","message":"Request validation failed","details":jsonable_encoder(exc.errors())}})
 @app.exception_handler(IntegrityError)
-async def integrity_error(request,exc):return JSONResponse(status_code=409,content={"error":{"code":"conflict","message":"A record conflicts with existing data or violates a domain constraint"}})
+async def integrity_error(request,exc):
+    message=str(getattr(exc,"orig",exc))
+    if "UNIQUE constraint failed" in message or "unique constraint" in message.lower():
+        return JSONResponse(status_code=409,content={"error":{"code":"duplicate","message":"A record with these values already exists"}})
+    return JSONResponse(status_code=400,content={"error":{"code":"validation_error","message":"A domain constraint was not satisfied"}})
 @app.get("/health")
 @app.get("/api/v1/health")
 def health():return {"status":"ok","service":"TANTARA Local Workspace API","version":"1.1.0"}
@@ -73,14 +99,27 @@ def owned(session,cls,rid,user):
     item=get_owned(session,cls,rid,user["id"])
     if item is None:raise HTTPException(404,"Record not found")
     return item
+def assert_write_role(user,cls):
+    role=user.get("role")
+    if role=="researcher":raise HTTPException(403,"This role is read-only")
+    if role=="staff" and cls in {Client,Case,Draft,FilingBundle,CommunityPost}:raise HTTPException(403,"This role cannot modify this resource")
 def paginate(cls, q=None,status=None,case_id=None,page=1,page_size=20,sort="created_at",user=Depends(current_user)):
     with SessionLocal() as s:return list_owned(s,cls,user["id"],q=q,status=status,case_id=case_id,page=page,page_size=page_size,sort=sort)
 
 def install_crud(path,cls, *, allow_delete=True):
-    async def listing(q:str|None=None,status:str|None=None,case_id:str|None=None,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),sort:str="created_at",user=Depends(current_user)):
-        with SessionLocal() as s:return list_owned(s,cls,user["id"],q=q,status=status,case_id=case_id,page=page,page_size=page_size,sort=sort)
+    async def listing(q:str|None=None,status:str|None=None,case_id:str|None=None,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),sort:str="created_at",from_:str|None=Query(None,alias="from"),to:str|None=None,user=Depends(current_user)):
+        filters=[]
+        if cls is Hearing:
+            try:
+                if from_:filters.append(Hearing.at>=datetime.fromisoformat(from_.replace("Z","+00:00")).replace(tzinfo=None))
+                if to:filters.append(Hearing.at<=datetime.fromisoformat(to.replace("Z","+00:00")).replace(tzinfo=None))
+            except ValueError:raise HTTPException(400,"from and to must be ISO dates")
+        with SessionLocal() as s:return list_owned(s,cls,user["id"],q=q,status=status,case_id=case_id,page=page,page_size=page_size,sort=sort,extra_filters=filters)
     def create(payload:Payload,user=Depends(current_user)):
+        assert_write_role(user,cls)
         data=payload.model_dump(exclude_unset=True);allowed=fields_for(cls)-{"id","created_at","updated_at","owner_id","is_demo"};data={k:v for k,v in data.items() if k in allowed}
+        if cls is Case and data.get("client_id"):
+            with SessionLocal() as s:owned(s,Client,data["client_id"],user)
         if data.get("case_id"):
             with SessionLocal() as s:owned(s,Case,data["case_id"],user)
         with session_scope() as s:row=repo_create(s,cls,user["id"],data);rid=row.id;out=serialize(row);record(s,user["id"],"create",cls.__tablename__,rid)
@@ -88,10 +127,17 @@ def install_crud(path,cls, *, allow_delete=True):
     def get(rid:str,user=Depends(current_user)):
         with SessionLocal() as s:return serialize(owned(s,cls,rid,user))
     def patch(rid:str,payload:Payload,user=Depends(current_user)):
+        assert_write_role(user,cls)
+        values=payload.model_dump(exclude_unset=True)
+        if values.get("case_id"):
+            with SessionLocal() as s:owned(s,Case,values["case_id"],user)
+        if cls is Case and values.get("client_id"):
+            with SessionLocal() as s:owned(s,Client,values["client_id"],user)
         with session_scope() as s:
-            row=owned(s,cls,rid,user);repo_update(s,row,payload.model_dump(exclude_unset=True));record(s,user["id"],"update",cls.__tablename__,rid);out=serialize(row)
+            row=owned(s,cls,rid,user);repo_update(s,row,values);record(s,user["id"],"update",cls.__tablename__,rid);out=serialize(row)
         return out
     def delete(rid:str,user=Depends(current_user)):
+        assert_write_role(user,cls)
         with session_scope() as s:
             row=owned(s,cls,rid,user)
             if cls is Case:row.status="archived";out={"deleted":False,"archived":True}
@@ -122,17 +168,20 @@ def case_overview(cid:str,user=Depends(current_user)):
 # Case participants and timeline use their own typed tables.
 @app.post("/api/v1/cases/{cid}/participants")
 def add_participant(cid:str,payload:Payload,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     data=payload.model_dump(exclude_unset=True)
     with session_scope() as s:
         owned(s,Case,cid,user);row=repo_create(s,CaseParticipant,user["id"],data,case_id=cid);record(s,user["id"],"create","case_participant",row.id);return serialize(row)
 @app.patch("/api/v1/cases/{cid}/participants/{pid}")
 def update_participant(cid:str,pid:str,payload:Payload,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:
         row=owned(s,CaseParticipant,pid,user)
         if row.case_id!=cid:raise HTTPException(404,"Participant not found")
         repo_update(s,row,payload.model_dump(exclude_unset=True));return serialize(row)
 @app.delete("/api/v1/cases/{cid}/participants/{pid}")
 def delete_participant(cid:str,pid:str,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:
         row=owned(s,CaseParticipant,pid,user)
         if row.case_id!=cid:raise HTTPException(404,"Participant not found")
@@ -142,6 +191,7 @@ def case_events(cid:str,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=10
     with SessionLocal() as s:owned(s,Case,cid,user);return list_owned(s,CaseEvent,user["id"],case_id=cid,page=page,page_size=page_size)
 @app.post("/api/v1/cases/{cid}/events")
 def add_case_event(cid:str,payload:Payload,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:
         owned(s,Case,cid,user);row=repo_create(s,CaseEvent,user["id"],payload.model_dump(exclude_unset=True),case_id=cid);record(s,user["id"],"create","case_event",row.id);return serialize(row)
 
@@ -202,16 +252,31 @@ def process_job(doc_id,job_id,owner_id,data,filename):
 
 @app.post("/api/v1/documents/upload",status_code=202)
 async def upload(file:UploadFile=File(...),title:str|None=Form(None),document_type:str|None=Form(None),jurisdiction:str|None=Form(None),case_id:str|None=Form(None),user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     filename=Path(file.filename or "upload").name;ext=Path(filename).suffix.lower()
     if ext not in {".pdf",".docx",".txt",".md"}:raise HTTPException(400,"Unsupported document type")
     data=await file.read(get_settings().max_upload_mb*1024*1024+1)
     if len(data)>get_settings().max_upload_mb*1024*1024:raise HTTPException(413,"File too large")
-    if not data or (ext==".pdf" and not data.startswith(b"%PDF")) or (ext==".docx" and not data.startswith(b"PK")):raise HTTPException(400,"File content does not match its extension")
+    if not data:raise HTTPException(400,"Uploaded file is empty")
+    if ext==".pdf" and not data.startswith(b"%PDF"):raise HTTPException(400,"File content does not match its extension")
+    if ext==".docx":
+        try:
+            import zipfile,io
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                if "[Content_Types].xml" not in z.namelist() or "word/document.xml" not in z.namelist():raise ValueError()
+        except Exception:raise HTTPException(400,"File content does not match its extension")
+    if ext in {".txt",".md"}:
+        try:
+            if b"\x00" in data:raise UnicodeDecodeError("utf8",data,0,1,"NUL")
+            data.decode("utf-8")
+        except UnicodeDecodeError:raise HTTPException(400,"Text document must be valid UTF-8")
+    filename="".join(ch for ch in filename if ch.isprintable())[:200] or "upload" 
     if case_id:
         with SessionLocal() as s:owned(s,Case,case_id,user)
     digest=hashlib.sha256(data).hexdigest()
     with SessionLocal() as s:old=s.scalar(select(Document).where(Document.owner_id==user["id"],Document.content_hash==digest))
-    if old:raise HTTPException(409,"Duplicate document",headers={"X-Existing-Document":old.id})
+    if old:raise HTTPException(409,{"message":"Duplicate document","existing_document":{"id":old.id,"title":old.title}})
     did,jid=str(uuid.uuid4()),str(uuid.uuid4());path=DocumentStorage().save(data)
     with session_scope() as s:
         doc=Document(id=did,owner_id=user["id"],case_id=case_id,title=title or filename,document_type=document_type or "Other",jurisdiction=jurisdiction or "India",filename=filename,stored_path=path,content_hash=digest,status="queued")
@@ -238,10 +303,15 @@ def document(did:str,user=Depends(current_user)):
     with SessionLocal() as s:d=owned(s,Document,did,user);out=serialize(d);out.pop("stored_path");out.pop("text_content");return out
 @app.patch("/api/v1/documents/{did}")
 def patch_document(did:str,payload:Payload,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
+    values=payload.model_dump(exclude_unset=True)
+    if values.get("case_id"):
+        with SessionLocal() as s:owned(s,Case,values["case_id"],user)
     with session_scope() as s:
-        d=owned(s,Document,did,user);repo_update(s,d,payload.model_dump(exclude_unset=True));record(s,user["id"],"update","document",did);out=serialize(d);out.pop("stored_path");out.pop("text_content");return out
+        d=owned(s,Document,did,user);repo_update(s,d,values);record(s,user["id"],"update","document",did);out=serialize(d);out.pop("stored_path");out.pop("text_content");return out
 @app.delete("/api/v1/documents/{did}")
 def delete_document(did:str,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:d=owned(s,Document,did,user);path=d.stored_path;chunk_ids=list(s.scalars(select(DocumentChunk.id).where(DocumentChunk.document_id==did)));s.delete(d);record(s,user["id"],"delete","document",did)
     with INDEX_LOCK:store().remove(chunk_ids)
     if path and Path(path).parent==(get_settings().data_dir/"uploads").resolve():Path(path).unlink(missing_ok=True)
@@ -254,6 +324,7 @@ def doc_job(did:str,user=Depends(current_user)):
         return {k:getattr(j,k) for k in ("status","progress","steps","warnings","pages","chars","error")}
 @app.post("/api/v1/documents/{did}/retry",status_code=202)
 def retry_doc(did:str,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:
         d=owned(s,Document,did,user)
         if not Path(d.stored_path).exists():raise HTTPException(404,"Stored upload is unavailable")
