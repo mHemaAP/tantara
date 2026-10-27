@@ -49,10 +49,11 @@ def test_dead_user_configured_model_returns_explicit_unavailable_result(client):
     assert result["status"] == "model_unavailable"
     assert result["model"] is None
     assert result["answer_kind"] == "model_unavailable"
-    assert (
-        result["answer"] == "Relevant documents were found, but the configured language model is unavailable."
+    assert result["answer"] == (
+        "The search could not be completed because the configured language model is unavailable."
     )
     assert result["citations"] == []
+    assert "found" not in result["answer"]
 
 
 def test_dead_model_is_honest_on_all_generation_and_assistance_surfaces(client, monkeypatch):
@@ -91,6 +92,8 @@ def test_dead_model_is_honest_on_all_generation_and_assistance_surfaces(client, 
     ).json()
     assert ask["status"] == "model_unavailable" and ask["model"] is None
     assert ask["answer_kind"] == "model_unavailable" and ask["citations"] == []
+    assert "evidence is available" not in ask["answer"].lower()
+    assert "dead-local-model" not in ask["answer"]
 
     session = client.post("/api/v1/ai/sessions", headers=headers, json={"title": "Closed model"}).json()
     session_answer = client.post(
@@ -99,9 +102,13 @@ def test_dead_model_is_honest_on_all_generation_and_assistance_surfaces(client, 
         json={"question": "Which city appears in marker ZXQ-771?"},
     ).json()
     assert session_answer["status"] == "model_unavailable" and session_answer["model"] is None
+    assert session_answer["answer_kind"] == "model_unavailable"
+    assert "dead-local-model" not in session_answer["answer"]
+    assert session_answer["citations"] == []
 
     read = client.post(f"/api/v1/documents/{document_id}/ai-read", headers=headers).json()
     assert read["status"] == "local_extraction" and read["model"] is None
+    assert read.get("kind", read["status"]) == "local_extraction"
     assert read["fields"]["arbitration_clause"]["value"]["found"] is False
 
     draft = client.post(
@@ -117,12 +124,15 @@ def test_dead_model_is_honest_on_all_generation_and_assistance_surfaces(client, 
     assert draft["status"] == "model_unavailable" and draft["model"] is None
     assert draft["generation_kind"] == "review_template"
     assert "unavailable" in " ".join(draft["warnings"])
+    assert "dead-local-model" not in str(draft)
 
     autofill = client.get(f"/api/v1/cases/{case['id']}/autofill", headers=headers).json()
     assert autofill["status"] == "record_based" and autofill["model"] is None
+    assert "dead-local-model" not in str(autofill)
     strategy = client.post(f"/api/v1/cases/{case['id']}/strategy/generate", headers=headers).json()
     assert strategy["status"] == "template" and strategy["model"] is None
     assert strategy["generation_kind"] == "excerpt_listing"
+    assert "dead-local-model" not in str(strategy)
 
     assert attempted and set(attempted) == {("127.0.0.1", 9)}
     assert len(attempted) == 5  # settings status, AI status, Ask, session Ask, and Draft only
@@ -206,7 +216,7 @@ def test_reachable_local_http_model_keeps_success_contract(client):
         assert result["answer"] == "The seat is Mumbai."
         citation = result["citations"][0]
         assert citation["document_id"] == document_id
-        assert citation["retrieval_score"] == citation["retreival_score"]
+        assert citation["score"] == citation["retrieval_score"] == citation["retreival_score"]
     finally:
         server.shutdown()
         server.server_close()
@@ -245,4 +255,4 @@ def test_ai_citation_payload_keeps_both_score_spellings(client, monkeypatch):
     assert response.json()["model"]["model"] == "MiniCPM5-2B"
     citation = response.json()["citations"][0]
     assert citation["document_id"] == document_id
-    assert citation["retrieval_score"] == citation["retreival_score"]
+    assert citation["score"] == citation["retrieval_score"] == citation["retreival_score"]
