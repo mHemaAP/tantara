@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
@@ -121,63 +121,70 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
   });
   return (
     <form onSubmit={submit}>
-      {list.map((k) => (
-        <div className="field" key={k}>
-          <label htmlFor={k}>{fieldLabel(k)}</label>
-          {['theme', 'density', 'font'].includes(k) ? (
-            <select
-              id={k}
-              disabled={preview}
-              title={preview ? 'Sign in to change settings' : ''}
-              {...register(k)}
-            >
-              {(k === 'theme'
-                ? ['light', 'dark', 'system']
-                : k === 'density'
-                  ? ['comfortable', 'compact']
-                  : ['inter', 'serif']
-              ).map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              id={k}
-              type={
-                k.includes('password')
-                  ? 'password'
-                  : k === 'email'
-                    ? 'email'
-                    : k === 'temperature' || k === 'top_k'
-                      ? 'number'
-                      : 'text'
-              }
-              step={k === 'temperature' ? '.1' : undefined}
-              aria-invalid={Boolean(errors[k])}
-              aria-describedby={errors[k] ? `${k}-error` : undefined}
-              disabled={preview}
-              title={preview ? 'Sign in to edit settings' : ''}
-              {...register(k)}
-            />
-          )}
-          {section === 'local-ai' && (
-            <small className="muted">
-              {k === 'base_url'
-                ? 'OpenAI-compatible local API endpoint.'
-                : k === 'temperature'
-                  ? 'Sampling temperature from 0 to 2.'
-                  : k === 'top_k'
-                    ? 'Maximum retrieved context chunks.'
-                    : 'Model identifier served by the configured endpoint.'}
-            </small>
-          )}
-          {errors[k] && (
-            <small id={`${k}-error`} style={{ color: '#be123c' }}>
-              Please enter a valid {fieldLabel(k).toLowerCase()}.
-            </small>
-          )}
-        </div>
-      ))}
+      {list.map((k) => {
+        const helpId = section === 'local-ai' ? `${k}-help` : undefined;
+        const errorId = errors[k] ? `${k}-error` : undefined;
+        const describedBy = [helpId, errorId].filter(Boolean).join(' ') || undefined;
+        return (
+          <div className="field" key={k}>
+            <label htmlFor={k}>{fieldLabel(k)}</label>
+            {['theme', 'density', 'font'].includes(k) ? (
+              <select
+                id={k}
+                disabled={preview}
+                aria-invalid={Boolean(errors[k])}
+                aria-describedby={describedBy}
+                title={preview ? 'Sign in to change settings' : ''}
+                {...register(k)}
+              >
+                {(k === 'theme'
+                  ? ['light', 'dark', 'system']
+                  : k === 'density'
+                    ? ['comfortable', 'compact']
+                    : ['inter', 'serif']
+                ).map((x) => (
+                  <option key={x}>{x}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id={k}
+                type={
+                  k.includes('password')
+                    ? 'password'
+                    : k === 'email'
+                      ? 'email'
+                      : k === 'temperature' || k === 'top_k'
+                        ? 'number'
+                        : 'text'
+                }
+                step={k === 'temperature' ? '.1' : undefined}
+                aria-invalid={Boolean(errors[k])}
+                aria-describedby={describedBy}
+                disabled={preview}
+                title={preview ? 'Sign in to edit settings' : ''}
+                {...register(k)}
+              />
+            )}
+            {section === 'local-ai' && (
+              <small id={helpId} className="muted">
+                {k === 'base_url'
+                  ? 'OpenAI-compatible local API endpoint.'
+                  : k === 'temperature'
+                    ? 'Sampling temperature from 0 to 2.'
+                    : k === 'top_k'
+                      ? 'Maximum retrieved context chunks.'
+                      : 'Model identifier served by the configured endpoint.'}
+              </small>
+            )}
+            {errors[k] && (
+              <small id={errorId} style={{ color: '#be123c' }}>
+                Please enter a valid {fieldLabel(k).toLowerCase()}.
+              </small>
+            )}
+          </div>
+        );
+      })}
       <div className="settings-actions">
         <button
           className="primary"
@@ -204,7 +211,17 @@ export default function SettingsSection() {
     enabled: section === 'local-ai',
   });
   const [testing, setTesting] = useState(false);
+  const activeNavLink = useRef<HTMLAnchorElement>(null);
   const [special, setSpecial] = useState<Record<string, unknown> | null>(null);
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      activeNavLink.current?.scrollIntoView({
+        block: 'nearest',
+        inline: 'center',
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      });
+    }
+  }, [section]);
   const test = async () => {
     setTesting(true);
     try {
@@ -257,7 +274,12 @@ export default function SettingsSection() {
       <div className="settings-layout">
         <nav className="card settings-nav" aria-label="Settings navigation">
           {sections.map(([key, label, Icon]) => (
-            <Link key={key} href={`/settings/${key}`} aria-current={section === key ? 'page' : undefined}>
+            <Link
+              key={key}
+              href={`/settings/${key}`}
+              ref={section === key ? activeNavLink : undefined}
+              aria-current={section === key ? 'page' : undefined}
+            >
               <Icon size={16} />
               {label}
             </Link>
@@ -318,32 +340,37 @@ export default function SettingsSection() {
   );
 }
 function connectionSummary(status: Record<string, unknown> | null) {
-  if (!status) return 'Connection has not been tested';
+  if (!status) return 'Connection has not been tested · Embeddings status unavailable';
   const llm = status.llm && typeof status.llm === 'object' ? (status.llm as Record<string, unknown>) : status;
-  const reachable = llm.reachable ?? status.reachable;
-  if (reachable === false || status.status === 'unreachable') return 'Unreachable';
-  if (reachable === true) {
-    const model = typeof llm.model === 'string' ? ` · ${llm.model}` : '';
-    const latency = typeof llm.latency_ms === 'number' ? ` · ${llm.latency_ms} ms` : '';
-    return `Reachable${model}${latency}`;
-  }
-  return 'Connection status unavailable';
-}
-function connectionDetails(status: Record<string, unknown> | null) {
-  if (!status) return 'Test the configured endpoint to check its model and reachability.';
-  const llm = status.llm && typeof status.llm === 'object' ? (status.llm as Record<string, unknown>) : {};
   const embeddings =
     status.embeddings && typeof status.embeddings === 'object'
       ? (status.embeddings as Record<string, unknown>)
       : {};
-  const details = [
-    typeof llm.provider === 'string' ? `Provider: ${llm.provider}` : null,
-    typeof llm.model === 'string' ? `Model: ${llm.model}` : null,
-    typeof llm.latency_ms === 'number' ? `Latency: ${llm.latency_ms} ms` : null,
-    typeof embeddings.provider === 'string' ? `Embeddings: ${embeddings.provider}` : null,
-    typeof embeddings.dims === 'number' ? `${embeddings.dims} dimensions` : null,
-  ].filter(Boolean);
-  return details.length ? details.join(' · ') : 'The status endpoint did not return model details.';
+  const reachable = llm.reachable ?? status.reachable;
+  const health =
+    reachable === true
+      ? 'Reachable'
+      : reachable === false || status.status === 'unreachable'
+        ? 'Not reachable'
+        : 'Reachability unknown';
+  const model = typeof llm.model === 'string' ? ` · ${llm.model}` : '';
+  const latency = typeof llm.latency_ms === 'number' ? ` · ${llm.latency_ms} ms` : '';
+  const provider = typeof embeddings.provider === 'string' ? embeddings.provider : 'unknown backend';
+  const ready =
+    embeddings.ready === true ? 'ready' : embeddings.ready === false ? 'not ready' : 'status unknown';
+  return `${health}${model}${latency} · Embeddings: ${provider}, ${ready}`;
+}
+function redactDiagnostics(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactDiagnostics);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        /(key|secret|token|password|credential)/i.test(key) ? '[redacted]' : redactDiagnostics(item),
+      ]),
+    );
+  }
+  return value;
 }
 function SpecialSettings({
   section,
@@ -379,16 +406,24 @@ function SpecialSettings({
     return (
       <div>
         <SettingsForm section="local-ai" data={data} />
-        <div style={{ borderTop: '1px solid #eef1f5', paddingTop: 17 }}>
-          <div className="connection-row" role="status">
-            <span>{connectionSummary(status)}</span>
+        <div className="connection-block">
+          <p className="connection-summary" role="status">
+            {connectionSummary(status)}
+          </p>
+          <div className="connection-row">
             <button className="secondary-button" onClick={onTest} disabled={testing}>
               {testing ? 'Testing…' : 'Test connection'}
             </button>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Tests saved configuration.
+            </span>
           </div>
-          <p className="muted" style={{ fontSize: 12 }}>
-            {connectionDetails(status)}
-          </p>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <pre>
+              {JSON.stringify(redactDiagnostics(status ?? { message: 'No status response yet.' }), null, 2)}
+            </pre>
+          </details>
         </div>
       </div>
     );
