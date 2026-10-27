@@ -147,7 +147,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       {open && <button className="sidebar-backdrop" aria-label="Close menu" onClick={() => setOpen(false)} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand">
-          <span className="brandmark">T</span>
+          <img className="brandmark" src="/brand/t-mark.svg" alt="" />
           <span className="brandword">TANTARA</span>
         </div>
         <nav className="nav" aria-label="Main navigation" onKeyDown={onKey}>
