@@ -160,6 +160,7 @@
   align-items: start;
 }
 .documents-table-wrap {
+  contain: paint;
   min-width: 0;
   overflow: auto;
 }
@@ -659,6 +660,9 @@
 }
 @media (max-width: 700px) {
   .documents-page {
+    overflow-x: clip;
+  }
+  .documents-page {
     padding: 4px 0 28px;
   }
   .documents-heading {
@@ -702,6 +706,9 @@
   }
   .documents-workspace.list {
     grid-template-columns: 1fr;
+  }
+  .documents-workspace {
+    overflow: hidden;
   }
   .document-metadata {
     grid-template-columns: repeat(2, minmax(0, 1fr));
