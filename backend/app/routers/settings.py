@@ -1,5 +1,5 @@
 """Local workspace profile, preferences, database operations, and audit views."""
-import shutil,uuid,subprocess,sys,json
+import shutil,uuid,subprocess,sys,json,sqlite3
 from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter,Depends,HTTPException,Query
@@ -55,12 +55,18 @@ def ai_settings_patch(payload:Payload,user=Depends(current_user)):
 def database(user=Depends(current_user)):return {"backend":"sqlite","path":"backend/data/tantara.db","journal_mode":"WAL"}
 @router.get("/database/stats")
 def db_stats(user=Depends(current_user)):
-    with SessionLocal() as s:return {name:s.scalar(select(func.count()).select_from(cls).where(cls.owner_id==user["id"])) or 0 for name,cls in (("clients",Client),("cases",Case),("documents",Document),("document_chunks",DocumentChunk),("drafts",Draft),("tasks",Task))}
+    with SessionLocal() as s:
+        result={name:s.scalar(select(func.count()).select_from(cls).where(cls.owner_id==user["id"])) or 0 for name,cls in (("clients",Client),("cases",Case),("documents",Document),("drafts",Draft),("tasks",Task))}
+        result["document_chunks"]=s.scalar(select(func.count(DocumentChunk.id)).join(Document,Document.id==DocumentChunk.document_id).where(Document.owner_id==user["id"])) or 0
+        return result
 @router.post("/database/backup")
 def backup(user=Depends(current_user)):
     src=get_settings().data_dir/"tantara.db"
     if not src.exists():raise HTTPException(404,"Database not initialized")
-    dest=get_settings().data_dir/f"backup-{datetime.utcnow():%Y%m%d%H%M%S}.db";shutil.copy2(src,dest)
+    dest=get_settings().data_dir/f"backup-{datetime.utcnow():%Y%m%d%H%M%S}.db"
+    source=SessionLocal().get_bind().raw_connection();target=sqlite3.connect(dest)
+    try:source.driver_connection.backup(target);target.commit()
+    finally:target.close();source.close()
     return {"path":dest.name,"bytes":dest.stat().st_size}
 @router.get("/security")
 def security(page:int=Query(1,ge=1),page_size:int=Query(50,ge=1,le=100),user=Depends(current_user)):
