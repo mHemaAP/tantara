@@ -80,6 +80,21 @@ def test_retrieval_applies_case_owner_and_metadata_filters(client):
         document_types=["Award"],
     )
     assert status == "ok" and any(hit["document_id"] == did for hit in single)
+    page_beyond = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": "Distinct retrieval marker", "page": 999},
+    )
+    assert page_beyond.status_code == 200
+    assert page_beyond.json()["items"] == []
+    assert page_beyond.json()["page"] == 999 and page_beyond.json()["total"] >= 1
+    injected = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": "' OR 1=1;--"},
+    )
+    assert injected.status_code == 200
+    assert injected.json()["items"] == []
     filtered, _ = retrieval_service.search_with_status(
         "Distinct retrieval marker", owner_id, case_ids=["another-case"], jurisdiction="India"
     )
