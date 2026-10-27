@@ -1,5 +1,4 @@
 # Compatibility name for the local-first backend/.env.example
-DATABASE_URL=sqlite:///data/tantara.db
 DATA_DIR=data
 AI_PROVIDER=local
 LOCAL_LLM_BASE_URL=http://192.168.0.101:8080/v1
