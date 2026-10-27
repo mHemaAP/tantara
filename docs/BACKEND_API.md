@@ -5,7 +5,7 @@ Base URL: `http://127.0.0.1:8010/api/v1`. Authenticated routes use `Authorizatio
 ## Contract conventions
 
 - List responses are `{items,total,page,page_size,pages}`; supported domain filters include `q`, `status`, `case_id`, `page`, `page_size`, and `sort`. Documents also accept `type`; hearings accept `from` and `to`; community posts accept `tag`, `kind`, and `saved`.
-- Errors use `{error:{code,message,details?}}`. Common statuses: 400 invalid domain input, 401 missing/invalid token, 403 role denial, 404 missing or not-owned record, 409 duplicate/unique conflict, 413 upload limit, 422 request validation, 429 in-memory rate limit, 503 optional model failure.
+- Errors use `{error:{code,message,details?}}`. Common statuses: 400 invalid domain input, 401 missing/invalid token, 403 role denial, 404 missing or not-owned record, 409 duplicate/unique conflict, 413 upload limit, 422 request validation, 429 SQLite-backed per-minute rate limit shared across workers, 503 optional model failure.
 - Records are owner-scoped. Case deletion archives the case; document deletion removes its file and all index rows.
 
 ## Authentication and metadata
@@ -46,4 +46,4 @@ Base URL: `http://127.0.0.1:8010/api/v1`. Authenticated routes use `Authorizatio
 - `GET /settings/embeddings`, `/settings/database`, `/settings/database/stats`, `POST /settings/database/backup`, `GET /settings/security`, `POST /settings/password`
 - `GET|POST /settings/data/import` (optional corpus runner)
 
-AI answers return `ok|no_evidence|model_unavailable|embedding_unavailable`. Empty retrieval returns an explicit insufficient-evidence answer and no citations. Citations are populated from returned database chunks, including their actual page numbers and retrieval scores.
+AI answers return `ok|no_evidence|model_unavailable|embedding_unavailable`. Empty retrieval returns an explicit insufficient-evidence answer and no citations. Citations are populated from returned database chunks, including their actual page numbers and retrieval scores. Both `retreival_score` (legacy misspelling) and `retrieval_score` carry the same numeric value; new clients should use `retrieval_score`.
