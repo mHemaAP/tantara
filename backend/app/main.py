@@ -114,7 +114,14 @@ def install_crud(path,cls, *, allow_delete=True):
                 if from_:filters.append(Hearing.at>=datetime.fromisoformat(from_.replace("Z","+00:00")).replace(tzinfo=None))
                 if to:filters.append(Hearing.at<=datetime.fromisoformat(to.replace("Z","+00:00")).replace(tzinfo=None))
             except ValueError:raise HTTPException(400,"from and to must be ISO dates")
-        with SessionLocal() as s:return list_owned(s,cls,user["id"],q=q,status=status,case_id=case_id,page=page,page_size=page_size,sort=sort,extra_filters=filters)
+        with SessionLocal() as s:
+            result=list_owned(s,cls,user["id"],q=q,status=status,case_id=case_id,page=page,page_size=page_size,sort=sort,extra_filters=filters)
+            for item in result["items"]:
+                for key in ("owner_id","output_path","stored_path","text_content","embedding_blob"):item.pop(key,None)
+                if cls is FilingBundle:
+                    item["downloadable"]=bool(item.get("status")=="ready")
+                    item["download_url"]=f"/api/v1/bundles/{item['id']}/download" if item["downloadable"] else None
+            return result
     def create(payload:Payload,user=Depends(current_user)):
         assert_write_role(user,cls)
         data=payload.model_dump(exclude_unset=True);allowed=fields_for(cls)-{"id","created_at","updated_at","owner_id","is_demo"};data={k:v for k,v in data.items() if k in allowed}
@@ -125,7 +132,13 @@ def install_crud(path,cls, *, allow_delete=True):
         with session_scope() as s:row=repo_create(s,cls,user["id"],data);rid=row.id;out=serialize(row);record(s,user["id"],"create",cls.__tablename__,rid)
         return out
     def get(rid:str,user=Depends(current_user)):
-        with SessionLocal() as s:return serialize(owned(s,cls,rid,user))
+        with SessionLocal() as s:
+            row=owned(s,cls,rid,user);out=serialize(row)
+            for key in ("owner_id","output_path","stored_path","text_content","embedding_blob"):out.pop(key,None)
+            if cls is FilingBundle:
+                out["downloadable"]=bool(row.output_path and Path(row.output_path).is_file())
+                out["download_url"]=f"/api/v1/bundles/{rid}/download" if out["downloadable"] else None
+            return out
     def patch(rid:str,payload:Payload,user=Depends(current_user)):
         assert_write_role(user,cls)
         values=payload.model_dump(exclude_unset=True)
@@ -189,6 +202,26 @@ def delete_participant(cid:str,pid:str,user=Depends(current_user)):
 @app.get("/api/v1/cases/{cid}/events")
 def case_events(cid:str,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),user=Depends(current_user)):
     with SessionLocal() as s:owned(s,Case,cid,user);return list_owned(s,CaseEvent,user["id"],case_id=cid,page=page,page_size=page_size)
+@app.get("/api/v1/cases/{cid}/events/{eid}")
+def get_case_event(cid:str,eid:str,user=Depends(current_user)):
+    with SessionLocal() as s:
+        row=owned(s,CaseEvent,eid,user)
+        if row.case_id!=cid:raise HTTPException(404,"Case event not found")
+        return serialize(row)
+@app.patch("/api/v1/cases/{cid}/events/{eid}")
+def patch_case_event(cid:str,eid:str,payload:Payload,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
+    with session_scope() as s:
+        row=owned(s,CaseEvent,eid,user)
+        if row.case_id!=cid:raise HTTPException(404,"Case event not found")
+        repo_update(s,row,payload.model_dump(exclude_unset=True));record(s,user["id"],"update","case_event",eid);return serialize(row)
+@app.delete("/api/v1/cases/{cid}/events/{eid}")
+def delete_case_event(cid:str,eid:str,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
+    with session_scope() as s:
+        row=owned(s,CaseEvent,eid,user)
+        if row.case_id!=cid:raise HTTPException(404,"Case event not found")
+        s.delete(row);record(s,user["id"],"delete","case_event",eid);return {"deleted":True}
 @app.post("/api/v1/cases/{cid}/events")
 def add_case_event(cid:str,payload:Payload,user=Depends(current_user)):
     if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
@@ -209,15 +242,16 @@ def activity(user=Depends(current_user)):
 def upcoming(days:int=Query(30,ge=1,le=365),user=Depends(current_user)):
     start=datetime.now();end=start+timedelta(days=days)
     with SessionLocal() as s:
-        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();ts=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end,Task.status!="done")).all()
-        out=[{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.at.isoformat(),"due_in_days":(x.at.date()-date.today()).days} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.due_at.isoformat(),"due_in_days":(x.due_at.date()-date.today()).days} for x in ts if x.due_at]
+        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();ts=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end,Task.status!="done")).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all()
+        out=[{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.at.isoformat(),"due_in_days":(x.at.date()-date.today()).days} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.due_at.isoformat(),"due_in_days":(x.due_at.date()-date.today()).days} for x in ts if x.due_at]+[{"id":x.id,"type":"event","title":x.type,"case_id":x.case_id,"case_title":None,"at":x.occurred_at.isoformat(),"due_in_days":(x.occurred_at.date()-date.today()).days} for x in events]
     return sorted(out,key=lambda x:x["at"])
 @app.get("/api/v1/calendar")
 def calendar(from_:datetime|None=Query(None,alias="from"),to:datetime|None=None,user=Depends(current_user)):
     start=from_ or datetime.min;end=to or datetime.max
     with SessionLocal() as s:
-        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();tasks=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end)).all()
-    return sorted([{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"at":x.at.isoformat()} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"at":x.due_at.isoformat()} for x in tasks if x.due_at],key=lambda x:x["at"])
+        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();tasks=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end)).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all()
+    items=[{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"at":x.at.isoformat()} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"at":x.due_at.isoformat()} for x in tasks if x.due_at]+[{"id":x.id,"type":"event","title":x.type,"case_id":x.case_id,"at":x.occurred_at.isoformat()} for x in events]
+    return sorted(items,key=lambda x:x["at"])
 
 # Background ingestion keeps request handling short and persists every job step.
 INDEX_LOCK=__import__("threading").RLock()
