@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -16,21 +16,22 @@ import {
   Scale,
   CheckCircle2,
 } from 'lucide-react';
-import { api } from '@/lib/api/client';
+import { api, isReadOnlyPreview } from '@/lib/api/client';
 import { endpoints } from '@/lib/api/endpoints';
 import { keys } from '@/lib/api/keys';
 import type { Summary, Activity, Upcoming, Case } from '@/lib/api/types';
 function Offline({ retry }: { retry: () => void }) {
   return (
-    <div className="offline">
+    <div className="offline" role="status">
       <strong>Backend not reachable at 127.0.0.1:8010</strong>
-      <p style={{ fontSize: 13 }}>
-        Start the local API with{' '}
-        <code>
-          cd backend &amp;&amp; .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
-        </code>
-        .
-      </p>
+      <div style={{ fontSize: 13 }}>
+        <details>
+          <summary>Start command</summary>
+          <code>
+            cd backend &amp;&amp; .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
+          </code>
+        </details>
+      </div>
       <button className="primary" onClick={retry}>
         <RefreshCw size={15} /> Retry
       </button>
@@ -42,6 +43,8 @@ export default function Dashboard() {
     activity = useQuery({ queryKey: keys.activity, queryFn: endpoints.activity }),
     upcoming = useQuery({ queryKey: keys.upcoming, queryFn: endpoints.upcoming });
   const cases = useQuery({ queryKey: keys.cases(''), queryFn: () => endpoints.cases() });
+  const [preview, setPreview] = useState(false);
+  useEffect(() => setPreview(isReadOnlyPreview()), []);
   const [question, setQuestion] = useState(''),
     [answer, setAnswer] = useState<Awaited<ReturnType<typeof endpoints.ask>> | null>(null),
     [askBusy, setAskBusy] = useState(false),
@@ -98,7 +101,7 @@ export default function Dashboard() {
       >
         <div>
           <h1 className="title">
-            {m?.greeting || 'Good day'}, {m?.first_name || 'Advocate'}
+            {m?.greeting || 'Good day'}, {m?.first_name || 'there'}
           </h1>
           <p className="subheading">
             {m?.today
@@ -133,7 +136,7 @@ export default function Dashboard() {
           <Offline retry={refresh} />
         </div>
       ) : summary.isLoading ? (
-        <div className="metric-grid grid">
+        <div className="metric-grid grid" role="status" aria-label="Loading dashboard metrics">
           {cards.slice(0, 4).map(([l]) => (
             <div className="card metric" key={l}>
               <div className="metric-icon">&nbsp;</div>
@@ -144,7 +147,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="grid metric-grid">
-          {cards.map(([label, value, Icon, color, bg]) => (
+          {cards.slice(0, 4).map(([label, value, Icon, color, bg]) => (
             <motion.article
               className="card metric"
               key={label}
@@ -177,10 +180,16 @@ export default function Dashboard() {
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
+              disabled={preview}
+              title={preview ? 'Sign in to ask TANTARA' : ''}
               placeholder="Ask about arbitration law, cases, strategy, or a draft…"
               aria-label="Ask an arbitration law question"
             />
-            <button disabled={askBusy} aria-label="Submit question">
+            <button
+              disabled={askBusy || preview}
+              title={preview ? 'Sign in to ask TANTARA' : ''}
+              aria-label="Submit question"
+            >
               <ArrowRight size={18} />
             </button>
           </form>
@@ -191,36 +200,50 @@ export default function Dashboard() {
               'Draft statement of claim',
               'Relief options',
             ].map((x) => (
-              <button key={x} onClick={() => void ask(x)}>
+              <button
+                key={x}
+                disabled={preview}
+                title={preview ? 'Sign in to ask TANTARA' : ''}
+                onClick={() => void ask(x)}
+              >
                 {x}
               </button>
             ))}
           </div>
-          <div className="form-row">
-            <select aria-label="Scope to case" value={scope} onChange={(e) => setScope(e.target.value)}>
-              <option value="">All cases</option>
-              {cases.data?.items?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Jurisdiction"
-              value={jurisdiction}
-              onChange={(e) => setJurisdiction(e.target.value)}
-            >
-              <option value="">Any jurisdiction</option>
-              {jurisdictions.data?.items?.map((x: any, i: number) => (
-                <option key={i} value={typeof x === 'string' ? x : x.name}>
-                  {typeof x === 'string' ? x : x.name}
-                </option>
-              ))}
-            </select>
-            <select aria-label="Knowledge collection">
-              <option value="">All collections</option>
-            </select>
-          </div>
+          <details className="ask-scope">
+            <summary>Research scope</summary>
+            <div className="form-row">
+              <select aria-label="Scope to case" value={scope} onChange={(e) => setScope(e.target.value)}>
+                <option value="">All cases</option>
+                {cases.data?.items?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Jurisdiction"
+                value={jurisdiction}
+                onChange={(e) => setJurisdiction(e.target.value)}
+              >
+                <option value="">Any jurisdiction</option>
+                {jurisdictions.data?.items?.map((x: any, i: number) => (
+                  <option key={i} value={typeof x === 'string' ? x : x.name}>
+                    {typeof x === 'string' ? x : x.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Knowledge collection"
+                disabled
+                aria-describedby="collection-help"
+                title="Collection scope is not available in the current API"
+              >
+                <option value="">All collections</option>
+              </select>
+            </div>
+            <small id="collection-help">Collection filtering is not available in the current API.</small>
+          </details>
           {answer && (
             <div className="result" style={{ background: '#ffffff18', padding: 12, borderRadius: 8 }}>
               <strong>
@@ -250,26 +273,20 @@ export default function Dashboard() {
               {answer.disclaimer && <small>{answer.disclaimer}</small>}
             </div>
           )}
-          {askBusy && <p style={{ fontSize: 12 }}>Searching your workspace…</p>}
-          <div className="recent-questions">
-            <strong>Recent questions</strong>
-            {sessions.isLoading ? (
-              <small>Loading…</small>
-            ) : sessions.isError ? (
-              <small>Research sessions are unavailable.</small>
-            ) : sessions.data?.items?.length ? (
-              sessions.data.items.slice(0, 3).map((x) => <div key={x.id}>{x.title}</div>)
-            ) : (
-              <small>No previous questions in this workspace.</small>
-            )}
-          </div>
+          {askBusy && (
+            <p style={{ fontSize: 12 }} role="status">
+              Searching your workspace…
+            </p>
+          )}
         </section>
         <section className="card surface">
           <h2 className="section-title">
             Upcoming hearings &amp; deadlines <CalendarDays size={16} color="#4f46e5" />
           </h2>
           {upcoming.isLoading ? (
-            <p className="muted">Loading calendar…</p>
+            <p className="muted" role="status">
+              Loading calendar…
+            </p>
           ) : upcoming.isError ? (
             <p className="muted">Calendar is unavailable.</p>
           ) : upcoming.data?.length ? (
@@ -297,11 +314,37 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+      <div className="grid dashboard-columns" style={{ marginTop: 12 }}>
+        <section className="card surface recent-questions-card">
+          <h2 className="section-title">Recent questions</h2>
+          {sessions.isLoading ? (
+            <p className="muted" role="status">
+              Loading research history…
+            </p>
+          ) : sessions.isError ? (
+            <p className="muted">Research sessions are unavailable.</p>
+          ) : sessions.data?.items?.length ? (
+            sessions.data.items.slice(0, 3).map((x) => <p key={x.id}>{x.title}</p>)
+          ) : (
+            <p className="muted">No previous questions in this workspace.</p>
+          )}
+          <span className="muted">Research Desk will be available in a later phase.</span>
+        </section>
+        <div className="secondary-summary">
+          {cards.slice(4).map(([label, value, Icon, color]) => (
+            <div className="card" key={label}>
+              <Icon size={14} color={color} /> {value ?? 0} {label}
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="grid dashboard-columns" style={{ marginTop: 14 }}>
         <section className="card surface">
           <h2 className="section-title">Recent activity</h2>
           {activity.isLoading ? (
-            <p className="muted">Loading activity…</p>
+            <p className="muted" role="status">
+              Loading activity…
+            </p>
           ) : activity.isError ? (
             <p className="muted">Activity is unavailable.</p>
           ) : activity.data?.length ? (
