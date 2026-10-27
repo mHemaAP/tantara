@@ -11,7 +11,7 @@ from app.security import hash_password
 from app.models import (User,Client,Case,CaseParticipant,Hearing,Task,Note,Draft,DraftVersion,
                         FilingBundle,BundleItem,Document,IngestionJob,ResearchSession,ResearchMessage,CommunityPost)
 from app.services.vector_store import store
-from app.main import process_job
+from app.routers.documents import process_job
 from sqlalchemy import select,delete,func
 
 def make_pdf(path,title,paragraphs):
