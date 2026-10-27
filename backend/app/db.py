@@ -42,33 +42,13 @@ def session_scope():
     finally: session.close()
 
 def init_db():
-    """Initialize a fresh typed schema and FTS5 triggers for local development."""
-    e=engine()
-    # Old prototype tables had `data` JSON columns. Preserve a recoverable copy
-    # before replacing those non-normalized tables during this one-time cutover.
-    with e.begin() as c:
-        existing={r[0] for r in c.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'").all()} if e.dialect.name=="sqlite" else set()
-        if "cases" in existing:
-            cols={r[1] for r in c.exec_driver_sql("PRAGMA table_info(cases)").all()}
-            if "data" in cols:
-                c.exec_driver_sql("ALTER TABLE cases RENAME TO cases_json_archive")
-        for name in ("roles","sessions","clients","case_participants","case_events","hearings","tasks","document_pages","document_chunks","drafts","draft_versions","notes","research_sessions","research_messages","citations","filing_bundles","bundle_sections","bundle_items","community_posts","community_replies","community_tags","saved_items","app_preferences","ingestion_jobs","audit_events","extraction_fields","ai_conversations"):
-            if name in existing:
-                cols={r[1] for r in c.exec_driver_sql(f"PRAGMA table_info({name})").all()}
-                if "data" in cols:
-                    c.exec_driver_sql(f"ALTER TABLE {name} RENAME TO {name}_json_archive")
-        if "documents" in existing:
-            cols={r[1] for r in c.exec_driver_sql("PRAGMA table_info(documents)").all()}
-            # documents had real columns already; keep compatible fields where possible.
-            if "owner_id" not in cols: c.exec_driver_sql("ALTER TABLE documents RENAME TO documents_json_archive")
-    Base.metadata.create_all(e)
-    with e.begin() as c:
-        if e.dialect.name=="sqlite":
-            c.exec_driver_sql("CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(chunk_id UNINDEXED, document_id UNINDEXED, content)")
-            c.exec_driver_sql("CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON document_chunks BEGIN INSERT INTO chunk_fts(chunk_id,document_id,content) SELECT new.id,new.document_id,new.content WHERE EXISTS(SELECT 1 FROM documents WHERE id=new.document_id); END")
-            c.exec_driver_sql("CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON document_chunks BEGIN DELETE FROM chunk_fts WHERE chunk_id=old.id; END")
-            c.exec_driver_sql("CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON document_chunks BEGIN DELETE FROM chunk_fts WHERE chunk_id=old.id; INSERT INTO chunk_fts(chunk_id,document_id,content) VALUES(new.id,new.document_id,new.content); END")
-            c.exec_driver_sql("INSERT INTO chunk_fts(chunk_id,document_id,content) SELECT ch.id,ch.document_id,ch.content FROM document_chunks ch WHERE NOT EXISTS(SELECT 1 FROM chunk_fts f WHERE f.chunk_id=ch.id)")
+    """Apply the real Alembic upgrade, then bootstrap the local advocate account."""
+    from alembic import command
+    from alembic.config import Config
+    root=Path(__file__).resolve().parents[1]
+    alembic_cfg=Config(str(root/"alembic.ini"))
+    alembic_cfg.set_main_option("script_location",str(root/"alembic"))
+    command.upgrade(alembic_cfg,"head")
     from sqlalchemy import select
     from app.models import User
     with SessionLocal() as session:
