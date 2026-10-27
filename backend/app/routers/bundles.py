@@ -55,8 +55,20 @@ def _items(s, bundle, user):
             pages = len(PdfReader(upload_path).pages)
         except Exception:
             pages = 0
+        page_start = x.page_start or 1
+        page_end = x.page_end or pages
+        if pages and (page_start < 1 or page_end < page_start or page_end > pages):
+            raise HTTPException(400, "Bundle item page range is outside the source document")
         out.append(
-            {"document_id": d.id, "title": d.title, "section": x.section, "order": x.order, "pages": pages}
+            {
+                "document_id": d.id,
+                "title": d.title,
+                "section": x.section,
+                "order": x.order,
+                "pages": max(0, page_end - page_start + 1),
+                "page_start": page_start,
+                "page_end": page_end,
+            }
         )
     return out
 
@@ -80,9 +92,18 @@ def set_items(rid: str, payload: Items, user=Depends(current_user)):
             )
             if not d:
                 raise HTTPException(404, "Document not found in this case")
-            incoming.append((d, x, i))
+            page_start, page_end = x.get("page_start"), x.get("page_end")
+            if page_start is not None and (type(page_start) is not int or page_start < 1):
+                raise HTTPException(400, "page_start must be a positive integer")
+            if page_end is not None and (type(page_end) is not int or page_end < 1):
+                raise HTTPException(400, "page_end must be a positive integer")
+            if d.page_count and (page_start or 1) > (page_end or d.page_count):
+                raise HTTPException(400, "Bundle item page range is outside the source document")
+            if d.page_count and (page_end or d.page_count) > d.page_count:
+                raise HTTPException(400, "Bundle item page range is outside the source document")
+            incoming.append((d, x, i, page_start, page_end))
         s.query(BundleItem).filter_by(bundle_id=rid, owner_id=user["id"]).delete(synchronize_session=False)
-        for d, x, i in incoming:
+        for d, x, i, page_start, page_end in incoming:
             s.add(
                 BundleItem(
                     id=str(uuid.uuid4()),
@@ -91,14 +112,22 @@ def set_items(rid: str, payload: Items, user=Depends(current_user)):
                     document_id=d.id,
                     section=x.get("section", "Documents"),
                     order=x.get("order", i),
+                    page_start=page_start,
+                    page_end=page_end,
                 )
             )
         b.status = "draft"
         record(s, user["id"], "update", "bundle_items", rid)
         return {
             "items": [
-                {"document_id": d.id, "order": x.get("order", i), "section": x.get("section", "Documents")}
-                for d, x, i in incoming
+                {
+                    "document_id": d.id,
+                    "order": x.get("order", i),
+                    "section": x.get("section", "Documents"),
+                    "page_start": page_start,
+                    "page_end": page_end,
+                }
+                for d, x, i, page_start, page_end in incoming
             ]
         }
 
@@ -164,6 +193,8 @@ def preview(rid: str, user=Depends(current_user)):
                 "start_page": offset,
                 "end_page": offset + x["pages"] - 1,
                 "pages": x["pages"],
+                "page_start": x["page_start"],
+                "page_end": x["page_end"],
             }
             sections.setdefault(section, []).append(entry)
             offset += x["pages"]
@@ -228,7 +259,11 @@ def generate(rid: str, user=Depends(current_user)):
                 reader = PdfReader(upload_path)
             except Exception:
                 continue
-            docs.append((x, reader))
+            source_start = x["page_start"]
+            source_end = x["page_end"]
+            if source_start < 1 or source_end < source_start or source_end > len(reader.pages):
+                raise HTTPException(400, "Bundle item page range is outside the source document")
+            docs.append((x, reader, source_start, source_end))
     front = []
     for key, title in (
         ("cover_page", "Cover Page"),
@@ -252,9 +287,14 @@ def generate(rid: str, user=Depends(current_user)):
                     sum(bool(settings.get(k)) for k in ("cover_page", "index", "synopsis", "list_of_dates"))
                     + 1
                 )
-                for x, reader in docs:
-                    end_page = page_number + len(reader.pages) - 1
-                    c.drawString(54, y, f"{x['section']} — {x['title']} (pp. {page_number}–{end_page})")
+                for x, _reader, source_start, source_end in docs:
+                    selected_pages = source_end - source_start + 1
+                    end_page = page_number + selected_pages - 1
+                    c.drawString(
+                        54,
+                        y,
+                        f"{x['section']} — {x['title']} (source pp. {source_start}–{source_end}; bundle pp. {page_number}–{end_page})",
+                    )
                     y -= 18
                     page_number = end_page + 1
                     if y < 60:
@@ -264,7 +304,7 @@ def generate(rid: str, user=Depends(current_user)):
             elif title == "Synopsis":
                 c.drawString(54, y, case_parties)
                 y -= 22
-                for x, _ in docs:
+                for x, _, _, _ in docs:
                     c.drawString(54, y, f"Included source: {x['title'][:82]}")
                     y -= 18
                 c.drawString(
@@ -297,13 +337,13 @@ def generate(rid: str, user=Depends(current_user)):
             page_index = page_start + offset
             writer.set_page_label(page_index, page_index, style="/D", prefix="Bundle ", start=page_index + 1)
     section_bookmarks = {}
-    for item, reader in docs:
+    for item, reader, source_start, source_end in docs:
         title = item["section"]
         if title not in section_bookmarks:
             section_bookmarks[title] = len(writer.pages)
         page_start = len(writer.pages)
         bookmarks.append((item["title"], page_start))
-        writer.append(reader)
+        writer.append(reader, pages=(source_start - 1, source_end))
         for offset, page in enumerate(writer.pages[page_start:]):
             if page.rotation:
                 page.transfer_rotation_to_content()
@@ -312,9 +352,9 @@ def generate(rid: str, user=Depends(current_user)):
                 page_start + offset,
                 style="/D",
                 prefix=f"Bundle {page_start + offset + 1} · {item['title']} source p. ",
-                start=offset + 1,
+                start=source_start + offset,
             )
-        source_pages += len(reader.pages)
+        source_pages += source_end - source_start + 1
     # Section bookmarks lead each section and document bookmarks identify originals.
     for title, page in section_bookmarks.items():
         writer.add_outline_item(title, page)
