@@ -100,7 +100,7 @@ def make_scanned_pdf(path):
         "The parties agree that disputes shall be referred",
         "to arbitration under the Arbitration and",
         "Conciliation Act, 1996. The seat shall be Mumbai.",
-        "The tribunal shall consist of one arbitrator.",
+        "A single neutral will hear the dispute.",
     ]
     for line in lines:
         draw.text((115, y), line, fill="black", font=font)
@@ -238,6 +238,19 @@ def main():
             )
             db.add(row)
             clients.append(row)
+        clients.append(
+            Client(
+                id=str(uuid.uuid4()),
+                owner_id=owner,
+                name="No Active Matters Ltd.",
+                organization="No Active Matters Ltd.",
+                email="legal@noactivematters.example",
+                status="active",
+                notes="Demo client with no cases.",
+                is_demo=True,
+            )
+        )
+        db.add(clients[-1])
         db.flush()
         pairs = [
             ("ABC Pvt. Ltd. vs. XYZ Ltd.", "SIAC"),
@@ -264,7 +277,7 @@ def main():
                 reference_number=f"ARB/2025/{i + 1:03}",
                 claimant=claimant,
                 respondent=respondent,
-                client_id=clients[i % len(clients)].id,
+                client_id=clients[i % 6].id,
                 forum=forum,
                 seat="Mumbai, India",
                 governing_law="Indian law",
@@ -272,7 +285,7 @@ def main():
                 dispute_category=("Construction" if i % 2 else "Commercial"),
                 claim_amount=1250000 + i * 50000,
                 claim_currency="INR",
-                status="pending" if i == 2 else "active",
+                status="closed" if i == len(pairs) - 1 else "pending" if i == 2 else "active",
                 description="Sample arbitration matter for local demo only.",
                 is_demo=True,
             )
@@ -343,6 +356,24 @@ def main():
                         is_demo=True,
                     )
                 )
+            if i == 1:
+                for offset in (14, 28):
+                    db.add(
+                        Hearing(
+                            id=str(uuid.uuid4()),
+                            owner_id=owner,
+                            case_id=cid,
+                            title="Future case conference",
+                            at=datetime.combine(
+                                date.today() + timedelta(days=offset), datetime.min.time()
+                            ).replace(hour=11),
+                            mode="online",
+                            forum=forum,
+                            status="scheduled",
+                            notes="Demo future hearing.",
+                            is_demo=True,
+                        )
+                    )
             for event_type, offset, detail in (
                 ("filed", -30 + i % 15, "Statement of claim filed"),
                 ("first_hearing", -5 + i % 10, "Procedural hearing"),
@@ -423,6 +454,38 @@ def main():
                     "The parties agree on project milestones, payment terms, notice obligations, and dispute resolution by arbitration.",
                 ],
                 True,
+            ),
+            (
+                "page-three-motion.pdf",
+                "Page Three Motion",
+                [
+                    "Routine procedural filing and statement of the parties.",
+                    "The contract describes notice and payment obligations.",
+                    "Unique page three clause: Sapphire Pavilion shall host the special procedural conference on the third calendar day.",
+                    "A procedural schedule shall be agreed by counsel.",
+                    "The filing confirms the parties reserve their rights.",
+                ],
+            ),
+            (
+                "near-duplicate-agreement-a.pdf",
+                "Near Duplicate Arbitration Agreement A",
+                [
+                    "The parties agree to arbitration seated in Mumbai, India under the applicable agreement. Aster notice applies.",
+                ],
+            ),
+            (
+                "near-duplicate-agreement-b.pdf",
+                "Near Duplicate Arbitration Agreement B",
+                [
+                    "The parties agree to arbitration seated in Mumbai, India under the applicable agreement. Birch notice applies.",
+                ],
+            ),
+            (
+                "unique-term-evidence.pdf",
+                "Unique Term Evidence",
+                [
+                    "ZXQORBITKEY appears only in this document and identifies a local demonstration record.",
+                ],
             ),
         ]
         files = []
