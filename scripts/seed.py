@@ -115,6 +115,172 @@ def make_scanned_pdf(path):
     c.save()
 
 
+def seed_junior_workspace():
+    """Create a researcher-owned demo matter for real cross-account checks."""
+    settings = get_settings()
+    with session_scope() as db:
+        junior = db.scalar(select(User).where(User.email == "researcher@tantara.local"))
+        if junior is None:
+            junior = User(
+                id=str(uuid.uuid4()),
+                name="Mira Shah",
+                email="researcher@tantara.local",
+                password_hash=hash_password(settings.tantara_admin_password),
+                role="researcher",
+                avatar_initials="MS",
+                title="Researcher",
+            )
+            db.add(junior)
+            db.flush()
+        owner = junior.id
+        if db.scalar(select(Client.id).where(Client.owner_id == owner, Client.is_demo.is_(True))):
+            return
+        client = Client(
+            id=str(uuid.uuid4()),
+            owner_id=owner,
+            name="Junior Demo Client",
+            organization="Junior Demo",
+            email="junior-client@example.local",
+            status="active",
+            notes="Isolated demo client",
+            is_demo=True,
+        )
+        db.add(client)
+        db.flush()
+        case = Case(
+            id=str(uuid.uuid4()),
+            owner_id=owner,
+            client_id=client.id,
+            title="Junior Demo Matter",
+            reference_number="ARB/JR/001",
+            claimant="Junior Client",
+            respondent="Sample Respondent",
+            forum="SIAC",
+            seat="Singapore",
+            status="active",
+            description="Researcher-owned demo case",
+            is_demo=True,
+        )
+        bundle = FilingBundle(
+            id=str(uuid.uuid4()),
+            owner_id=owner,
+            case_id=case.id,
+            name="Junior Demo Bundle",
+            settings={},
+            status="draft",
+            is_demo=True,
+        )
+        draft = Draft(
+            id=str(uuid.uuid4()),
+            owner_id=owner,
+            case_id=case.id,
+            title="Junior Research Note",
+            document_type="Research Note",
+            status="draft",
+            content_markdown="# Junior research note\n",
+            is_demo=True,
+        )
+        post = CommunityPost(
+            id=str(uuid.uuid4()),
+            owner_id=owner,
+            title="Junior demo discussion",
+            body="A researcher-owned sample discussion.",
+            kind="discussion",
+            tags=["commercial"],
+            case_ref=case.id,
+            is_demo=True,
+        )
+        db.add_all(
+            [
+                case,
+                bundle,
+                draft,
+                post,
+                Task(
+                    id=str(uuid.uuid4()),
+                    owner_id=owner,
+                    case_id=case.id,
+                    title="Junior demo research task",
+                    due_at=datetime.combine(date.today() + timedelta(days=5), datetime.min.time()),
+                    status="todo",
+                    priority="medium",
+                    is_demo=True,
+                ),
+                Hearing(
+                    id=str(uuid.uuid4()),
+                    owner_id=owner,
+                    case_id=case.id,
+                    title="Junior demo hearing",
+                    at=datetime.combine(date.today() + timedelta(days=10), datetime.min.time()).replace(
+                        hour=10
+                    ),
+                    status="scheduled",
+                    mode="online",
+                    is_demo=True,
+                ),
+            ]
+        )
+        db.flush()
+        fixture = settings.data_dir / "demo-fixtures" / "junior-demo.pdf"
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        make_pdf(
+            fixture,
+            "Junior Demo Evidence",
+            ["JuniorEvidenceMarker proves this document belongs to the researcher demo workspace."],
+        )
+        blob = fixture.read_bytes()
+        document_id, job_id = str(uuid.uuid4()), str(uuid.uuid4())
+        stored = __import__("app.ingestion", fromlist=["DocumentStorage"]).DocumentStorage().save(blob)
+        doc = Document(
+            id=document_id,
+            owner_id=owner,
+            case_id=case.id,
+            title="Junior Demo Evidence",
+            document_type="Research Note",
+            jurisdiction="India",
+            filename="junior-demo.pdf",
+            stored_path=stored,
+            content_hash=__import__("hashlib").sha256(blob).hexdigest(),
+            status="queued",
+            is_demo=True,
+        )
+        db.add(doc)
+        db.flush()
+        db.add_all(
+            [
+                IngestionJob(
+                    id=job_id,
+                    owner_id=owner,
+                    document_id=document_id,
+                    status="queued",
+                    steps=[],
+                    warnings=[],
+                    is_demo=True,
+                ),
+                BundleItem(
+                    id=str(uuid.uuid4()),
+                    owner_id=owner,
+                    bundle_id=bundle.id,
+                    document_id=document_id,
+                    section="Junior Evidence",
+                    order=0,
+                    is_demo=True,
+                ),
+            ]
+        )
+    process_job(document_id, job_id, owner, blob, "junior-demo.pdf")
+    with session_scope() as db:
+        db.add(
+            CommunityReply(
+                id=str(uuid.uuid4()),
+                owner_id=owner,
+                post_id=post.id,
+                body="Junior workspace reply.",
+                is_demo=True,
+            )
+        )
+
+
 def main():
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
@@ -196,7 +362,9 @@ def main():
             )
             return
         if db.scalar(select(func.count(Case.id)).where(Case.owner_id == owner, Case.is_demo.is_(True))):
-            print("Demo workspace already seeded.")
+            db.rollback()
+            seed_junior_workspace()
+            print("Demo workspace already seeded; researcher workspace reconciled.")
             return
         users = []
         for email, name, role in (
@@ -451,7 +619,7 @@ def main():
                 "Construction Contract",
                 [
                     "Sample construction contract",
-                    "The parties agree on project milestones, payment terms, notice obligations, and dispute resolution by arbitration.",
+                    "The parties agree on project milestones, payment terms, notice obligations, and dispute resolution by arbitration. The force majeure clause addresses supply chain delay, extraordinary interruption, and resulting damages.",
                 ],
                 True,
             ),
@@ -625,6 +793,7 @@ def main():
         session_id = research.id
     for did, jid, filename, blob in docs:
         process_job(did, jid, owner, blob, filename)
+    seed_junior_workspace()
     with session_scope() as db:
         for did, _jid, filename, _blob in docs:
             fields = (
