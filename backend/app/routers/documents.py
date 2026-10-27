@@ -507,6 +507,8 @@ def run_read(did: str, user=Depends(current_user)):
             )
         record(s, user["id"], "generate", "ai_read", did)
     return {
+        "status": "local_extraction",
+        "model": None,
         "fields": {
             k: {
                 "value": v,
