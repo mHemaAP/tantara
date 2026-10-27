@@ -273,6 +273,7 @@ def ask(req: Ask, user=Depends(current_user)):
     except Exception:
         return {
             "status": "embedding_unavailable",
+            "meta": {"retrieval_status": "embedding_unavailable"},
             "answer": "Local evidence search is unavailable.",
             "citations": [],
             "follow_ups": [],
@@ -284,7 +285,7 @@ def ask(req: Ask, user=Depends(current_user)):
     sid, mid = req.session_id or str(uuid.uuid4()), str(uuid.uuid4())
     if not hits:
         answer = "There is insufficient evidence in the indexed documents to answer this question."
-        status = "no_evidence"
+        status = retrieval_status if retrieval_status == "embedding_unavailable" else "no_evidence"
     else:
         with SessionLocal() as s:
             preference = s.scalar(
@@ -362,6 +363,9 @@ def ask(req: Ask, user=Depends(current_user)):
         record(s, user["id"], "generate", "ai_answer", mid)
     return {
         "status": status,
+        "meta": {
+            "retrieval_status": retrieval_status,
+        },
         "answer": answer,
         "citations": citations,
         "follow_ups": [],
