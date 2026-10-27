@@ -65,6 +65,21 @@ def test_all_protected_openapi_operations_reject_anonymous_requests(client):
         assert response.status_code == 401, (method, path, response.status_code, response.text)
 
 
+def test_generated_method_inventory_covers_every_openapi_operation():
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    script = Path(__file__).resolve().parents[2] / "scripts" / "write_route_inventory.py"
+    spec = spec_from_file_location("route_inventory", script)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    inventory = Path(__file__).resolve().parents[2] / "docs" / "BACKEND_ROUTES.txt"
+    assert inventory.read_text() == module.render_inventory()
+    assert sum(1 for line in inventory.read_text().splitlines() if line and not line.startswith("#")) == 123
+    matrix = Path(__file__).resolve().parents[2] / "docs" / "TEST_MATRIX.md"
+    generated_section = matrix.read_text().split("## Method-level expansion\n", 1)[1]
+    assert generated_section == module.render_method_matrix().split("## Method-level expansion\n", 1)[1]
+
+
 def test_all_openapi_mutation_bodies_return_validation_envelope(client):
     schema = _openapi()
     owner = _auth(client)
