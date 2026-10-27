@@ -37,13 +37,43 @@ export const casesApi = {
   overview: (id: string) => api.get<unknown>(`/cases/${id}/overview`),
   events: (id: string) => api.get<Page<any>>(`/cases/${id}/events`),
   participants: (id: string) => api.get<unknown>(`/cases/${id}/overview`),
+  addParticipant: (id: string, body: unknown) =>
+    api.post<unknown>(`/cases/${id}/participants`, body),
+  updateParticipant: (id: string, pid: string, body: unknown) =>
+    api.patch<unknown>(`/cases/${id}/participants/${pid}`, body),
+  removeParticipant: (id: string, pid: string) =>
+    api.del<void>(`/cases/${id}/participants/${pid}`),
+  addEvent: (id: string, body: unknown) =>
+    api.post<unknown>(`/cases/${id}/events`, body),
+  updateEvent: (id: string, eid: string, body: unknown) =>
+    api.patch<unknown>(`/cases/${id}/events/${eid}`, body),
+  removeEvent: (id: string, eid: string) =>
+    api.del<void>(`/cases/${id}/events/${eid}`),
+  addHearing: (body: unknown) => api.post<unknown>("/hearings", body),
+  updateHearing: (hid: string, body: unknown) =>
+    api.patch<unknown>(`/hearings/${hid}`, body),
+  removeHearing: (hid: string) => api.del<void>(`/hearings/${hid}`),
+  addNote: (body: unknown) => api.post<unknown>("/notes", body),
+  updateNote: (nid: string, body: unknown) =>
+    api.patch<unknown>(`/notes/${nid}`, body),
+  removeNote: (nid: string) => api.del<void>(`/notes/${nid}`),
   hearings: (id: string) =>
     api.get<Page<any>>(`/hearings?case_id=${encodeURIComponent(id)}`),
+  hearingsForList: () =>
+    api.get<Page<{ case_id?: string; at?: string }>>(
+      "/hearings?page=1&page_size=100&sort=at",
+    ),
   tasks: (id: string) =>
     api.get<Page<any>>(`/tasks?case_id=${encodeURIComponent(id)}`),
   notes: (id: string) =>
     api.get<Page<any>>(`/notes?case_id=${encodeURIComponent(id)}`),
   strategy: (id: string) => api.get<unknown>(`/cases/${id}/strategy`),
-  activity: (id: string) =>
-    api.get<Page<any>>(`/audit?case_id=${encodeURIComponent(id)}`),
+  documents: (id: string) =>
+    api.get<Page<any>>(
+      `/documents?case_id=${encodeURIComponent(id)}&page_size=100`,
+    ),
+  drafts: (id: string) =>
+    api.get<Page<any>>(
+      `/drafts?case_id=${encodeURIComponent(id)}&page_size=100`,
+    ),
 };
