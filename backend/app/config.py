@@ -1,13 +1,19 @@
 """Environment configuration; local providers are the default."""
+
 from functools import lru_cache
 from pathlib import Path
+
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
 class Settings(BaseSettings):
     database_url: str = f"sqlite:///{ROOT / 'data' / 'tantara.db'}"
-    data_dir: Path = ROOT / "data"
+    data_dir: Path = Field(
+        default=ROOT / "data", validation_alias=AliasChoices("TANTARA_DATA_DIR", "DATA_DIR")
+    )
     ai_provider: str = "local"
     local_llm_base_url: str = "http://192.168.0.101:8080/v1"
     local_llm_model: str = "MiniCPM5-2B"
@@ -29,7 +35,10 @@ class Settings(BaseSettings):
     default_top_k: int = 5
     tantara_admin_password: str = "tantara-local"
     cors_origins: str = "http://localhost:3010"
-    model_config = SettingsConfigDict(env_file=(str(ROOT / ".env"), str(ROOT / "env_example")), extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(str(ROOT / ".env"), str(ROOT / "env_example")), extra="ignore"
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
