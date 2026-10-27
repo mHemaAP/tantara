@@ -1,5 +1,5 @@
 """Hybrid retrieval: owner-scoped SQLite BM25 plus persistent FAISS, fused by RRF."""
-from sqlalchemy import select,text
+from sqlalchemy import select,text,re
 from app.db import SessionLocal
 from app.models import Document,DocumentChunk
 from app.services.vector_store import store
@@ -15,7 +15,7 @@ class RetrievalService:
         with SessionLocal() as session:
             stmt=select(DocumentChunk.id,DocumentChunk.document_id,DocumentChunk.content,DocumentChunk.page_number,Document.title,Document.document_type,Document.jurisdiction).join(Document,Document.id==DocumentChunk.document_id).where(*clauses)
             rows=session.execute(stmt).all();allowed={r.id:r for r in rows}
-            where="d.owner_id=:owner";params={"owner":owner_id,"query":question}
+            where="d.owner_id=:owner";tokens=re.findall(r"[\w-]{2,}",question);fts_query=" OR ".join('"'+t.replace('"','""')+'"' for t in tokens) or '""';params={"owner":owner_id,"query":fts_query}
             if case_id:where+=" AND d.case_id=:case_id";params["case_id"]=case_id
             if jurisdiction:where+=" AND d.jurisdiction=:jurisdiction";params["jurisdiction"]=jurisdiction
             if document_types:
@@ -23,8 +23,9 @@ class RetrievalService:
             try:
                 lexical=session.execute(text(f"SELECT f.chunk_id FROM chunk_fts f JOIN documents d ON d.id=f.document_id WHERE {where} AND chunk_fts MATCH :query ORDER BY bm25(chunk_fts) LIMIT 100"),params).scalars().all()
             except Exception:lexical=[]
-        semantic=store().search(query_vector,min(100,len(allowed)))
-        return fuse_rankings(allowed,lexical,[cid for cid,_ in semantic],top_k)
+        semantic=store().search(query_vector,store().count())
+        semantic_ids=[cid for cid,_ in semantic if cid in allowed]
+        return fuse_rankings(allowed,lexical,semantic_ids,top_k)
 
 def fuse_rankings(rows,lexical_ids,semantic_ids,top_k=5,k=60):
     """Return evidence-backed rows with RRF scores; never invent a score."""
