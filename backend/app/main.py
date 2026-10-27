@@ -62,6 +62,8 @@ from app.routers.strategy import router as strategy_router
 app.include_router(strategy_router)
 from app.routers.documents import router as document_review_router
 app.include_router(document_review_router)
+from app.routers.ai import router as ai_router
+app.include_router(ai_router)
 class Payload(BaseModel):model_config=ConfigDict(extra="allow")
 class Ask(Payload):question:str=Field(min_length=3,max_length=8000);top_k:int=Field(5,ge=1,le=30);case_id:str|None=None;collection_id:str|None=None;jurisdiction:str|None=None;document_types:list[str]|None=None
 
