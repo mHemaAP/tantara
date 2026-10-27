@@ -9,7 +9,7 @@ from app.embeddings import embed_query
 from app.models import Document, DocumentChunk
 from app.services.vector_store import store
 
-MIN_SEMANTIC_SIMILARITY = 0.25
+MIN_SEMANTIC_SIMILARITY = 0.35
 
 
 class RetrievalService:
@@ -110,14 +110,32 @@ class RetrievalService:
         if expected_vector_ids and expected_vector_ids != indexed_ids:
             status = "embedding_unavailable"
         semantic = vector_store.search(query_vector, vector_store.count()) if query_vector is not None else []
-        semantic_ids = [
-            cid for cid, similarity in semantic if cid in allowed and similarity >= MIN_SEMANTIC_SIMILARITY
-        ]
-        return fuse_rankings(allowed, lexical, semantic_ids, top_k), status
+        semantic_scores = {cid: similarity for cid, similarity in semantic if cid in allowed}
+        semantic_ids = [cid for cid in semantic_scores]
+        return (
+            fuse_rankings(
+                allowed,
+                lexical,
+                semantic_ids,
+                top_k,
+                semantic_scores=semantic_scores,
+                min_similarity=MIN_SEMANTIC_SIMILARITY,
+            ),
+            status,
+        )
 
 
-def fuse_rankings(rows, lexical_ids, semantic_ids, top_k=5, k=60):
-    """Return evidence-backed rows with RRF scores; never invent a score."""
+def fuse_rankings(
+    rows,
+    lexical_ids,
+    semantic_ids,
+    top_k=5,
+    k=60,
+    *,
+    semantic_scores=None,
+    min_similarity=MIN_SEMANTIC_SIMILARITY,
+):
+    """Fuse first, then discard semantic-only candidates below the relevance floor."""
     lrank = {cid: i for i, cid in enumerate(lexical_ids)}
     vrank = {cid: i for i, cid in enumerate(semantic_ids)}
     ranked = []
@@ -128,6 +146,11 @@ def fuse_rankings(rows, lexical_ids, semantic_ids, top_k=5, k=60):
         if score:
             ranked.append((score, row))
     ranked.sort(key=lambda x: x[0], reverse=True)
+    fused = [
+        (score, row)
+        for score, row in ranked
+        if row.id in lrank or semantic_scores is None or semantic_scores.get(row.id, 0) >= min_similarity
+    ]
     return [
         {
             "document_id": r.document_id,
@@ -141,7 +164,7 @@ def fuse_rankings(rows, lexical_ids, semantic_ids, top_k=5, k=60):
             "source_type": r.document_type,
             "jurisdiction": r.jurisdiction,
         }
-        for score, r in ranked[:top_k]
+        for score, r in fused[:top_k]
     ]
 
 
