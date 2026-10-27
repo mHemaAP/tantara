@@ -29,11 +29,20 @@ export default function TasksPage() {
   const [show, setShow] = useState(false);
   const [title, setTitle] = useState("");
   const [due, setDue] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [status, setStatus] = useState("todo");
+  const [notes, setNotes] = useState("");
+  const [caseId, setCaseId] = useState("");
+  const [editing, setEditing] = useState<Task | null>(null);
   const [now] = useState(() => new Date());
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["tasks"],
     queryFn: () => endpoints.tasks.list("?page_size=100"),
+  });
+  const casesQuery = useQuery({
+    queryKey: ["task-case-options"],
+    queryFn: () => endpoints.cases("?page_size=100"),
   });
   const [preview, setPreview] = useState(false);
   useEffect(
@@ -62,6 +71,16 @@ export default function TasksPage() {
     }
   };
   const items: Task[] = (q.data?.items || []) as Task[];
+  const openTask = (task?: Task) => {
+    setEditing(task || null);
+    setTitle(task?.title || "");
+    setDue(task?.due_at?.slice(0, 16) || "");
+    setPriority(task?.priority || "medium");
+    setStatus(task?.status || "todo");
+    setNotes(task?.notes || "");
+    setCaseId(task?.case_id || "");
+    setShow(true);
+  };
   return (
     <section className="matter-wrap">
       <div className="matter-head">
@@ -75,7 +94,7 @@ export default function TasksPage() {
           title={
             preview ? "Changes are disabled in read-only preview" : undefined
           }
-          onClick={() => setShow(true)}
+          onClick={() => openTask()}
         >
           ＋ New task
         </button>
@@ -114,7 +133,18 @@ export default function TasksPage() {
                         onChange={() => void complete(task)}
                       />
                       <div className="task-row-copy">
-                        <strong>{task.title}</strong>
+                        <button
+                          className="task-edit-title"
+                          disabled={preview}
+                          title={
+                            preview
+                              ? "Changes are disabled in read-only preview"
+                              : "Edit task"
+                          }
+                          onClick={() => openTask(task)}
+                        >
+                          {task.title}
+                        </button>
                         <small>
                           {task.due_at
                             ? new Intl.DateTimeFormat("en-IN", {
@@ -150,7 +180,7 @@ export default function TasksPage() {
         <Dialog.Portal>
           <Dialog.Overlay className="matter-dialog-overlay" />
           <Dialog.Content className="matter-dialog">
-            <Dialog.Title>New task</Dialog.Title>
+            <Dialog.Title>{editing ? "Edit task" : "New task"}</Dialog.Title>
             <Dialog.Description>
               Create a task for your casework.
             </Dialog.Description>
@@ -163,14 +193,19 @@ export default function TasksPage() {
                 )
                   return;
                 try {
-                  await endpoints.tasks.create({
+                  const payload = {
                     title,
                     due_at: due || null,
-                    status: "open",
-                  });
+                    status,
+                    priority,
+                    notes,
+                    case_id: caseId || null,
+                  };
+                  if (editing)
+                    await endpoints.tasks.update(editing.id, payload);
+                  else await endpoints.tasks.create(payload);
                   setShow(false);
-                  setTitle("");
-                  setDue("");
+                  setEditing(null);
                   await q.refetch();
                 } catch (err) {
                   window.alert(
@@ -197,6 +232,55 @@ export default function TasksPage() {
                   type="datetime-local"
                   value={due}
                   onChange={(e) => setDue(e.target.value)}
+                />
+              </label>
+              <label>
+                Priority
+                <select
+                  aria-label="Task priority"
+                  value={priority}
+                  onChange={(event) => setPriority(event.target.value)}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label>
+                Status
+                <select
+                  aria-label="Task status"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value)}
+                >
+                  <option value="todo">To do</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="done">Done</option>
+                </select>
+              </label>
+              <label>
+                Linked case
+                <select
+                  aria-label="Linked case"
+                  value={caseId}
+                  onChange={(event) => setCaseId(event.target.value)}
+                >
+                  <option value="">No case</option>
+                  {casesQuery.data?.items.map(
+                    (item: { id: string; title: string }) => (
+                      <option key={item.id} value={item.id}>
+                        {item.title}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label>
+                Notes
+                <textarea
+                  aria-label="Task notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
                 />
               </label>
               <div className="matter-dialog-actions">
