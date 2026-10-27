@@ -49,3 +49,22 @@ During grounded-answer runs, `/ai/status` reported local model `MiniCPM5-2B`, en
 - Captures: `frontend/docs/screenshots/research-desktop.png`, `research-answer-citations.png`, `research-model-unavailable.png`, `research-mobile.png`
 
 `frontend/next.config.ts` already had `devIndicators: false` in the starting state, so no edit was needed there. The shell/nav was left to integration.
+
+## Commits
+
+One file per commit, on `luna/frontend-research`:
+
+- `cb2df32` Research Desk route
+- `8384715` Research library handoff
+- `1173b76` Research styles
+- `2ab26c7` Research API wrappers
+- `961a7c2` Citation URL helper
+- `5939ed4` Research E2E coverage
+- `44ac508` Playwright port config
+- `7f3cabb` pnpm resolver build permission
+- `c3656fb` desktop capture
+- `2cf0000` answer/citation capture
+- `e327b2a` model-unavailable capture
+- `2806c6e` mobile capture
+- `d7fcded` implementation report
+- `REPORT-COMMITS` report commit list update
