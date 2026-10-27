@@ -7,6 +7,12 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CORS_ORIGINS = ",".join(
+    [
+        *(f"http://localhost:{port}" for port in range(3000, 3021)),
+        *(f"http://127.0.0.1:{port}" for port in range(3000, 3021)),
+    ]
+)
 
 
 class Settings(BaseSettings):
@@ -34,7 +40,10 @@ class Settings(BaseSettings):
     chunk_overlap_chars: int = 250
     default_top_k: int = 5
     tantara_admin_password: str = "tantara-local"
-    cors_origins: str = "http://localhost:3010"
+    cors_origins: str = Field(
+        default=DEFAULT_CORS_ORIGINS,
+        validation_alias=AliasChoices("CORS_ORIGINS", "TANTARA_CORS_ORIGINS"),
+    )
     model_config = SettingsConfigDict(
         env_file=(str(ROOT / ".env"), str(ROOT / "env_example")), extra="ignore"
     )
