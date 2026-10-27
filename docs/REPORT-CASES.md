@@ -78,12 +78,12 @@
 - `dc38a7d` — route smoke coverage
 - `c1608aa` — real API workflow test
 - `620dbac`, `1fabb28` — screenshot helper and CORS proxy
-- `8872a93` — cases desktop screenshot
-- `8630a2b` — cases mobile screenshot
-- `77cc907` — case detail screenshot
-- `b42678f` — clients screenshot
-- `b472e12` — tasks screenshot
-- `22cd744` — calendar desktop screenshot
-- `3ec45ac` — calendar mobile screenshot
-- `cf9291b` — dashboard screenshot
+- `1cde17e` — cases desktop screenshot
+- `e5731db` — cases mobile screenshot
+- `46720ee` — case detail screenshot
+- `1a149c4` — clients screenshot
+- `e807449` — tasks screenshot
+- `fb92ebb` — calendar desktop screenshot
+- `55593ac` — calendar mobile screenshot
+- `d7bfcaa` — dashboard screenshot
 - `f152d7a` — this report
