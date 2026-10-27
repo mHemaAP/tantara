@@ -1,23 +1,24 @@
 """Normalized SQLAlchemy 2.x domain schema. Vectors live in FAISS; BLOB is rebuild-only."""
-from datetime import datetime
+from datetime import datetime,timezone
 from sqlalchemy import (Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index,
                         Integer, LargeBinary, Numeric, String, Text, UniqueConstraint, JSON)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase): pass
+def now_utc():return datetime.now(timezone.utc).replace(tzinfo=None)
 
 def timestamps():
     return {
-        "created_at": mapped_column(DateTime, default=datetime.utcnow, nullable=False),
-        "updated_at": mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False),
+        "created_at": mapped_column(DateTime, default=now_utc, nullable=False),
+        "updated_at": mapped_column(DateTime, default=now_utc, onupdate=now_utc, nullable=False),
     }
 
 class Owned:
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc, nullable=False)
 
 class User(Base):
     __tablename__="users"
@@ -27,7 +28,7 @@ class User(Base):
     password_hash: Mapped[str]=mapped_column(String(512),nullable=False)
     role: Mapped[str]=mapped_column(String(24),nullable=False,default="advocate")
     avatar_initials: Mapped[str|None]=mapped_column(String(8)); title: Mapped[str|None]=mapped_column(String(160))
-    created_at: Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,nullable=False)
+    created_at: Mapped[datetime]=mapped_column(DateTime,default=now_utc,nullable=False)
     __table_args__=(CheckConstraint("role IN ('advocate','researcher','staff','admin')",name="ck_users_role"),)
 class Role(Base):
     __tablename__="roles"
@@ -37,7 +38,7 @@ class Session(Base):
     __tablename__="sessions"
     id: Mapped[str]=mapped_column(String(36),primary_key=True); user_id: Mapped[str]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),index=True)
     expires_at: Mapped[datetime]=mapped_column(DateTime,nullable=False); revoked_at: Mapped[datetime|None]=mapped_column(DateTime)
-    created_at: Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,nullable=False)
+    created_at: Mapped[datetime]=mapped_column(DateTime,default=now_utc,nullable=False)
 class Client(Owned,Base):
     __tablename__="clients"
     name: Mapped[str]=mapped_column(String(240),nullable=False); organization: Mapped[str|None]=mapped_column(String(240)); email: Mapped[str|None]=mapped_column(String(320)); phone: Mapped[str|None]=mapped_column(String(80)); address: Mapped[str|None]=mapped_column(Text); status: Mapped[str]=mapped_column(String(24),default="active"); notes: Mapped[str|None]=mapped_column(Text)
@@ -131,4 +132,4 @@ class ExtractionField(Owned,Base):
     __table_args__=(CheckConstraint("provenance IN ('verified','extracted_reviewed','ai_suggested')",name="ck_extraction_provenance"),)
 class AIConversation(Base):
     __tablename__="ai_conversations"
-    id: Mapped[str]=mapped_column(String(36),primary_key=True); user_id: Mapped[str]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),index=True); title: Mapped[str]=mapped_column(String(300),default=""); created_at: Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,nullable=False)
+    id: Mapped[str]=mapped_column(String(36),primary_key=True); user_id: Mapped[str]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),index=True); title: Mapped[str]=mapped_column(String(300),default=""); created_at: Mapped[datetime]=mapped_column(DateTime,default=now_utc,nullable=False)
