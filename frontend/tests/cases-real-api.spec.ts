@@ -259,6 +259,159 @@ test("calendar week view renders seven distinct dates", async ({
   ).toHaveLength(7);
 });
 
+test("mobile cases keep title, hearing and status inside the viewport", async ({
+  page,
+  request,
+}) => {
+  test.skip(!(await apiReady()), "TANTARA API is not running");
+  const login = await request.post(`${base}/auth/login`, {
+    data: {
+      email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+      password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+    },
+  });
+  const token = (await login.json()).access_token;
+  await page.addInitScript((value) => {
+    localStorage.setItem("tantara_token", value as string);
+    document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+  }, token);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/cases");
+  const card = page.locator(".matter-mobile-case").first();
+  await expect(card).toBeVisible();
+  await expect(card.locator(".status-pill")).toBeVisible();
+  await expect(card).toContainText("Next hearing:");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
+  const box = await card.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+});
+
+test("calendar mobile defaults to readable agenda view", async ({
+  page,
+  request,
+}) => {
+  test.skip(!(await apiReady()), "TANTARA API is not running");
+  const login = await request.post(`${base}/auth/login`, {
+    data: {
+      email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+      password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+    },
+  });
+  const token = (await login.json()).access_token;
+  await page.addInitScript((value) => {
+    localStorage.setItem("tantara_token", value as string);
+    document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+  }, token);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/calendar");
+  await expect(page.getByRole("button", { name: "Agenda" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    page.locator("[data-calendar-agenda-settled='true']"),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
+  expect(
+    await page
+      .locator(".calendar-agenda-row span")
+      .evaluateAll((nodes) =>
+        nodes.every(
+          (node) =>
+            getComputedStyle(node).overflowWrap !== "anywhere" &&
+            getComputedStyle(node).wordBreak !== "break-all",
+        ),
+      ),
+  ).toBeTruthy();
+});
+
+test("task Retry recovers when the API responds again", async ({
+  page,
+  request,
+}) => {
+  test.skip(!(await apiReady()), "TANTARA API is not running");
+  const login = await request.post(`${base}/auth/login`, {
+    data: {
+      email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+      password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+    },
+  });
+  const token = (await login.json()).access_token;
+  await page.addInitScript((value) => {
+    localStorage.setItem("tantara_token", value as string);
+    document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+    const originalFetch = window.fetch.bind(window);
+    let failuresRemaining = 2;
+    window.fetch = (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (
+        failuresRemaining > 0 &&
+        new URL(url, location.href).pathname.endsWith("/api/v1/tasks")
+      ) {
+        failuresRemaining -= 1;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ error: { message: "temporary failure" } }),
+            { status: 503, headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      return originalFetch(input, init);
+    };
+  }, token);
+  await page.goto("/tasks");
+  await expect(page.locator(".matter-error")).toBeVisible();
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.locator(".task-groups")).toBeVisible();
+  await expect(page.locator(".matter-error")).toHaveCount(0);
+});
+
+test("case, calendar and client routes each expose one active navigation link", async ({
+  page,
+  request,
+}) => {
+  test.skip(!(await apiReady()), "TANTARA API is not running");
+  const login = await request.post(`${base}/auth/login`, {
+    data: {
+      email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+      password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+    },
+  });
+  const token = (await login.json()).access_token;
+  const listing = await request.get(`${base}/cases?page_size=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const caseId = (await listing.json()).items[0].id as string;
+  await page.addInitScript((value) => {
+    localStorage.setItem("tantara_token", value as string);
+    document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+  }, token);
+  for (const route of [
+    "/cases",
+    `/cases/${caseId}`,
+    "/clients",
+    "/tasks",
+    "/calendar",
+  ]) {
+    await page.goto(route);
+    await expect(page.locator('.nav a[aria-current="page"]')).toHaveCount(1);
+  }
+});
+
 test("preview case form cannot submit a mutation", async ({
   page,
   request,
