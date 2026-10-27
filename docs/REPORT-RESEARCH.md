@@ -18,6 +18,7 @@ During grounded-answer runs, `/ai/status` reported local model `MiniCPM5-2B`, en
 
 ## Checks run
 
+- Scoped Prettier on the Research files and Playwright config — passed. The repository `pnpm format` script formats all `src/**/*` and would touch files outside this lane, so it was not run.
 - `pnpm lint` — passed, no ESLint warnings or errors.
 - `pnpm typecheck` — passed.
 - `pnpm build` — passed after a clean rerun. An earlier build overlapped a dev server and failed while `.next` was being changed; the final isolated build succeeded.
