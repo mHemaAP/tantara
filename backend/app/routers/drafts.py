@@ -185,6 +185,12 @@ def generate(payload: Generate, user=Depends(current_user)):
             else "The local language model was unavailable or returned an unverifiable citation."
         )
         content = f"# {title}\n\n**Case:** {case_info['title']}\n**Parties:** {parties}\n\n## Background\n\n[REVIEW: {reason} Add a verified chronology and cite selected source documents.]\n\n## Submissions\n\n[REVIEW: Add arguments supported by verified authorities and evidence.]\n\n## Relief sought\n\n[REVIEW: Confirm requested relief with counsel.]\n"
+    if evidence:
+        source_list = "\n".join(
+            f"- [{item['chunk_id']}] {item['document_title']}, page {item['page_number']}"
+            for item in evidence
+        )
+        content += f"\n\n## Source excerpts\n\n{source_list}\n"
     did, vid = str(uuid.uuid4()), str(uuid.uuid4())
     with session_scope() as s:
         d = Draft(
