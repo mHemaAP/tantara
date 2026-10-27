@@ -3,7 +3,7 @@
 
 import argparse
 import io
-import os
+import shutil
 import sys
 import uuid
 from datetime import date, datetime, timedelta
@@ -11,7 +11,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-os.chdir(ROOT / "backend")
 from app.config import get_settings
 from app.db import init_db, session_scope
 from app.models import (
@@ -19,13 +18,18 @@ from app.models import (
     AppPreference,
     AuditEvent,
     BundleItem,
+    BundleSection,
     Case,
     CaseEvent,
     CaseParticipant,
+    Citation,
     Client,
     CommunityPost,
     CommunityReply,
+    CommunityTag,
     Document,
+    DocumentChunk,
+    DocumentPage,
     Draft,
     DraftVersion,
     ExtractionField,
@@ -36,26 +40,33 @@ from app.models import (
     ResearchMessage,
     ResearchSession,
     SavedItem,
+    Session,
     Task,
     User,
 )
 from app.routers.documents import process_job
 from app.security import hash_password
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 
-def make_pdf(path, title, paragraphs):
+def make_pdf(path, title, paragraphs, blank_last=False):
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
 
     c = canvas.Canvas(str(path), pagesize=letter)
     c.setTitle(title)
-    y = 740
-    c.setFont("Helvetica-Bold", 15)
-    c.drawString(52, y, title)
-    y -= 35
-    c.setFont("Helvetica", 11)
-    for paragraph in paragraphs:
+    for page_number in range(1, 6):
+        if blank_last and page_number == 5:
+            c.setFillColorRGB(1, 1, 1)
+            c.rect(0, 0, 1, 1, fill=1, stroke=0)
+            c.showPage()
+            continue
+        y = 740
+        c.setFont("Helvetica-Bold", 15)
+        c.drawString(52, y, f"{title} — Page {page_number}")
+        y -= 35
+        c.setFont("Helvetica", 11)
+        paragraph = paragraphs[(page_number - 1) % len(paragraphs)]
         words = paragraph.split()
         line = ""
         for word in words:
@@ -69,10 +80,7 @@ def make_pdf(path, title, paragraphs):
         if line:
             c.drawString(52, y, line)
             y -= 22
-        if y < 65:
-            c.showPage()
-            y = 740
-            c.setFont("Helvetica", 11)
+        c.showPage()
     c.save()
 
 
@@ -101,7 +109,9 @@ def make_scanned_pdf(path):
     img.save(buf, format="PNG")
     buf.seek(0)
     c = canvas.Canvas(str(path), pagesize=letter)
-    c.drawImage(ImageReader(buf), 0, 0, width=612, height=792)
+    for _ in range(5):
+        c.drawImage(ImageReader(buf), 0, 0, width=612, height=792)
+        c.showPage()
     c.save()
 
 
@@ -132,6 +142,9 @@ def main():
             paths = [
                 x[0] for x in db.execute(select(Document.stored_path).where(Document.owner_id == owner)).all()
             ]
+            document_ids = db.scalars(select(Document.id).where(Document.owner_id == owner)).all()
+            if document_ids:
+                db.execute(delete(DocumentChunk).where(DocumentChunk.document_id.in_(document_ids)))
             for model in (
                 AuditEvent,
                 AppPreference,
@@ -140,12 +153,15 @@ def main():
                 ExtractionField,
                 CaseEvent,
                 CaseParticipant,
+                DocumentPage,
                 DraftVersion,
+                Citation,
                 CommunityReply,
                 IngestionJob,
                 ResearchMessage,
                 ResearchSession,
                 BundleItem,
+                BundleSection,
                 FilingBundle,
                 Document,
                 Draft,
@@ -158,6 +174,10 @@ def main():
             ):
                 if hasattr(model, "owner_id"):
                     db.execute(delete(model).where(model.owner_id == owner))
+            db.execute(delete(Session).where(Session.user_id == owner))
+            db.execute(delete(AIConversation).where(AIConversation.user_id == owner))
+            db.execute(delete(CommunityTag))
+            db.execute(text("DELETE FROM rate_buckets"))
             db.execute(
                 delete(User).where(User.email.in_(["researcher@tantara.local", "staff@tantara.local"]))
             )
@@ -165,7 +185,9 @@ def main():
                 path = Path(stored)
                 if path.parent == (s.data_dir / "uploads").resolve():
                     path.unlink(missing_ok=True)
+            shutil.rmtree(s.data_dir / "demo-fixtures", ignore_errors=True)
             db.flush()
+            db.commit()
             from app.services.index_maintenance import rebuild_index
 
             print(
@@ -304,7 +326,7 @@ def main():
                 )
             )
             if i < 7:
-                at = datetime.combine(date.today() + timedelta(days=i % 7 + 1), datetime.min.time()).replace(
+                at = datetime.combine(date.today() + timedelta(days=i - 3), datetime.min.time()).replace(
                     hour=10
                 )
                 db.add(
@@ -321,6 +343,57 @@ def main():
                         is_demo=True,
                     )
                 )
+            for event_type, offset, detail in (
+                ("filed", -30 + i % 15, "Statement of claim filed"),
+                ("first_hearing", -5 + i % 10, "Procedural hearing"),
+                ("document_uploaded", -2 + i % 7, "Evidence bundle uploaded"),
+                ("deadline_set", 12 + i % 20, "Reply submissions deadline"),
+                ("all_day_event", i % 10, "All-day case preparation block"),
+            ):
+                db.add(
+                    CaseEvent(
+                        id=str(uuid.uuid4()),
+                        owner_id=owner,
+                        case_id=cid,
+                        type=event_type,
+                        occurred_at=datetime.combine(
+                            date.today() + timedelta(days=offset), datetime.min.time()
+                        ),
+                        detail=detail,
+                        is_demo=True,
+                    )
+                )
+            if i % 4 == 0:
+                db.add(
+                    Task(
+                        id=str(uuid.uuid4()),
+                        owner_id=owner,
+                        case_id=cid,
+                        title="Unscheduled evidence review",
+                        notes="Open task without a due date.",
+                        due_at=None,
+                        priority="medium",
+                        status="todo",
+                        assignee="Aarav Mehta",
+                        is_demo=True,
+                    )
+                )
+        for title, due in (
+            ("Overdue filing review", date.today() - timedelta(days=2)),
+            ("Due today: verify authorities", date.today()),
+        ):
+            db.add(
+                Task(
+                    id=str(uuid.uuid4()),
+                    owner_id=owner,
+                    case_id=cases[0].id,
+                    title=title,
+                    due_at=datetime.combine(due, datetime.min.time()),
+                    priority="high",
+                    status="todo",
+                    is_demo=True,
+                )
+            )
         db.flush()
         data_dir = s.data_dir
         fixture_dir = data_dir / "demo-fixtures"
@@ -349,12 +422,14 @@ def main():
                     "Sample construction contract",
                     "The parties agree on project milestones, payment terms, notice obligations, and dispute resolution by arbitration.",
                 ],
+                True,
             ),
         ]
         files = []
-        for name, title, paragraphs in specs:
+        for spec in specs:
+            name, title, paragraphs, *options = spec
             path = fixture_dir / name
-            make_pdf(path, title, paragraphs)
+            make_pdf(path, title, paragraphs, *(options or [False]))
             files.append((name, title, path.read_bytes()))
         scanned = fixture_dir / "scanned-agreement.pdf"
         make_scanned_pdf(scanned)
@@ -388,17 +463,32 @@ def main():
             is_demo=True,
         )
         db.add(research)
-        post = CommunityPost(
-            id=str(uuid.uuid4()),
-            owner_id=owner,
-            title="Demo: preparing a procedural calendar",
-            body="Sample workspace discussion. Replace with your team's own notes and questions.",
-            kind="discussion",
-            tags=["procedure", "calendar"],
-            case_ref=cases[0].id,
-            is_demo=True,
-        )
-        db.add(post)
+        posts = []
+        for post_index in range(5):
+            post = CommunityPost(
+                id=str(uuid.uuid4()),
+                owner_id=owner,
+                title=f"Demo: case practice discussion {post_index + 1}",
+                body="Sample workspace discussion. Replace with your team's own notes and questions.",
+                kind="question" if post_index % 2 else "discussion",
+                tags=[cases[post_index].dispute_category.lower(), "procedure"],
+                case_ref=cases[post_index].id,
+                is_demo=True,
+            )
+            db.add(post)
+            posts.append(post)
+        db.flush()
+        for post_index, post in enumerate(posts):
+            for _ in range(2 if post_index < 3 else 1):
+                db.add(
+                    CommunityReply(
+                        id=str(uuid.uuid4()),
+                        owner_id=owner,
+                        post_id=post.id,
+                        body="Demo reply with a procedural note.",
+                        is_demo=True,
+                    )
+                )
         draft = Draft(
             id=str(uuid.uuid4()),
             owner_id=owner,
@@ -472,6 +562,31 @@ def main():
         session_id = research.id
     for did, jid, filename, blob in docs:
         process_job(did, jid, owner, blob, filename)
+    with session_scope() as db:
+        for did, _jid, filename, _blob in docs:
+            fields = (
+                [
+                    ("agreement_date", "2025-01-14"),
+                    ("seat", "Mumbai, India"),
+                    ("document_type", "Arbitration Agreement"),
+                ]
+                if "agreement" in filename
+                else [("document_title", filename.removesuffix(".pdf"))]
+            )
+            for key, value in fields:
+                db.add(
+                    ExtractionField(
+                        id=str(uuid.uuid4()),
+                        owner_id=owner,
+                        document_id=did,
+                        key=key,
+                        value={"value": value, "page_number": 1},
+                        provenance="extracted_reviewed",
+                        source=filename,
+                        review_required=True,
+                        is_demo=True,
+                    )
+                )
     from app.routers.bundles import generate as generate_bundle
 
     generated = generate_bundle(bundle_id, {"id": owner, "role": "advocate", "name": "Aarav Mehta"})
