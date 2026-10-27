@@ -17,6 +17,10 @@ export async function installApiFixtures(page){
   else if(path==='/dashboard/activity')body=fixtures.activity;
   else if(path==='/dashboard/upcoming')body=fixtures.upcoming;
   else if(path==='/cases')body=fixtures.cases;
+  else if(path==='/calendar')body=[];
+  else if(/^\/clients\/[^/]+\/cases$/.test(path))body={items:[]};
+  else if(path.startsWith('/clients/'))body={id:path.split('/').pop(),name:'Test Client',status:'active'};
+  else if(path==='/clients'||path==='/tasks'||path==='/hearings')body={items:[],total:0,page:1,page_size:20,pages:0};
   else if(path==='/cases/case-1/overview')body={id:'case-1',title:'ABC Pvt. Ltd. vs. XYZ Ltd.',status:'active',forum:'SIAC',seat:'Mumbai, India',claimant:'ABC Pvt. Ltd.',respondent:'XYZ Ltd.',participants:[],tasks:[],hearings:[],documents_count:1,drafts_count:0};
   else if(path==='/documents/doc-1')body={id:'doc-1',title:'Arbitration Agreement',document_type:'Arbitration Agreement',status:'ready',jurisdiction:'India',pages:1};
   else if(path==='/documents/doc-1/text')body={text:'Arbitration agreement text for a test workspace.',pages:[{page_number:1,text:'Arbitration agreement text for a test workspace.'}]};
