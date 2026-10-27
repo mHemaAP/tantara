@@ -5,7 +5,7 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from sqlalchemy import select
 from app.db import SessionLocal,session_scope
-from app.models import Case,AppPreference,Document,DocumentChunk
+from app.models import Case,AppPreference,Document,ExtractionField
 from app.repositories.domain import get_owned
 from app.security import current_user
 from app.services.audit import record
