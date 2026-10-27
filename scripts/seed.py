@@ -33,12 +33,13 @@ def make_scanned_pdf(path):
     from PIL import Image,ImageDraw,ImageFont
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
+    from reportlab.lib.utils import ImageReader
     img=Image.new("RGB",(1275,1650),"white");draw=ImageDraw.Draw(img)
     font=ImageFont.load_default(size=35);y=150
     lines=["ARBITRATION AGREEMENT","","The parties agree that disputes shall be referred","to arbitration under the Arbitration and","Conciliation Act, 1996. The seat shall be Mumbai.","The tribunal shall consist of one arbitrator."]
     for line in lines:draw.text((115,y),line,fill="black",font=font);y+=100
     buf=io.BytesIO();img.save(buf,format="PNG");buf.seek(0)
-    c=canvas.Canvas(str(path),pagesize=letter);c.drawImage(buf,0,0,width=612,height=792);c.save()
+    c=canvas.Canvas(str(path),pagesize=letter);c.drawImage(ImageReader(buf),0,0,width=612,height=792);c.save()
 
 def main():
     parser=argparse.ArgumentParser();group=parser.add_mutually_exclusive_group(required=True);group.add_argument("--demo",action="store_true");group.add_argument("--empty",action="store_true");args=parser.parse_args();init_db();s=get_settings()
