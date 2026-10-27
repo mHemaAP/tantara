@@ -1,9 +1,19 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { Providers } from '@/components/providers';
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
-const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair', display: 'swap' });
+const inter = localFont({
+  src: '../styles/fonts/inter-latin.woff2',
+  variable: '--font-inter',
+  display: 'swap',
+  weight: '100 900',
+});
+const playfair = localFont({
+  src: '../styles/fonts/playfair-display-latin.woff2',
+  variable: '--font-playfair',
+  display: 'swap',
+  weight: '400 900',
+});
 export const metadata: Metadata = {
   title: 'TANTARA — Legal AI Workspace',
   description: 'AI-powered legal workspace for arbitration law.',
