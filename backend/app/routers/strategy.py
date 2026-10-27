@@ -115,7 +115,7 @@ def autofill(cid: str, user=Depends(current_user)):
                         }
                     )
                     seen.add(row.key)
-        return {"fields": fields}
+        return {"status": "record_based", "model": None, "fields": fields}
 
 
 @router.post("/autofill/preview")
@@ -254,7 +254,12 @@ def generate_strategy(cid: str, user=Depends(current_user)):
                 AppPreference(id=str(uuid.uuid4()), owner_id=user["id"], key=f"strategy:{cid}", value=result)
             )
         record(s, user["id"], "generate", "case_strategy", cid)
-    return result
+    return {
+        **result,
+        "status": "template" if hits else "no_evidence",
+        "generation_kind": "excerpt_listing" if hits else "empty_review_template",
+        "model": None,
+    }
 
 
 @router.put("/strategy")
