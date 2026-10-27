@@ -35,6 +35,7 @@ def autofill_preview(cid:str,payload:Keys,user=Depends(current_user)):
     current=autofill(cid,user);wanted=set(payload.keys);return {"fields":[x for x in current["fields"] if x["key"] in wanted]}
 @router.post("/autofill/apply")
 def autofill_apply(cid:str,payload:Fields,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     allowed={"claimant","respondent","forum","seat","governing_law","arbitration_agreement_details","dispute_category","claim_amount","claim_currency","description","filed_at","next_hearing_at","notice_date","limitation_date","reference_number","title"}
     applied=[];skipped=[]
     with session_scope() as s:
@@ -70,6 +71,7 @@ def generate_strategy(cid:str,user=Depends(current_user)):
     return result
 @router.put("/strategy")
 def strategy_put(cid:str,payload:StrategyBody,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     result={**payload.model_dump(),"updated_at":datetime.now(timezone.utc).isoformat()}
     with session_scope() as s:
         _case(s,cid,user);row=s.scalar(select(AppPreference).where(AppPreference.owner_id==user["id"],AppPreference.key==f"strategy:{cid}"))
