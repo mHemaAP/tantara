@@ -15,6 +15,7 @@ def rebuild_index():
     store().rebuild(vectors)
     return {"chunks":len(rows),"vectors":store().count(),"consistent":len(rows)==store().count()}
 def reconcile_index():
-    with SessionLocal() as s:expected=s.scalar(select(func.count(DocumentChunk.id))) or 0
-    if store().count()!=expected:return rebuild_index()
-    return {"chunks":expected,"vectors":store().count(),"consistent":True}
+    with SessionLocal() as s:expected_ids=set(s.scalars(select(DocumentChunk.id)).all())
+    index_ids=store().id_set()
+    if index_ids!=expected_ids:return rebuild_index()
+    return {"chunks":len(expected_ids),"vectors":len(index_ids),"consistent":True}
