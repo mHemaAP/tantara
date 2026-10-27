@@ -32,6 +32,38 @@ import './research.css';
 type Choice = { id?: string; name?: string } | string;
 const list = <T,>(v: { items?: T[] } | T[] | undefined): T[] => (Array.isArray(v) ? v : (v?.items ?? []));
 const scoreOf = (s: ResearchSource) => s.retrieval_score ?? s.retreival_score;
+const formatHistoryDate = (value?: string) => {
+  if (!value || Number.isNaN(new Date(value).getTime())) return 'Date unavailable';
+  return new Date(value).toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+function AnswerText({ text, citations }: { text: string; citations: ResearchSource[] }) {
+  return (
+    <div className="answer-text">
+      {text.split(/(?<=[.!?])\s+(?=[A-Z])/).map((sentence, index) => (
+        <p className="answer-sentence" key={`${index}-${sentence}`}>
+          {sentence}
+          {citations.map((source) =>
+            source.citation_ref ? (
+              <a
+                className="answer-citation"
+                key={`${source.chunk_id}-${source.citation_ref}`}
+                href={documentPageUrl(source.document_id, source.page_number, source.chunk_id)}
+                aria-label={`Citation ${source.citation_ref}: ${source.document_title}, page ${source.page_number}`}
+              >
+                {source.citation_ref}
+              </a>
+            ) : null,
+          )}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 export default function ResearchPage() {
   const [sessions, setSessions] = useState<ResearchSession[]>([]);
@@ -49,7 +81,6 @@ export default function ResearchPage() {
   const [lexical, setLexical] = useState<ResearchSource[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [endpoint, setEndpoint] = useState('');
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -85,14 +116,6 @@ export default function ResearchPage() {
 
   useEffect(() => {
     void refreshHistory();
-    researchApi
-      .aiStatus()
-      .then((s) => {
-        const llm = s.llm as Record<string, unknown> | undefined;
-        const base = s.configured_base_url ?? s.base_url ?? s.endpoint ?? llm?.base_url;
-        if (typeof base === 'string') setEndpoint(base);
-      })
-      .catch(() => undefined);
     return () => abortRef.current?.abort();
   }, [refreshHistory]);
 
@@ -157,9 +180,8 @@ export default function ResearchPage() {
       }
       void refreshHistory();
     } catch (e) {
-      if (controller.signal.aborted)
-        setError('Research request timed out or was cancelled. Retry when ready.');
-      else setError(e instanceof Error ? e.message : 'Research request failed.');
+      if (controller.signal.aborted) setError('Research was cancelled or timed out. Retry when ready.');
+      else setError('Research could not complete. Check your connection and retry.');
     } finally {
       window.clearTimeout(timeout);
       setBusy(false);
@@ -167,13 +189,20 @@ export default function ResearchPage() {
     }
   };
 
-  const startNew = () => {
+  const startNew = async () => {
     abortRef.current?.abort();
-    setSelected(null);
     setAnswer(null);
     setLexical([]);
     setDraft('');
     setError('');
+    try {
+      const session = await researchApi.createSession('New research session');
+      setSelected(session);
+      setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
+    } catch {
+      setSelected(null);
+      setError('A new research session could not be created. Check your connection and retry.');
+    }
     textarea.current?.focus();
   };
   const save = async (id?: string) => {
@@ -191,6 +220,11 @@ export default function ResearchPage() {
   };
 
   const selectedSources = answer?.status === 'model_unavailable' ? lexical : sources;
+  const distinctSourceCount = new Set(selectedSources.map((source) => source.document_id)).size;
+  const corpusCount = answer ? String(distinctSourceCount) : '—';
+  const answerIsInsufficient =
+    (answer?.status === 'ok' || answer?.status === 'answered') &&
+    /evidence is insufficient/i.test(answer.answer ?? '');
   const activeMessages = selected?.messages ?? [];
   const answerAlreadyInHistory =
     !!answer?.message_id && activeMessages.some((message) => message.id === answer.message_id);
@@ -249,7 +283,10 @@ export default function ResearchPage() {
           </select>
           <ChevronDown size={14} />
         </label>
-        <label title={collectionsUnavailable ? 'Collection metadata is unavailable from this backend.' : ''}>
+        <label
+          className="collection-filter"
+          title={collectionsUnavailable ? 'Collection metadata is unavailable from this backend.' : ''}
+        >
           <span>Collection</span>
           <select value={collection} onChange={(e) => setCollection(e.target.value)}>
             <option value="">{collectionsUnavailable ? 'Collections unavailable' : 'All collections'}</option>
@@ -300,7 +337,7 @@ export default function ResearchPage() {
                     onClick={() => void loadSession(s)}
                   >
                     <span>{s.title}</span>
-                    <small>{s.updated_at ?? s.created_at ?? 'Research session'}</small>
+                    <small>{formatHistoryDate(s.updated_at ?? s.created_at)}</small>
                   </button>
                 ))}
               </div>
@@ -358,7 +395,7 @@ export default function ResearchPage() {
             </header>
             <div className="conversation-body" aria-live="polite">
               {activeMessages.length
-                ? activeMessages.map((m) => (
+                ? activeMessages.map((m, messageIndex) => (
                     <article className={`turn ${m.role}`} key={m.id}>
                       <div className="turn-label">
                         {m.role === 'user' ? 'You' : 'TANTARA'}
@@ -369,10 +406,22 @@ export default function ResearchPage() {
                       {m.role === 'assistant' && m.status === 'model_unavailable' ? (
                         <div className="state-callout unavailable">
                           <strong>Model unavailable</strong>
-                          <p>No answer text is shown because the configured model could not respond.</p>
                           <p>
-                            Configured endpoint: <code>{endpoint || 'Unavailable from /ai/status'}</code>
+                            The model is unreachable. Retry, or use evidence-only mode with the documents
+                            shown.
                           </p>
+                          <button
+                            onClick={() =>
+                              void ask(
+                                activeMessages
+                                  .slice(0, messageIndex)
+                                  .reverse()
+                                  .find((message) => message.role === 'user')?.content ?? draft,
+                              )
+                            }
+                          >
+                            <RefreshCw size={14} /> Retry
+                          </button>
                         </div>
                       ) : m.role === 'assistant' && m.status === 'no_evidence' ? (
                         <div className="state-callout no-evidence">
@@ -388,6 +437,20 @@ export default function ResearchPage() {
                           <strong>Embeddings unavailable</strong>
                           <p>Only lexical results were available; no grounded answer is shown.</p>
                         </div>
+                      ) : m.role === 'assistant' && /evidence is insufficient/i.test(m.content) ? (
+                        <div className="state-callout no-evidence model-insufficient">
+                          <strong>Evidence is insufficient</strong>
+                          <AnswerText text={m.content} citations={m.citations ?? []} />
+                          <p>
+                            Review the retrieved excerpts below; no conclusion was generated from this
+                            evidence.
+                          </p>
+                        </div>
+                      ) : m.role === 'assistant' ? (
+                        <AnswerText
+                          text={m.content}
+                          citations={answer?.message_id === m.id ? sources : (m.citations ?? [])}
+                        />
                       ) : (
                         <p>{m.content}</p>
                       )}
@@ -437,13 +500,20 @@ export default function ResearchPage() {
                   {answer.status === 'model_unavailable' ? (
                     <div className="state-callout unavailable">
                       <strong>Model unavailable</strong>
-                      <p>No answer text is shown because the configured model could not respond.</p>
                       <p>
-                        Configured endpoint: <code>{endpoint || 'Unavailable from /ai/status'}</code>
+                        The model is unreachable. Retry, or use evidence-only mode with the documents shown.
                       </p>
                       <button onClick={() => void ask(draft)}>
                         <RefreshCw size={14} /> Retry
                       </button>
+                    </div>
+                  ) : answerIsInsufficient ? (
+                    <div className="state-callout no-evidence model-insufficient">
+                      <strong>Evidence is insufficient</strong>
+                      <AnswerText text={answer.answer || ''} citations={sources} />
+                      <p>
+                        Review the retrieved excerpts below; no conclusion was generated from this evidence.
+                      </p>
                     </div>
                   ) : answer.status === 'no_evidence' ? (
                     <div className="state-callout no-evidence">
@@ -471,17 +541,17 @@ export default function ResearchPage() {
                         <RefreshCw size={14} /> Retry
                       </button>
                     </div>
-                  ) : sources.length === 0 ? (
+                  ) : sources.length === 0 || !answer.answer?.trim() ? (
                     <div className="state-callout lexical-state">
-                      <strong>Answer not grounded</strong>
+                      <strong>No grounded answer text returned</strong>
                       <p>
-                        No valid source citations were returned. The response is hidden; review retrieved
-                        documents or broaden your search.
+                        The response had no answer text. Review the retrieved documents below or broaden your
+                        search.
                       </p>
                     </div>
                   ) : (
                     <>
-                      <p className="answer-text">{answer.answer || 'No answer text was returned.'}</p>
+                      <AnswerText text={answer.answer || ''} citations={sources} />
                       {answer.disclaimer && (
                         <small className="disclaimer">AI-generated — review before relying on it.</small>
                       )}
@@ -577,15 +647,17 @@ export default function ResearchPage() {
                   <FileText size={16} /> Retrieved sources
                 </h2>
                 <p>
-                  {selectedSources.length} {selectedSources.length === 1 ? 'document' : 'documents'} ·{' '}
+                  {corpusCount} {distinctSourceCount === 1 ? 'document' : 'documents'} ·{' '}
                   {answer && ['ok', 'answered'].includes(answer.status)
-                    ? 'Sources used in this answer'
+                    ? answerIsInsufficient
+                      ? 'Retrieved evidence · no conclusion generated'
+                      : 'Sources used in this answer'
                     : answer?.status === 'model_unavailable'
                       ? 'Lexical results · documents only'
                       : 'Available evidence'}
                 </p>
               </div>
-              <span className="source-count">{selectedSources.length}</span>
+              <span className="source-count">{corpusCount}</span>
             </header>
             {answer?.status === 'no_evidence' && (
               <div className="source-note">No supporting documents found in this workspace.</div>
@@ -606,7 +678,12 @@ export default function ResearchPage() {
                     <p>“{source.excerpt}”</p>
                     <div className="source-bottom">
                       <span>
-                        Relevance <b>{scoreOf(source) == null ? '—' : scoreOf(source)}</b>
+                        Relevance{' '}
+                        <b>
+                          {scoreOf(source) == null || !Number.isFinite(scoreOf(source))
+                            ? '—'
+                            : scoreOf(source)?.toFixed(2)}
+                        </b>
                       </span>
                       <a
                         href={documentPageUrl(source.document_id, source.page_number, source.chunk_id)}
