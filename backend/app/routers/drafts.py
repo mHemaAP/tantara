@@ -54,22 +54,35 @@ class SectionBody(BaseModel):
 
 @router.get("/draft-templates")
 def templates(user=Depends(current_user)):
+    items = [{"id": str(i + 1), "name": name, "document_type": name} for i, name in enumerate(TEMPLATES)]
     return {
-        "items": [{"id": str(i + 1), "name": name, "document_type": name} for i, name in enumerate(TEMPLATES)]
+        "items": items,
+        "total": len(items),
+        "page": 1,
+        "page_size": len(items),
+        "pages": 1 if items else 0,
     }
 
 
 @router.get("/drafts/{rid}/versions")
-def versions(rid: str, user=Depends(current_user)):
+def versions(
+    rid: str, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), user=Depends(current_user)
+):
     with SessionLocal() as s:
         if not get_owned(s, Draft, rid, user["id"]):
             raise HTTPException(404, "Draft not found")
+        stmt = select(DraftVersion).where(DraftVersion.draft_id == rid, DraftVersion.owner_id == user["id"])
+        total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = s.scalars(
-            select(DraftVersion)
-            .where(DraftVersion.draft_id == rid, DraftVersion.owner_id == user["id"])
-            .order_by(DraftVersion.version_number)
+            stmt.order_by(DraftVersion.version_number).offset((page - 1) * page_size).limit(page_size)
         ).all()
-        return {"items": [serialize(x) for x in rows]}
+        return {
+            "items": [serialize(x) for x in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": (total + page_size - 1) // page_size,
+        }
 
 
 @router.post("/drafts/{rid}/versions")
