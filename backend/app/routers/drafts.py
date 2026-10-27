@@ -9,8 +9,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
+from app.config import get_settings
 from app.db import SessionLocal, session_scope
-from app.models import Case, Document, DocumentChunk, Draft, DraftVersion, ExtractionField
+from app.models import AppPreference, Case, Document, DocumentChunk, Draft, DraftVersion, ExtractionField
 from app.repositories.domain import get_owned, serialize
 from app.security import current_user
 from app.services.audit import record
@@ -168,7 +169,12 @@ def generate(payload: Generate, user=Depends(current_user)):
             else []
         )
         verified_fields = {x.key: x.value for x in reviewed}
+        ai_preference = s.scalar(
+            select(AppPreference).where(AppPreference.owner_id == user["id"], AppPreference.key == "ai")
+        )
+        ai_settings = ai_preference.value if ai_preference else {}
     generated = None
+    generation_status = "no_evidence"
     if evidence:
         from app.main import llm_answer
 
@@ -182,12 +188,19 @@ def generate(payload: Generate, user=Depends(current_user)):
             + "\nInstructions: "
             + payload.instructions
         )
-        generated = llm_answer(question, evidence)
+        generated = llm_answer(
+            question,
+            evidence,
+            base_url=ai_settings.get("base_url"),
+            model=ai_settings.get("model"),
+        )
+        generation_status = "ok" if generated else "model_unavailable"
         valid = {x["chunk_id"] for x in evidence}
         if generated:
             refs = re.findall(r"\[([0-9a-fA-F-]{36})\]", generated)
             if any(ref not in valid for ref in refs):
                 generated = None
+                generation_status = "unverifiable_output"
     parties = f"{case_info['claimant'] or '[REVIEW: claimant not verified]'} v. {case_info['respondent'] or '[REVIEW: respondent not verified]'}"
     if generated:
         content = f"# {title}\n\n**Case:** {case_info['title']}\n**Parties:** {parties}\n\n{generated.strip()}\n\n## Counsel review\n\n[REVIEW: Verify every factual statement, legal proposition, authority, and requested relief before use.]\n"
@@ -229,18 +242,35 @@ def generate(payload: Generate, user=Depends(current_user)):
         )
         record(s, user["id"], "generate", "draft", did)
     markers = [line.strip() for line in content.splitlines() if "[REVIEW:" in line]
+    if generated:
+        fallback_warnings = []
+    elif not evidence:
+        fallback_warnings = [
+            "Generated a marked review outline because no indexed case evidence was available."
+        ]
+    elif generation_status == "model_unavailable":
+        fallback_warnings = [
+            "Generated a marked review outline because the configured local model was unavailable."
+        ]
+    else:
+        fallback_warnings = [
+            "Generated a marked review outline because model output had unverifiable citations."
+        ]
     return {
+        "status": generation_status,
+        "generation_kind": "model_generated" if generated else "review_template",
+        "model": (
+            {
+                "provider": get_settings().ai_provider,
+                "model": ai_settings.get("model") or get_settings().local_llm_model,
+            }
+            if generated
+            else None
+        ),
         "draft_id": did,
         "version_id": vid,
         "content_markdown": content,
-        "warnings": ["Draft requires legal review; verify facts, law, and citations."]
-        + (
-            []
-            if generated
-            else [
-                "Generated a marked review outline because grounded model output was unavailable or unverifiable."
-            ]
-        ),
+        "warnings": ["Draft requires legal review; verify facts, law, and citations."] + fallback_warnings,
         "review_markers": markers,
     }
 
