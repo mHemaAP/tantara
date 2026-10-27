@@ -21,7 +21,10 @@ class Settings(BaseSettings):
         default=ROOT / "data", validation_alias=AliasChoices("TANTARA_DATA_DIR", "DATA_DIR")
     )
     ai_provider: str = "local"
-    local_llm_base_url: str = "http://192.168.0.101:8080/v1"
+    local_llm_base_url: str = Field(
+        default="http://192.168.0.101:8080/v1",
+        validation_alias=AliasChoices("TANTARA_LOCAL_LLM_BASE_URL", "LOCAL_LLM_BASE_URL"),
+    )
     local_llm_model: str = "MiniCPM5-2B"
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-20250514"
