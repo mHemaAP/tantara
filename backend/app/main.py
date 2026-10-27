@@ -144,9 +144,9 @@ def ai_status(user=Depends(current_user)):
     s=get_settings();start=__import__("time").monotonic()
     try:r=httpx.get(s.local_llm_base_url.rstrip("/")+"/models",timeout=2);reachable=r.is_success
     except Exception:reachable=False
-    with SessionLocal() as db:n=db.scalar(select(func.count(DocumentChunk.id))) or 0
-    vectors=store().count()
-    return {"llm":{"provider":s.ai_provider,"base_url":s.local_llm_base_url,"model":s.local_llm_model,"reachable":reachable,"latency_ms":round((__import__("time").monotonic()-start)*1000)},"embeddings":{"provider":s.embedding_provider,"model":s.fastembed_model,"dims":s.embedding_dimensions,"ready":True},"vector":{"backend":"faiss","chunks":n,"vectors":vectors,"consistent":n==vectors}}
+    from app.services.index_maintenance import reconcile_index
+    index_state=reconcile_index()
+    return {"llm":{"provider":s.ai_provider,"base_url":s.local_llm_base_url,"model":s.local_llm_model,"reachable":reachable,"latency_ms":round((__import__("time").monotonic()-start)*1000)},"embeddings":{"provider":s.embedding_provider,"model":s.fastembed_model,"dims":s.embedding_dimensions,"ready":True},"vector":{"backend":"faiss",**index_state}}
 @app.get("/api/v1/settings/embeddings")
 def settings_embeddings(user=Depends(current_user)):return ai_status(user)["vector"]|{"provider":get_settings().embedding_provider,"model":get_settings().fastembed_model,"dimensions":get_settings().embedding_dimensions}
 
