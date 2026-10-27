@@ -9,6 +9,7 @@ from app.models import *
 from app.repositories.domain import ENTITY_MODELS,fields_for,serialize,get_owned,list_owned,create as repo_create,update as repo_update
 from app.security import current_user
 from app.services.audit import record
+from app.schemas import CREATE_SCHEMAS,PATCH_SCHEMAS
 router=APIRouter(prefix="/api/v1")
 class Payload(BaseModel):model_config=ConfigDict(extra="allow")
 def owned(session,cls,rid,user):
@@ -76,6 +77,9 @@ def register_crud(path,cls):
             if cls is Case:row.status="archived";result={"deleted":False,"archived":True}
             else:s.delete(row);result={"deleted":True}
             record(s,user["id"],"delete",cls.__tablename__,rid);return result
+    if path in CREATE_SCHEMAS:
+        create.__annotations__["payload"]=CREATE_SCHEMAS[path]
+        patch.__annotations__["payload"]=PATCH_SCHEMAS[path]
     router.add_api_route("/"+path,listing,methods=["GET"],name=path+"_list")
     router.add_api_route("/"+path,create,methods=["POST"],name=path+"_create")
     router.add_api_route("/"+path+"/{rid}",get,methods=["GET"],name=path+"_get")
