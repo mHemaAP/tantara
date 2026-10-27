@@ -1,11 +1,11 @@
 """Grounded draft generation, version history, and real export endpoints."""
-import io,uuid
+import io,uuid,re
 from fastapi import APIRouter,Depends,HTTPException,Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel,Field,ConfigDict
 from sqlalchemy import select,func
 from app.db import SessionLocal,session_scope
-from app.models import Draft,DraftVersion,Case,Document,DocumentChunk
+from app.models import Draft,DraftVersion,Case,Document,DocumentChunk,ExtractionField
 from app.repositories.domain import get_owned,serialize
 from app.security import current_user
 from app.services.audit import record
@@ -41,15 +41,35 @@ def generate(payload:Generate,user=Depends(current_user)):
         if payload.source_document_ids:
             selected=set(payload.source_document_ids);docs=[d for d in docs if d.id in selected]
             if len(docs)!=len(selected):raise HTTPException(404,"One or more source documents not found")
-        evidence=bool(docs);title=payload.document_type
-        content=f"# {title}\n\n**Case:** {case.title}\n\n## Parties\n\n{case.claimant or '[REVIEW: claimant not verified]'} v. {case.respondent or '[REVIEW: respondent not verified]'}\n\n## Background\n\n[REVIEW: Add a verified chronology from case records and cited documents.]\n\n## Submissions\n\n[REVIEW: Add arguments supported by verified authorities and evidence.]\n\n## Relief sought\n\n[REVIEW: Confirm requested relief with counsel.]\n"
-        if not evidence:content=content.replace("[REVIEW: Add a verified chronology from case records and cited documents.]","[REVIEW: No indexed case documents were available; add verified chronology and citations.]")
+        title=payload.document_type;case_info={k:getattr(case,k) for k in ("title","claimant","respondent","forum","seat","governing_law","reference_number")}
+        chunks=s.scalars(select(DocumentChunk).where(DocumentChunk.document_id.in_([d.id for d in docs])).order_by(DocumentChunk.document_id,DocumentChunk.chunk_index).limit(16)).all() if docs else []
+        doc_map={d.id:d for d in docs}
+        evidence=[{"chunk_id":x.id,"document_id":x.document_id,"document_title":doc_map[x.document_id].title,"page_number":x.page_number,"snippet":x.content[:1400],"source_type":doc_map[x.document_id].document_type,"jurisdiction":doc_map[x.document_id].jurisdiction} for x in chunks]
+        reviewed=s.scalars(select(ExtractionField).where(ExtractionField.owner_id==user["id"],ExtractionField.document_id.in_([d.id for d in docs]),ExtractionField.provenance.in_(["verified","extracted_reviewed"]))).all() if docs else []
+        verified_fields={x.key:x.value for x in reviewed}
+    generated=None
+    if evidence:
+        from app.main import llm_answer
+        question=(f"Draft a careful initial {title} for the supplied arbitration case. Use only the verified case fields and selected document excerpts below. "
+                  "Organize with useful headings. Cite only the supplied chunk IDs as [chunk_id]. Never invent facts, parties, authorities, dates, quotations, or relief. "
+                  "Mark every unsupported or missing fact with [REVIEW: ...]. This is an advocate review draft, not legal advice.\nVerified fields: "+str(case_info)+"\nReviewed extraction candidates: "+str(verified_fields)+"\nInstructions: "+payload.instructions)
+        generated=llm_answer(question,evidence)
+        valid={x["chunk_id"] for x in evidence}
+        if generated:
+            refs=re.findall(r"\[([0-9a-fA-F-]{36})\]",generated)
+            if any(ref not in valid for ref in refs):generated=None
+    parties=f"{case_info['claimant'] or '[REVIEW: claimant not verified]'} v. {case_info['respondent'] or '[REVIEW: respondent not verified]'}"
+    if generated:
+        content=f"# {title}\n\n**Case:** {case_info['title']}\n**Parties:** {parties}\n\n{generated.strip()}\n\n## Counsel review\n\n[REVIEW: Verify every factual statement, legal proposition, authority, and requested relief before use.]\n"
+    else:
+        reason="No indexed case documents were available." if not evidence else "The local language model was unavailable or returned an unverifiable citation."
+        content=f"# {title}\n\n**Case:** {case_info['title']}\n**Parties:** {parties}\n\n## Background\n\n[REVIEW: {reason} Add a verified chronology and cite selected source documents.]\n\n## Submissions\n\n[REVIEW: Add arguments supported by verified authorities and evidence.]\n\n## Relief sought\n\n[REVIEW: Confirm requested relief with counsel.]\n"
     did,vid=str(uuid.uuid4()),str(uuid.uuid4())
     with session_scope() as s:
         d=Draft(id=did,owner_id=user["id"],case_id=payload.case_id,title=title,document_type=title,status="draft",content_markdown=content,template_id=payload.template_id);s.add(d)
         s.add(DraftVersion(id=vid,owner_id=user["id"],draft_id=did,version_number=1,content_markdown=content,change_note="Generated outline"));record(s,user["id"],"generate","draft",did)
     markers=[line.strip() for line in content.splitlines() if "[REVIEW:" in line]
-    return {"draft_id":did,"version_id":vid,"content_markdown":content,"warnings":["Draft requires legal review; verify facts, law, and citations."],"review_markers":markers}
+    return {"draft_id":did,"version_id":vid,"content_markdown":content,"warnings":["Draft requires legal review; verify facts, law, and citations."]+( [] if generated else ["Generated a marked review outline because grounded model output was unavailable or unverifiable."]),"review_markers":markers}
 @router.post("/drafts/{rid}/regenerate-section")
 def regenerate(rid:str,payload:SectionBody,user=Depends(current_user)):
     if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
