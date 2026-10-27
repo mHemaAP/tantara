@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "gen:api": "node scripts/gen-api.mjs",
     "screenshots": "node scripts/shoot.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -38,6 +39,7 @@
     "eslint": "^9.19.0",
     "eslint-config-next": "15.5.9",
     "postcss": "^8.5.3",
+    "prettier": "^3.9.10",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3"
   }
