@@ -44,7 +44,9 @@ def register_crud(path,cls):
                     item["downloadable"]=item.get("status")=="ready";item["download_url"]=f"/api/v1/bundles/{item['id']}/download" if item["downloadable"] else None
             return result
     def create(payload:Payload,user=Depends(current_user)):
-        assert_write_role(user,cls);values=payload.model_dump(exclude_unset=True);allowed=fields_for(cls)-{"id","created_at","updated_at","owner_id","is_demo"};values={k:v for k,v in values.items() if k in allowed}
+        assert_write_role(user,cls);values=payload.model_dump(exclude_unset=True);allowed=fields_for(cls)-{"id","created_at","updated_at","owner_id","is_demo"}
+        if cls is FilingBundle:allowed.discard("output_path")
+        values={k:v for k,v in values.items() if k in allowed}
         if cls is Case and values.get("client_id"):
             with SessionLocal() as s:owned(s,Client,values["client_id"],user)
         if cls is CommunityPost and values.get("case_ref"):
@@ -62,6 +64,7 @@ def register_crud(path,cls):
             return out
     def patch(rid:str,payload:Payload,user=Depends(current_user)):
         assert_write_role(user,cls);values=payload.model_dump(exclude_unset=True)
+        if cls is FilingBundle and "output_path" in values:raise HTTPException(400,"Bundle output paths are system managed")
         if values.get("case_id"):
             with SessionLocal() as s:owned(s,Case,values["case_id"],user)
         if cls is Case and values.get("client_id"):
