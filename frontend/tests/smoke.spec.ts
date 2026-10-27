@@ -1,9 +1,96 @@
-import {test,expect} from '@playwright/test';
-import {installApiFixtures} from './api-fixtures.mjs';
+import { test, expect } from '@playwright/test';
+import { installApiFixtures } from './api-fixtures.mjs';
+
 test.setTimeout(90000);
-const routes=['/','/dashboard','/cases/case-1','/documents/doc-1','/settings/profile','/settings/workspace','/settings/local-ai','/settings/embeddings','/settings/database','/settings/data-import','/settings/appearance','/settings/security'];
-test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('tantara_preview','true'));await installApiFixtures(page)});
-test('existing routes render without console or hydration errors and overflow',async({page})=>{const errors:string[]=[];page.on('console',m=>{if(m.type()==='error')errors.push(m.text())});page.on('pageerror',e=>errors.push(e.message));for(const route of routes){await page.goto(route);await expect(page.locator('body')).not.toBeEmpty();await page.waitForTimeout(100);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${route} horizontal overflow`).toBeTruthy()}expect(errors).toEqual([])});
-test('login form validates and submits with Enter',async({page})=>{await page.goto('/');const email=page.locator('#email');await expect(email).toHaveValue('advocate@tantara.local');await email.fill('invalid');await expect(email).toHaveValue('invalid');await page.getByRole('textbox',{name:'Password'}).fill('x');await page.getByRole('textbox',{name:'Password'}).press('Enter');await expect(page.getByText('Enter a valid email address')).toBeVisible();await email.fill('advocate@tantara.local');await page.getByRole('textbox',{name:'Password'}).fill('tantara-local');await page.getByRole('button',{name:'Continue as Advocate'}).click();await expect(page).toHaveURL(/dashboard/)});
-test('settings profile form is editable and navigation marks current route',async({page})=>{await page.goto('/settings/profile');await expect(page.getByRole('navigation',{name:'Settings navigation'}).getByText('Profile')).toBeVisible();await expect(page.getByLabel('Name')).toBeVisible()});
-for(const width of [360,768,1024,1440])test(`responsive workspace at ${width}px`,async({page})=>{await page.setViewportSize({width,height:900});await page.goto('/dashboard');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()});
+const routes = [
+  '/',
+  '/dashboard',
+  '/cases/case-1',
+  '/documents/doc-1',
+  '/settings/profile',
+  '/settings/workspace',
+  '/settings/local-ai',
+  '/settings/embeddings',
+  '/settings/database',
+  '/settings/data-import',
+  '/settings/appearance',
+  '/settings/security',
+];
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('tantara_token', 'e2e-fixture-token'));
+  await installApiFixtures(page);
+});
+
+test('existing routes render without console or hydration errors and overflow', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  page.on('pageerror', (error) => errors.push(error.message));
+  for (const route of routes) {
+    await page.goto(route);
+    await expect(page.locator('body')).not.toBeEmpty();
+    await page.waitForTimeout(100);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      `${route} horizontal overflow`,
+    ).toBeTruthy();
+  }
+  expect(errors).toEqual([]);
+});
+
+test('login form validates and submits with Enter', async ({ page }) => {
+  await page.goto('/');
+  const email = page.locator('#email');
+  await expect(email).toHaveValue('advocate@tantara.local');
+  await expect(email).toHaveAttribute('type', 'email');
+  await expect(email).toHaveAttribute('autocomplete', 'username');
+  await email.fill('invalid');
+  await page.getByRole('textbox', { name: 'Password' }).fill('x');
+  await page.getByRole('textbox', { name: 'Password' }).press('Enter');
+  await expect(page.getByText('Enter a valid email address')).toBeVisible();
+  await email.fill('advocate@tantara.local');
+  await page.getByRole('textbox', { name: 'Password' }).fill('tantara-local');
+  await page.getByRole('button', { name: 'Continue as Advocate' }).click();
+  await expect(page).toHaveURL(/dashboard/);
+});
+
+test('settings validation exposes errors and navigation marks current route', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    localStorage.removeItem('tantara_preview');
+    localStorage.setItem('tantara_token', 'e2e-fixture-token');
+  });
+  await page.reload();
+  await page.goto('/settings/profile');
+  await expect(
+    page.getByRole('navigation', { name: 'Settings navigation' }).getByText('Profile'),
+  ).toBeVisible();
+  const name = page.getByLabel('Name');
+  await expect(name).toBeVisible();
+  await name.fill('');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(name).toHaveAttribute('aria-invalid', 'true');
+  await expect(name).toHaveAttribute('aria-describedby', 'name-error');
+  await expect(page.locator('#name-error')).toBeVisible();
+});
+
+test('local AI status and guest mutation controls are accessible', async ({ page }) => {
+  await page.goto('/settings/local-ai');
+  await expect(page.getByRole('status')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Test connection' })).toBeEnabled();
+  await page.evaluate(() => localStorage.setItem('tantara_preview', 'true'));
+  await page.goto('/dashboard');
+  await expect(page.getByRole('button', { name: 'Submit question' })).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: 'Open global search' })).toHaveCount(1);
+  await expect(page.locator('.searchbox')).toBeHidden();
+});
+
+for (const width of [360, 768, 1024, 1440]) {
+  test(`responsive workspace at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/dashboard');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  });
+}
