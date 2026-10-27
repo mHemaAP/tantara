@@ -7,10 +7,11 @@ from app.services.vector_store import store
 from app.embeddings import embed_query
 
 class RetrievalService:
-    def search(self,question:str,owner_id:str,top_k:int=5,case_id:str|None=None,jurisdiction:str|None=None,document_types:list[str]|None=None):
+    def search(self,question:str,owner_id:str,top_k:int=5,case_id:str|None=None,jurisdiction:str|None=None,document_types:list[str]|None=None,case_ids:list[str]|None=None):
         query_vector=embed_query(question)
         clauses=[Document.owner_id==owner_id]
         if case_id:clauses.append(Document.case_id==case_id)
+        elif case_ids:clauses.append(Document.case_id.in_(case_ids))
         if jurisdiction:clauses.append(Document.jurisdiction==jurisdiction)
         if document_types:clauses.append(Document.document_type.in_(document_types))
         with SessionLocal() as session:
@@ -18,6 +19,8 @@ class RetrievalService:
             rows=session.execute(stmt).all();allowed={r.id:r for r in rows}
             where="d.owner_id=:owner";tokens=re.findall(r"[\w-]{2,}",question);fts_query=" OR ".join('"'+t.replace('"','""')+'"' for t in tokens) or '""';params={"owner":owner_id,"query":fts_query}
             if case_id:where+=" AND d.case_id=:case_id";params["case_id"]=case_id
+            elif case_ids:
+                marks=",".join(f":case_{i}" for i in range(len(case_ids)));where+=f" AND d.case_id IN ({marks})";params.update({f"case_{i}":v for i,v in enumerate(case_ids)})
             if jurisdiction:where+=" AND d.jurisdiction=:jurisdiction";params["jurisdiction"]=jurisdiction
             if document_types:
                 marks=",".join(f":type_{i}" for i in range(len(document_types)));where+=f" AND d.document_type IN ({marks})";params.update({f"type_{i}":v for i,v in enumerate(document_types)})
