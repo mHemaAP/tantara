@@ -87,6 +87,8 @@ def generate(rid:str,user=Depends(current_user)):
         b=get_owned(s,FilingBundle,rid,user["id"])
         if not b:raise HTTPException(404,"Bundle not found")
         items=_items(s,b,user);settings={"cover_page":True,"index":True,"synopsis":True,"list_of_dates":True,**(b.settings or {})};case=s.get(Case,b.case_id) if b.case_id else None;case_title=case.title if case else "Arbitration Filing"
+        case_parties=f"{case.claimant or '[REVIEW: claimant not recorded]'} v. {case.respondent or '[REVIEW: respondent not recorded]'}" if case else "[REVIEW: case parties not recorded]"
+        date_entries=[(label,getattr(case,field)) for field,label in (("filed_at","Filing date"),("notice_date","Notice date"),("next_hearing_at","Next hearing"),("limitation_date","Limitation date")) if case and getattr(case,field)]
         docs=[]
         for x in items:
             d=s.get(Document,x["document_id"])
@@ -101,10 +103,23 @@ def generate(rid:str,user=Depends(current_user)):
         if settings.get(key):
             buf=io.BytesIO();c=canvas.Canvas(buf,pagesize=letter);c.setFont("Helvetica-Bold",18);c.drawString(54,740,title);c.setFont("Helvetica",11);c.drawString(54,710,case_title)
             y=675
-            if title=="Index":
-                for x,_ in docs:c.drawString(54,y,f"{x['section']} — {x['title']} ({x['pages']} pages)");y-=18
-            elif title=="Synopsis":c.drawString(54,y,"Bundle generated from selected case documents. Review the source documents for full context.")
-            elif title=="List of Dates":c.drawString(54,y,"Dates should be verified against source documents before filing.")
+            if title=="Cover Page":
+                c.drawString(54,680,case_parties);c.drawString(54,660,"Verify all case details and filing requirements before submission.")
+            elif title=="Index":
+                page_number=sum(bool(settings.get(k)) for k in ("cover_page","index","synopsis","list_of_dates"))+1
+                for x,reader in docs:
+                    end_page=page_number+len(reader.pages)-1
+                    c.drawString(54,y,f"{x['section']} — {x['title']} (pp. {page_number}–{end_page})");y-=18;page_number=end_page+1
+                    if y<60:c.showPage();y=740;c.setFont("Helvetica",11)
+            elif title=="Synopsis":
+                c.drawString(54,y,case_parties);y-=22
+                for x,_ in docs:c.drawString(54,y,f"Included source: {x['title'][:82]}");y-=18
+                c.drawString(54,y,"Review the underlying documents for full context and verify all statements before filing.")
+            elif title=="List of Dates":
+                if date_entries:
+                    for label,value in date_entries:c.drawString(54,y,f"{label}: {value:%d %b %Y}");y-=20
+                else:c.drawString(54,y,"No case dates are recorded. Add verified dates before filing.")
+                c.drawString(54,y-16,"Verify each date against the source record.")
             c.save();buf.seek(0);front.append((title,PdfReader(buf)))
     writer=PdfWriter();bookmarks=[]
     for title,reader in front:
