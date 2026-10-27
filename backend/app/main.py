@@ -277,12 +277,14 @@ def ask(req: Ask, user=Depends(current_user)):
             "answer": "Local evidence search is unavailable.",
             "citations": [],
             "follow_ups": [],
-            "model": {"provider": get_settings().ai_provider, "model": get_settings().local_llm_model},
+            "model": None,
+            "answer_kind": "embedding_unavailable",
             "disclaimer": DISCLAIMER,
             "research_session_id": None,
             "message_id": None,
         }
     sid, mid = req.session_id or str(uuid.uuid4()), str(uuid.uuid4())
+    used_model = None
     if not hits:
         answer = "There is insufficient evidence in the indexed documents to answer this question."
         status = retrieval_status if retrieval_status == "embedding_unavailable" else "no_evidence"
@@ -292,6 +294,7 @@ def ask(req: Ask, user=Depends(current_user)):
                 select(AppPreference).where(AppPreference.owner_id == user["id"], AppPreference.key == "ai")
             )
             user_ai_settings = preference.value if preference else {}
+        used_model = user_ai_settings.get("model") or get_settings().local_llm_model
         answer = llm_answer(
             req.question,
             hits,
@@ -343,7 +346,11 @@ def ask(req: Ask, user=Depends(current_user)):
                 role="assistant",
                 content=answer,
                 status=status,
-                model={"provider": get_settings().ai_provider, "model": get_settings().local_llm_model},
+                model=(
+                    {"provider": get_settings().ai_provider, "model": used_model}
+                    if status not in {"model_unavailable", "no_evidence"}
+                    else None
+                ),
             )
         )
         s.flush()
@@ -367,9 +374,20 @@ def ask(req: Ask, user=Depends(current_user)):
             "retrieval_status": retrieval_status,
         },
         "answer": answer,
+        "answer_kind": (
+            "model_unavailable"
+            if status == "model_unavailable"
+            else "model_generated"
+            if hits
+            else "no_evidence"
+        ),
         "citations": citations,
         "follow_ups": [],
-        "model": {"provider": get_settings().ai_provider, "model": get_settings().local_llm_model},
+        "model": (
+            {"provider": get_settings().ai_provider, "model": used_model}
+            if status not in {"model_unavailable", "no_evidence"}
+            else None
+        ),
         "disclaimer": DISCLAIMER,
         "research_session_id": sid,
         "message_id": mid,
@@ -379,9 +397,16 @@ def ask(req: Ask, user=Depends(current_user)):
 @app.get("/api/v1/ai/status")
 def ai_status(user=Depends(current_user)):
     s = get_settings()
+    with SessionLocal() as session:
+        preference = session.scalar(
+            select(AppPreference).where(AppPreference.owner_id == user["id"], AppPreference.key == "ai")
+        )
+        ai_settings = preference.value if preference else {}
+    base_url = ai_settings.get("base_url") or s.local_llm_base_url
+    model = ai_settings.get("model") or s.local_llm_model
     start = __import__("time").monotonic()
     try:
-        r = httpx.get(s.local_llm_base_url.rstrip("/") + "/models", timeout=2)
+        r = httpx.get(base_url.rstrip("/") + "/models", timeout=2)
         reachable = r.is_success
     except Exception:
         reachable = False
@@ -391,8 +416,8 @@ def ai_status(user=Depends(current_user)):
     return {
         "llm": {
             "provider": s.ai_provider,
-            "base_url": s.local_llm_base_url,
-            "model": s.local_llm_model,
+            "base_url": base_url,
+            "model": model,
             "reachable": reachable,
             "latency_ms": round((__import__("time").monotonic() - start) * 1000),
         },
