@@ -1,11 +1,11 @@
 """Typed paginated CRUD routes for clients, cases, hearings, tasks, drafts, and bundles."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import String, exists, select
+from sqlalchemy import String, exists, func, select
 
 from app.db import SessionLocal, session_scope
 from app.models import *
@@ -51,6 +51,29 @@ def assert_write_role(user, cls):
 def list_domain(cls, user, **kwargs):
     with SessionLocal() as s:
         return list_owned(s, cls, user["id"], **kwargs)
+
+
+def add_derived_fields(session, cls, item, owner_id):
+    if cls is Client:
+        item["case_count"] = (
+            session.scalar(
+                select(func.count(Case.id)).where(
+                    Case.owner_id == owner_id,
+                    Case.client_id == item["id"],
+                    Case.status != "archived",
+                )
+            )
+            or 0
+        )
+    if cls is Case:
+        item["next_hearing_at"] = session.scalar(
+            select(func.min(Hearing.at)).where(
+                Hearing.owner_id == owner_id,
+                Hearing.case_id == item["id"],
+                Hearing.at >= datetime.now(UTC).replace(tzinfo=None),
+            )
+        )
+    return item
 
 
 def register_crud(path, cls):
@@ -123,6 +146,7 @@ def register_crud(path, cls):
                 extra_filters=filters,
             )
             for item in result["items"]:
+                add_derived_fields(s, cls, item, user["id"])
                 for key in ("owner_id", "output_path", "stored_path", "text_content", "embedding_blob"):
                     item.pop(key, None)
                 if cls is FilingBundle:
@@ -157,6 +181,7 @@ def register_crud(path, cls):
         with SessionLocal() as s:
             row = owned(s, cls, rid, user)
             out = serialize(row)
+            add_derived_fields(s, cls, out, user["id"])
             for key in ("owner_id", "output_path", "stored_path", "text_content", "embedding_blob"):
                 out.pop(key, None)
             if cls is FilingBundle:
