@@ -1,1 +1,2 @@
-import TasksPage from '@/features/tasks';export default TasksPage;
+import TasksPage from "@/features/tasks";
+export default TasksPage;
