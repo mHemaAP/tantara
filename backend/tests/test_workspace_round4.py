@@ -18,7 +18,9 @@ from app.models import (
     Document,
     DocumentChunk,
     DocumentPage,
+    Draft,
     ExtractionField,
+    FilingBundle,
     Hearing,
     Task,
     User,
@@ -122,6 +124,20 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
         assert len([hearing for hearing in future_hearings if hearing.at.date() > today]) >= 2
         future_expected = min(hearing.at for hearing in future_hearings if hearing.at.date() > today)
         owner_id = session.scalar(select(User.id).where(User.email == "advocate@tantara.local"))
+        junior_id = session.scalar(select(User.id).where(User.email == "researcher@tantara.local"))
+        root_post_id = session.scalar(select(CommunityPost.id).where(CommunityPost.owner_id == owner_id))
+        root_case_id = session.scalar(select(Case.id).where(Case.owner_id == owner_id))
+        root_client_id = session.scalar(select(Client.id).where(Client.owner_id == owner_id))
+        assert junior_id and junior_id != owner_id
+        junior_counts = {
+            model.__name__: session.scalar(
+                select(func.count())
+                .select_from(model)
+                .where(model.owner_id == junior_id, model.is_demo.is_(True))
+            )
+            for model in (Client, Case, Document, Task, Hearing, Draft, FilingBundle, CommunityPost)
+        }
+        assert all(count >= 1 for count in junior_counts.values())
 
     from app.security import create_token
 
@@ -156,6 +172,81 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
         "/api/v1/search/documents", headers=headers, params={"query": "violet saxophone excavation quantum"}
     ).json()
     assert unrelated["items"] == []
+    assert unrelated["total"] == 0
+    gibberish = client.get(
+        "/api/v1/search/documents", headers=headers, params={"query": "zzyz quuxorp plinth"}
+    ).json()
+    assert gibberish["items"] == [] and gibberish["total"] == 0
+    probes = (
+        "governing law arbitration conciliation act",
+        "arbitral award interest costs termination",
+        "seat of arbitration Mumbai neutral tribunal",
+        "force majeure supply chain delay damages",
+    )
+    top_sets = []
+    for query in probes:
+        response = client.get("/api/v1/search/documents", headers=headers, params={"query": query}).json()
+        top_sets.append({hit["document_id"] for hit in response["items"][:3]})
+    assert len(set(map(frozenset, top_sets))) >= 2, (probes, top_sets, response)
+    assert top_sets[1] != top_sets[2]
+    force_majeure = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": "force majeure supply chain delay damages", "page_size": 100},
+    ).json()
+    assert force_majeure["items"]
+    assert len(force_majeure["items"]) < 100
+    assert all(hit["document_title"] == "Construction Contract" for hit in force_majeure["items"])
+    only_doc = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": "ZXQORBITKEY", "page_size": 100},
+    ).json()
+    assert only_doc["items"] and {hit["document_title"] for hit in only_doc["items"]} == {
+        "Unique Term Evidence"
+    }
+
+    junior_login = client.post(
+        "/api/v1/auth/login", json={"email": "researcher@tantara.local", "password": "tantara-local"}
+    )
+    assert junior_login.status_code == 200
+    junior_headers = {"Authorization": f"Bearer {junior_login.json()['access_token']}"}
+    junior_clients = client.get("/api/v1/clients", headers=junior_headers).json()["items"]
+    assert [row["name"] for row in junior_clients] == ["Junior Demo Client"]
+    assert junior_clients[0]["case_count"] == 1
+    junior_cases = client.get("/api/v1/cases", headers=junior_headers).json()["items"]
+    assert [row["title"] for row in junior_cases] == ["Junior Demo Matter"]
+    junior_docs = client.get("/api/v1/documents", headers=junior_headers).json()["items"]
+    assert [row["title"] for row in junior_docs] == ["Junior Demo Evidence"]
+    root_doc = next(row for row in documents if row.owner_id == owner_id)
+    for foreign_path in (
+        f"/api/v1/documents/{root_doc.id}",
+        f"/api/v1/cases/{root_case_id}",
+        f"/api/v1/clients/{root_client_id}",
+    ):
+        response = client.get(foreign_path, headers=junior_headers)
+        assert response.status_code in {403, 404}, (foreign_path, response.text)
+        assert "ABC Pvt." not in response.text and "Aarav" not in response.text
+        body = (
+            {"description": "stolen"}
+            if "/cases/" in foreign_path
+            else {"notes": "stolen"}
+            if "/clients/" in foreign_path
+            else {"title": "stolen"}
+        )
+        mutation = client.patch(foreign_path, headers=junior_headers, json=body)
+        assert mutation.status_code in {403, 404}, (foreign_path, mutation.status_code, mutation.text)
+    junior_summary = client.get("/api/v1/dashboard/summary", headers=junior_headers).json()
+    assert junior_summary["active_cases"] == 1 and junior_summary["documents_processed"] == 1
+    junior_calendar = client.get("/api/v1/calendar", headers=junior_headers).json()
+    assert "ABC Pvt. Ltd." not in str(junior_calendar)
+    junior_search = client.get(
+        "/api/v1/search/documents", headers=junior_headers, params={"query": "Mumbai"}
+    ).json()
+    assert all(hit["document_id"] != root_doc.id for hit in junior_search["items"])
+    assert client.get(
+        f"/api/v1/community/posts/{root_post_id}/replies", headers=junior_headers
+    ).status_code in {403, 404}
 
 
 def test_empty_seed_retains_only_the_local_advocate_and_no_rows(client, monkeypatch):
