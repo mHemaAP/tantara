@@ -17,7 +17,7 @@ def search_documents(
     document_types: str | None = None,
     user=Depends(current_user),
 ):
-    hits = retrieval_service.search(
+    hits, status = retrieval_service.search_with_status(
         query,
         user["id"],
         page * page_size,
@@ -26,6 +26,7 @@ def search_documents(
     )
     total = len(hits)
     return {
+        "status": status,
         "items": hits[(page - 1) * page_size : page * page_size],
         "total": total,
         "page": page,
