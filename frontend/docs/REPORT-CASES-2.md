@@ -65,6 +65,10 @@ Run against the seeded isolated backend and frontend origin `http://localhost:30
 - `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8112 pnpm test:e2e` — 17 passed. Includes the real client→case→party→hearing→task persistence workflow, route smoke at 1440/1024/768/390, fixed-date task groups, status truthfulness, preview mutation guard, case not-found, URL filter restore/sort direction, and seven-day week.
 - `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8112 pnpm screenshots` — passed; generated 8 loaded real-data captures, 3 genuine empty states, and 5 API failure states.
 
+## Commits
+
+Implementation and screenshot work is recorded in 49 single-file commits on `luna/frontend-cases`, from `c26ab56` through `afe1b51`, followed by this report-only commit. No push or merge was performed.
+
 ## Remaining gaps
 
 - The shared shell is outside this lane. Its navigation still omits Cases/Clients/Tasks and Calendar, and its profile identity/avatar remain hard-coded; no shell changes were made.
