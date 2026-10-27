@@ -21,7 +21,27 @@ class RetrievalService:
         document_types: list[str] | None = None,
         case_ids: list[str] | None = None,
     ):
-        query_vector = embed_query(question)
+        results, _status = self.search_with_status(
+            question, owner_id, top_k, case_id, jurisdiction, document_types, case_ids
+        )
+        return results
+
+    def search_with_status(
+        self,
+        question: str,
+        owner_id: str,
+        top_k: int = 5,
+        case_id: str | None = None,
+        jurisdiction: str | None = None,
+        document_types: list[str] | None = None,
+        case_ids: list[str] | None = None,
+    ):
+        try:
+            query_vector = embed_query(question)
+            status = "ok"
+        except Exception:
+            query_vector = None
+            status = "embedding_unavailable"
         clauses = [Document.owner_id == owner_id]
         if case_id:
             clauses.append(Document.case_id == case_id)
@@ -78,9 +98,9 @@ class RetrievalService:
                 )
             except Exception:
                 lexical = []
-        semantic = store().search(query_vector, store().count())
+        semantic = store().search(query_vector, store().count()) if query_vector is not None else []
         semantic_ids = [cid for cid, _ in semantic if cid in allowed]
-        return fuse_rankings(allowed, lexical, semantic_ids, top_k)
+        return fuse_rankings(allowed, lexical, semantic_ids, top_k), status
 
 
 def fuse_rankings(rows, lexical_ids, semantic_ids, top_k=5, k=60):
