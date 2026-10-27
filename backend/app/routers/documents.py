@@ -102,6 +102,7 @@ def process_job(doc_id, job_id, owner_id, data, filename):
                         text=p["text"],
                         ocr_confidence=p.get("ocr_confidence"),
                         warnings=p.get("warnings", []),
+                        is_demo=doc.is_demo,
                     )
                 )
             for ix, (ch, vec) in enumerate(zip(chunks, vectors, strict=True)):
@@ -114,6 +115,7 @@ def process_job(doc_id, job_id, owner_id, data, filename):
                     start_char=ch["start_char"],
                     end_char=ch["end_char"],
                     embedding_blob=__import__("numpy").asarray(vec, dtype="float32").tobytes(),
+                    is_demo=doc.is_demo,
                 )
                 s.add(row)
                 indexed.append((row.id, vec))
