@@ -9,7 +9,7 @@ from app.models import *
 from app.repositories.domain import create as repo_create
 from app.repositories.domain import list_owned, serialize
 from app.repositories.domain import update as repo_update
-from app.routers.domain import owned
+from app.routers.domain import add_derived_fields, owned
 from app.security import current_user
 from app.services.audit import record
 
@@ -32,6 +32,7 @@ def case_overview(cid: str, user=Depends(current_user)):
     with SessionLocal() as s:
         case = owned(s, Case, cid, user)
         out = serialize(case)
+        add_derived_fields(s, Case, out, user["id"])
         for key, cls in (("participants", CaseParticipant), ("tasks", Task), ("hearings", Hearing)):
             out[key] = list_owned(s, cls, user["id"], case_id=cid, page=1, page_size=100)["items"]
         out["documents_count"] = (
