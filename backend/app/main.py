@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 import httpx
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Depends, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
@@ -29,6 +30,10 @@ async def http_error(request,exc):
     from fastapi.responses import JSONResponse
     code={401:"unauthorized",403:"forbidden",404:"not_found",409:"duplicate",413:"too_large",422:"validation_error",429:"rate_limited",503:"model_unavailable"}.get(exc.status_code,"request_error")
     return JSONResponse(status_code=exc.status_code,content={"error":{"code":code,"message":str(exc.detail)}})
+@app.exception_handler(RequestValidationError)
+async def validation_error(request,exc):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=422,content={"error":{"code":"validation_error","message":"Request validation failed","details":exc.errors()}})
 
 @app.get("/health")
 @app.get("/api/v1/health")
@@ -86,6 +91,9 @@ def update_domain(kind,rid,data,user,partial=False):
     audit(user,"update",kind,rid); return {**merged,"id":rid,"case_id":row["case_id"]}
 def delete_domain(kind,rid,user):
     table=DOMAIN[kind]; owner_record(table,rid,user)
+    if kind=="cases":
+        update_domain(kind,rid,{"status":"archived"},user,True)
+        return {"deleted":False,"archived":True}
     with connect() as c: c.exec_driver_sql(f"DELETE FROM {table} WHERE id=? AND owner_id=?",(rid,user["id"]))
     audit(user,"delete",kind,rid); return {"deleted":True}
 
@@ -142,6 +150,38 @@ def del_participant(case_id:str,pid:str,user=Depends(current_user)):
     if r["case_id"]!=case_id: raise HTTPException(404,"Participant not found")
     with connect() as c:c.exec_driver_sql("DELETE FROM case_participants WHERE id=?",(pid,))
     audit(user,"delete","case_participant",pid); return {"deleted":True}
+@app.get("/api/v1/cases/{case_id}/events")
+def case_events(case_id:str,page:int=1,page_size:int=20,user=Depends(current_user)):
+    owner_record("cases",case_id,user); return list_domain("cases",user,case_id=case_id,page=page,page_size=page_size)
+@app.post("/api/v1/cases/{case_id}/events")
+def case_event_add(case_id:str,payload:JsonPayload,user=Depends(current_user)):
+    owner_record("cases",case_id,user); rid=str(uuid.uuid4()); d=payload.data
+    if not d.get("type") or not d.get("occurred_at"): raise HTTPException(400,"type and occurred_at are required")
+    with connect() as c:c.exec_driver_sql("INSERT INTO case_events(id,owner_id,case_id,data) VALUES(?,?,?,?)",(rid,user["id"],case_id,json.dumps(d)))
+    audit(user,"create","case_event",rid); return {**d,"id":rid,"case_id":case_id}
+@app.get("/api/v1/cases/{case_id}/events/{eid}")
+def case_event_get(case_id:str,eid:str,user=Depends(current_user)):
+    r=owner_record("case_events",eid,user)
+    if r["case_id"]!=case_id: raise HTTPException(404,"Event not found")
+    return {**json.loads(r["data"]),"id":eid,"case_id":case_id}
+@app.patch("/api/v1/cases/{case_id}/events/{eid}")
+def case_event_patch(case_id:str,eid:str,payload:JsonPayload,user=Depends(current_user)):
+    r=owner_record("case_events",eid,user)
+    if r["case_id"]!=case_id: raise HTTPException(404,"Event not found")
+    merged={**json.loads(r["data"]),**payload.data}
+    with connect() as c:c.exec_driver_sql("UPDATE case_events SET data=? WHERE id=?",(json.dumps(merged),eid))
+    audit(user,"update","case_event",eid); return {**merged,"id":eid,"case_id":case_id}
+@app.delete("/api/v1/cases/{case_id}/events/{eid}")
+def case_event_delete(case_id:str,eid:str,user=Depends(current_user)):
+    r=owner_record("case_events",eid,user)
+    if r["case_id"]!=case_id: raise HTTPException(404,"Event not found")
+    with connect() as c:c.exec_driver_sql("DELETE FROM case_events WHERE id=?",(eid,))
+    audit(user,"delete","case_event",eid); return {"deleted":True}
+@app.get("/api/v1/hearings")
+def hearings(q:str|None=None,status:str|None=None,case_id:str|None=None,from_:str|None=Query(None,alias="from"),to:str|None=None,page:int=1,page_size:int=20,user=Depends(current_user)):
+    result=list_domain("hearings",user,q,status,case_id,page,page_size)
+    result["items"]=[x for x in result["items"] if (not from_ or x.get("at","")>=from_) and (not to or x.get("at","")<=to)]
+    return result
 
 @app.get("/api/v1/dashboard/summary")
 def dashboard(user=Depends(current_user)):
@@ -173,6 +213,9 @@ def process_job(doc_id,job_id,owner_id,data,filename):
             offset+=len(p["text"])+1
         vectors=embed_documents([x["content"] for x in chunks])
         with connect() as c:
+            c.exec_driver_sql("DELETE FROM document_pages WHERE owner_id=? AND case_id=?",(owner_id,doc_id))
+            for page in pages:
+                c.exec_driver_sql("INSERT INTO document_pages(id,owner_id,case_id,data) VALUES(?,?,?,?)",(str(uuid.uuid4()),owner_id,doc_id,json.dumps({"page_number":page["page_number"],"text":page["text"],"ocr_confidence":page.get("ocr_confidence")})))
             c.exec_driver_sql("UPDATE ingestion_jobs SET data=? WHERE id=?",(json.dumps({"status":"indexing","progress":80,"steps":[{"key":"extract","label":"Extracting document","state":"complete"},{"key":"embed","label":"Creating local embeddings","state":"complete"},{"key":"index","label":"Indexing document","state":"active"}]}),job_id))
             for x,v in zip(chunks,vectors):
                 cid=str(uuid.uuid4()); c.exec_driver_sql("INSERT INTO document_chunks(id,document_id,chunk_index,content,embedding,page_number,start_char,end_char) VALUES(?,?,?,?,?,?,?,?)",(cid,doc_id,x["chunk_index"],x["content"],json.dumps(v),x["page_number"],x["start_char"],x["end_char"]))
@@ -228,7 +271,7 @@ def delete_document(did:str,user=Depends(current_user)):
     with connect() as c:
         r=c.exec_driver_sql("SELECT stored_path FROM documents WHERE id=? AND owner_id=?",(did,user["id"])).first()
         if not r: raise HTTPException(404,"Document not found")
-        path=r[0]; c.exec_driver_sql("DELETE FROM document_chunks WHERE document_id=?",(did,)); c.exec_driver_sql("DELETE FROM documents WHERE id=?",(did,)); c.exec_driver_sql("DELETE FROM ingestion_jobs WHERE json_extract(data,'$.document_id')=?",(did,))
+        path=r[0]; c.exec_driver_sql("DELETE FROM document_chunks WHERE document_id=?",(did,)); c.exec_driver_sql("DELETE FROM documents WHERE id=?",(did,)); c.exec_driver_sql("DELETE FROM ingestion_jobs WHERE json_extract(data,'$.document_id')=?",(did,)); c.exec_driver_sql("DELETE FROM document_pages WHERE case_id=? AND owner_id=?",(did,user["id"]))
     if path and Path(path).parent== (get_settings().data_dir/"uploads").resolve(): Path(path).unlink(missing_ok=True)
     audit(user,"delete","document",did); return {"deleted":True}
 @app.get("/api/v1/documents/{did}/job")
@@ -252,10 +295,8 @@ def doc_text(did:str,user=Depends(current_user)):
 @app.get("/api/v1/documents/{did}/pages")
 def doc_pages(did:str,user=Depends(current_user)):
     d=document(did,user)
-    with connect() as c:r=c.exec_driver_sql("SELECT page_number,content FROM document_chunks WHERE document_id=? ORDER BY chunk_index",(did,)).all()
-    by={}
-    for n,t in r: by.setdefault(n,""); by[n]+=t
-    return {"pages":[{"page_number":n,"text":t,"ocr_confidence":None} for n,t in sorted(by.items())]}
+    with connect() as c:r=c.exec_driver_sql("SELECT data FROM document_pages WHERE owner_id=? AND case_id=? ORDER BY CAST(json_extract(data,'$.page_number') AS INTEGER)",(user["id"],did)).all()
+    return {"pages":[json.loads(x[0]) for x in r]}
 @app.get("/api/v1/documents/{did}/file")
 def doc_file(did:str,user=Depends(current_user)):
     with connect() as c:r=c.exec_driver_sql("SELECT stored_path,filename FROM documents WHERE id=? AND owner_id=?",(did,user["id"])).first()
@@ -409,6 +450,83 @@ def save_item(payload:JsonPayload,user=Depends(current_user)):
 def saved_items(user=Depends(current_user)): return list_domain("notes",user,q="saved_item")
 @app.delete("/api/v1/ai/saved/{rid}")
 def saved_delete(rid:str,user=Depends(current_user)): return delete_domain("notes",rid,user)
+@app.post("/api/v1/community/posts/{pid}/save")
+def community_save(pid:str,user=Depends(current_user)):
+    owner_record("community_posts",pid,user)
+    with connect() as c:r=c.exec_driver_sql("SELECT id FROM saved_items WHERE owner_id=? AND json_extract(data,'$.post_id')=?",(user["id"],pid)).first()
+    if r:
+        with connect() as c:c.exec_driver_sql("DELETE FROM saved_items WHERE id=?",(r[0],))
+        return {"saved":False}
+    rid=str(uuid.uuid4())
+    with connect() as c:c.exec_driver_sql("INSERT INTO saved_items(id,owner_id,data) VALUES(?,?,?)",(rid,user["id"],json.dumps({"post_id":pid})))
+    return {"saved":True,"id":rid}
+@app.get("/api/v1/community/posts/{pid}/replies")
+def community_replies(pid:str,page:int=1,page_size:int=20,user=Depends(current_user)):
+    owner_record("community_posts",pid,user)
+    with connect() as c:r=c.exec_driver_sql("SELECT id,data,created_at FROM community_replies WHERE owner_id=? AND case_id=? ORDER BY created_at LIMIT ? OFFSET ?",(user["id"],pid,page_size,(page-1)*page_size)).mappings().all(); total=c.exec_driver_sql("SELECT count(*) FROM community_replies WHERE owner_id=? AND case_id=?",(user["id"],pid)).scalar()
+    return {"items":[{"id":x["id"],**json.loads(x["data"]),"created_at":x["created_at"]} for x in r],"total":total,"page":page,"page_size":page_size,"pages":(total+page_size-1)//page_size}
+@app.post("/api/v1/community/posts/{pid}/replies")
+def community_reply_add(pid:str,payload:JsonPayload,user=Depends(current_user)):
+    owner_record("community_posts",pid,user); rid=str(uuid.uuid4())
+    with connect() as c:c.exec_driver_sql("INSERT INTO community_replies(id,owner_id,case_id,data) VALUES(?,?,?,?)",(rid,user["id"],pid,json.dumps({**payload.data,"author":user["name"]})))
+    audit(user,"create","community_reply",rid); return {**payload.data,"id":rid,"author":user["name"]}
+@app.delete("/api/v1/community/posts/{pid}/replies/{rid}")
+def community_reply_delete(pid:str,rid:str,user=Depends(current_user)):
+    row=owner_record("community_replies",rid,user)
+    if row["case_id"]!=pid: raise HTTPException(404,"Reply not found")
+    with connect() as c:c.exec_driver_sql("DELETE FROM community_replies WHERE id=?",(rid,))
+    return {"deleted":True}
+
+@app.put("/api/v1/bundles/{rid}/items")
+def bundle_items(rid:str,payload:JsonPayload,user=Depends(current_user)):
+    owner_record("filing_bundles",rid,user); items=payload.data.get("items",[])
+    with connect() as c:
+        c.exec_driver_sql("DELETE FROM bundle_items WHERE owner_id=? AND case_id=?",(user["id"],rid))
+        for item in items:
+            document(item["document_id"],user); c.exec_driver_sql("INSERT INTO bundle_items(id,owner_id,case_id,data) VALUES(?,?,?,?)",(str(uuid.uuid4()),user["id"],rid,json.dumps(item)))
+    audit(user,"update","bundle_items",rid); return {"items":items}
+@app.put("/api/v1/bundles/{rid}/sections")
+def bundle_sections(rid:str,payload:JsonPayload,user=Depends(current_user)):
+    owner_record("filing_bundles",rid,user); sections=payload.data.get("sections",[])
+    with connect() as c:
+        c.exec_driver_sql("DELETE FROM bundle_sections WHERE owner_id=? AND case_id=?",(user["id"],rid))
+        for section in sections:c.exec_driver_sql("INSERT INTO bundle_sections(id,owner_id,case_id,data) VALUES(?,?,?,?)",(str(uuid.uuid4()),user["id"],rid,json.dumps(section)))
+    return {"sections":sections}
+@app.get("/api/v1/bundles/{rid}/preview")
+def bundle_preview(rid:str,user=Depends(current_user)):
+    owner_record("filing_bundles",rid,user)
+    from pypdf import PdfReader
+    with connect() as c: rows=c.exec_driver_sql("SELECT data FROM bundle_items WHERE owner_id=? AND case_id=? ORDER BY json_extract(data,'$.order')",(user["id"],rid)).all()
+    sections=[]; page=1; warnings=[]
+    for (raw,) in rows:
+        item=json.loads(raw)
+        with connect() as c: f=c.exec_driver_sql("SELECT title,stored_path FROM documents WHERE id=? AND owner_id=?",(item["document_id"],user["id"])).first()
+        try:n=len(PdfReader(f[1]).pages) if f else 0
+        except Exception:n=0; warnings.append(f"Could not read {f[0] if f else item['document_id']}")
+        section=item.get("section","Documents"); found=next((x for x in sections if x["title"]==section),None)
+        entry={"document_id":item["document_id"],"title":f[0] if f else "Unknown document","start_page":page,"end_page":page+n-1 if n else page,"pages":n}
+        if found:found["items"].append(entry)
+        else:sections.append({"title":section,"items":[entry]})
+        page+=n
+    return {"sections":sections,"total_pages":page-1,"warnings":warnings}
+@app.get("/api/v1/bundles/{rid}")
+def bundle_get(rid:str,user=Depends(current_user)):
+    b=owner_record("filing_bundles",rid,user); return {**json.loads(b["data"]),"id":rid,"preview":bundle_preview(rid,user)}
+@app.post("/api/v1/bundles/{rid}/generate",status_code=202)
+def bundle_generate(rid:str,user=Depends(current_user)):
+    owner_record("filing_bundles",rid,user); preview=bundle_preview(rid,user); jid=str(uuid.uuid4())
+    return {"job_id":jid,"status":"failed","error":"Bundle PDF generation is not yet available","preview":preview}
+
+@app.get("/api/v1/settings/data/import")
+def import_status(user=Depends(current_user)):
+    p=get_settings().data_dir/"corpus"/"manifest.json"
+    return json.loads(p.read_text()) if p.exists() else {"items":[],"status":"not_imported"}
+@app.post("/api/v1/settings/data/import",status_code=202)
+def import_corpus_start(user=Depends(current_user)):
+    import subprocess,sys
+    script=Path(__file__).resolve().parents[2]/"scripts"/"import_corpus.py"
+    proc=subprocess.Popen([sys.executable,str(script)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,cwd=str(script.parent.parent))
+    audit(user,"create","corpus_import",str(proc.pid)); return {"status":"queued","process_id":proc.pid}
 
 @app.get("/api/v1/draft-templates")
 def draft_templates(user=Depends(current_user)):
