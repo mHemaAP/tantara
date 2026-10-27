@@ -1,0 +1,8 @@
+"""Typed SQLAlchemy table metadata used by persistence tooling."""
+from sqlalchemy import MetaData, Table, Column, String, Text, Integer, ForeignKey
+metadata=MetaData()
+users=Table("users",metadata,Column("id",String,primary_key=True),Column("name",String,nullable=False),Column("email",String,nullable=False,unique=True),Column("password_hash",Text,nullable=False),Column("role",String,nullable=False))
+documents=Table("documents",metadata,Column("id",String,primary_key=True),Column("owner_id",String,ForeignKey("users.id",ondelete="CASCADE"),nullable=False),Column("case_id",String),Column("title",String,nullable=False),Column("content_hash",String,nullable=False))
+document_chunks=Table("document_chunks",metadata,Column("id",String,primary_key=True),Column("document_id",String,ForeignKey("documents.id",ondelete="CASCADE"),nullable=False),Column("chunk_index",Integer,nullable=False),Column("content",Text,nullable=False),Column("page_number",Integer),Column("start_char",Integer),Column("end_char",Integer))
+domain_names="roles sessions clients cases case_participants case_events hearings tasks document_pages drafts draft_versions notes research_sessions research_messages citations filing_bundles bundle_sections bundle_items community_posts community_replies community_tags saved_items app_preferences ingestion_jobs audit_events extraction_fields ai_conversations".split()
+domain={name:Table(name,metadata,Column("id",String,primary_key=True),Column("owner_id",String,ForeignKey("users.id",ondelete="CASCADE")),Column("case_id",String),Column("data",Text,nullable=False)) for name in domain_names}
