@@ -46,6 +46,8 @@ def _job_update(job_id, **values):
 
 
 def process_job(doc_id, job_id, owner_id, data, filename):
+    pages = []
+    warnings = []
     try:
         _job_update(
             job_id,
@@ -99,7 +101,7 @@ def process_job(doc_id, job_id, owner_id, data, filename):
                         page_number=p["page_number"],
                         text=p["text"],
                         ocr_confidence=p.get("ocr_confidence"),
-                        warnings=[],
+                        warnings=p.get("warnings", []),
                     )
                 )
             for ix, (ch, vec) in enumerate(zip(chunks, vectors, strict=True)):
@@ -133,11 +135,31 @@ def process_job(doc_id, job_id, owner_id, data, filename):
         )
     except Exception as exc:
         logging.warning("Document processing failed (%s)", type(exc).__name__)
-        with SessionLocal() as s:
+        with session_scope() as s:
             doc = s.get(Document, doc_id)
-            doc.status = "failed" if doc else "failed"
+            if doc:
+                doc.status = "failed"
+                doc.warnings = warnings
+                s.query(DocumentPage).filter(DocumentPage.document_id == doc_id).delete()
+                for page in pages:
+                    if page.get("warnings") or not page.get("text", "").strip():
+                        s.add(
+                            DocumentPage(
+                                id=str(uuid.uuid4()),
+                                owner_id=owner_id,
+                                document_id=doc_id,
+                                page_number=page["page_number"],
+                                text=page.get("text", ""),
+                                ocr_confidence=page.get("ocr_confidence"),
+                                warnings=page.get("warnings", []),
+                            )
+                        )
         _job_update(
-            job_id, status="failed", progress=0, error=f"{type(exc).__name__}: processing failed", warnings=[]
+            job_id,
+            status="failed",
+            progress=0,
+            error=f"{type(exc).__name__}: processing failed",
+            warnings=warnings,
         )
 
 
@@ -388,7 +410,7 @@ def doc_pages(did: str, user=Depends(current_user)):
         }
 
 
-@router.get("/documents/{did}/file")
+@router.api_route("/documents/{did}/file", methods=["GET", "HEAD"])
 def doc_file(did: str, request: Request, user=Depends(current_user)):
     with SessionLocal() as s:
         d = owned(s, Document, did, user)
