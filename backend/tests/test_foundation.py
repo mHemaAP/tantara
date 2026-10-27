@@ -56,9 +56,12 @@ def test_upload_job_duplicate_and_delete_consistency(client):
     uploaded=client.post("/api/v1/documents/upload",headers=headers,files={"file":("sample.txt",payload,"text/plain")})
     assert uploaded.status_code==202
     did=uploaded.json()["document_id"]
+    from app.db import connect
     assert client.post("/api/v1/documents/upload",headers=headers,files={"file":("duplicate.txt",payload,"text/plain")}).status_code==409
     for _ in range(120):
-        job=client.get(f"/api/v1/documents/{did}/job",headers=headers).json()
+        response=client.get(f"/api/v1/documents/{did}/job",headers=headers); job=response.json()
+        assert response.status_code==200,job
+        assert "status" in job,job
         if job["status"] in {"ready","failed"}: break
         time.sleep(.1)
     assert job["status"]=="ready",job
