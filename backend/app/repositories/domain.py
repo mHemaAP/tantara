@@ -1,5 +1,6 @@
 """Typed domain repository helpers; filtering and pagination execute in SQL."""
 from math import ceil
+import uuid
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 from app import models
@@ -30,7 +31,7 @@ def list_owned(session:Session,cls,owner_id:str,*,q=None,status=None,case_id=Non
 
 def create(session:Session,cls,owner_id:str,values:dict,**extra):
     allowed=fields_for(cls)-{"id","created_at","updated_at","owner_id","is_demo"}
-    obj=cls(owner_id=owner_id,**{k:v for k,v in values.items() if k in allowed},**extra)
+    obj=cls(id=str(uuid.uuid4()),owner_id=owner_id,**{k:v for k,v in values.items() if k in allowed},**extra)
     session.add(obj);session.flush();return obj
 
 def update(session:Session,obj,values:dict):
