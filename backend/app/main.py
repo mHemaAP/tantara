@@ -99,95 +99,10 @@ def audit(actor,action,kind,rid):
     with session_scope() as s:record(s,actor["id"],action,kind,rid)
 from app.routers.domain import router as domain_router,owned
 app.include_router(domain_router)
-
-@app.get("/api/v1/clients/{cid}/cases")
-def client_cases(cid:str,user=Depends(current_user)):
-    with SessionLocal() as s:
-        owned(s,Client,cid,user);return list_owned(s,Case,user["id"],page=1,page_size=100,extra_filters=(Case.client_id==cid,))
-@app.get("/api/v1/cases/{cid}/overview")
-def case_overview(cid:str,user=Depends(current_user)):
-    with SessionLocal() as s:
-        case=owned(s,Case,cid,user);out=serialize(case)
-        for key,cls in (("participants",CaseParticipant),("tasks",Task),("hearings",Hearing)):
-            out[key]=list_owned(s,cls,user["id"],case_id=cid,page=1,page_size=100)["items"]
-        out["documents_count"]=s.scalar(select(func.count(Document.id)).where(Document.owner_id==user["id"],Document.case_id==cid)) or 0
-        out["drafts_count"]=s.scalar(select(func.count(Draft.id)).where(Draft.owner_id==user["id"],Draft.case_id==cid)) or 0
-        return out
-
-# Case participants and timeline use their own typed tables.
-@app.post("/api/v1/cases/{cid}/participants")
-def add_participant(cid:str,payload:Payload,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    data=payload.model_dump(exclude_unset=True)
-    with session_scope() as s:
-        owned(s,Case,cid,user);row=repo_create(s,CaseParticipant,user["id"],data,case_id=cid);record(s,user["id"],"create","case_participant",row.id);return serialize(row)
-@app.patch("/api/v1/cases/{cid}/participants/{pid}")
-def update_participant(cid:str,pid:str,payload:Payload,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with session_scope() as s:
-        row=owned(s,CaseParticipant,pid,user)
-        if row.case_id!=cid:raise HTTPException(404,"Participant not found")
-        repo_update(s,row,payload.model_dump(exclude_unset=True));return serialize(row)
-@app.delete("/api/v1/cases/{cid}/participants/{pid}")
-def delete_participant(cid:str,pid:str,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with session_scope() as s:
-        row=owned(s,CaseParticipant,pid,user)
-        if row.case_id!=cid:raise HTTPException(404,"Participant not found")
-        s.delete(row);return {"deleted":True}
-@app.get("/api/v1/cases/{cid}/events")
-def case_events(cid:str,page:int=Query(1,ge=1),page_size:int=Query(20,ge=1,le=100),user=Depends(current_user)):
-    with SessionLocal() as s:owned(s,Case,cid,user);return list_owned(s,CaseEvent,user["id"],case_id=cid,page=page,page_size=page_size)
-@app.get("/api/v1/cases/{cid}/events/{eid}")
-def get_case_event(cid:str,eid:str,user=Depends(current_user)):
-    with SessionLocal() as s:
-        row=owned(s,CaseEvent,eid,user)
-        if row.case_id!=cid:raise HTTPException(404,"Case event not found")
-        return serialize(row)
-@app.patch("/api/v1/cases/{cid}/events/{eid}")
-def patch_case_event(cid:str,eid:str,payload:Payload,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with session_scope() as s:
-        row=owned(s,CaseEvent,eid,user)
-        if row.case_id!=cid:raise HTTPException(404,"Case event not found")
-        repo_update(s,row,payload.model_dump(exclude_unset=True));record(s,user["id"],"update","case_event",eid);return serialize(row)
-@app.delete("/api/v1/cases/{cid}/events/{eid}")
-def delete_case_event(cid:str,eid:str,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with session_scope() as s:
-        row=owned(s,CaseEvent,eid,user)
-        if row.case_id!=cid:raise HTTPException(404,"Case event not found")
-        s.delete(row);record(s,user["id"],"delete","case_event",eid);return {"deleted":True}
-@app.post("/api/v1/cases/{cid}/events")
-def add_case_event(cid:str,payload:Payload,user=Depends(current_user)):
-    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
-    with session_scope() as s:
-        owned(s,Case,cid,user);row=repo_create(s,CaseEvent,user["id"],payload.model_dump(exclude_unset=True),case_id=cid);record(s,user["id"],"create","case_event",row.id);return serialize(row)
-
-@app.get("/api/v1/dashboard/summary")
-def dashboard(user=Depends(current_user)):
-    today=date.today();week=datetime.combine(today+timedelta(days=7),datetime.min.time())
-    with SessionLocal() as s:
-        cnt=lambda cls,*criteria:s.scalar(select(func.count()).select_from(cls).where(cls.owner_id==user["id"],*criteria)) or 0
-        return {"greeting":"Good day","first_name":user["name"].split()[0],"today":today.isoformat(),"active_cases":cnt(Case,Case.status=="active"),"pending_arbitrations":cnt(Case,Case.status=="pending"),"hearings_this_week":cnt(Hearing,Hearing.at>=datetime.combine(today,datetime.min.time()),Hearing.at<week),"documents_processed":cnt(Document,Document.status=="ready"),"drafts_in_progress":cnt(Draft,Draft.status!="done"),"tasks_due":cnt(Task,Task.status!="done",Task.due_at<=week),"tasks_overdue":cnt(Task,Task.status!="done",Task.due_at<datetime.combine(today,datetime.min.time()))}
-@app.get("/api/v1/dashboard/activity")
-def activity(user=Depends(current_user)):
-    with SessionLocal() as s:rows=s.scalars(select(AuditEvent).where(AuditEvent.owner_id==user["id"]).order_by(AuditEvent.created_at.desc()).limit(20)).all()
-    return [{"id":r.id,"type":r.action,"actor":user["name"],"title":f"{r.action.title()} {r.object_type}","case_id":None,"at":r.created_at.isoformat()} for r in rows]
-@app.get("/api/v1/dashboard/upcoming")
-def upcoming(days:int=Query(30,ge=1,le=365),user=Depends(current_user)):
-    start=datetime.now();end=start+timedelta(days=days)
-    with SessionLocal() as s:
-        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();ts=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end,Task.status!="done")).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all()
-        out=[{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.at.isoformat(),"due_in_days":(x.at.date()-date.today()).days} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"case_title":None,"at":x.due_at.isoformat(),"due_in_days":(x.due_at.date()-date.today()).days} for x in ts if x.due_at]+[{"id":x.id,"type":"event","title":x.type,"case_id":x.case_id,"case_title":None,"at":x.occurred_at.isoformat(),"due_in_days":(x.occurred_at.date()-date.today()).days} for x in events]
-    return sorted(out,key=lambda x:x["at"])
-@app.get("/api/v1/calendar")
-def calendar(from_:datetime|None=Query(None,alias="from"),to:datetime|None=None,user=Depends(current_user)):
-    start=from_ or datetime.min;end=to or datetime.max
-    with SessionLocal() as s:
-        hs=s.scalars(select(Hearing).where(Hearing.owner_id==user["id"],Hearing.at>=start,Hearing.at<=end)).all();tasks=s.scalars(select(Task).where(Task.owner_id==user["id"],Task.due_at>=start,Task.due_at<=end)).all();events=s.scalars(select(CaseEvent).where(CaseEvent.owner_id==user["id"],CaseEvent.occurred_at>=start,CaseEvent.occurred_at<=end)).all()
-    items=[{"id":x.id,"type":"hearing","title":x.title,"case_id":x.case_id,"at":x.at.isoformat()} for x in hs]+[{"id":x.id,"type":"deadline","title":x.title,"case_id":x.case_id,"at":x.due_at.isoformat()} for x in tasks if x.due_at]+[{"id":x.id,"type":"event","title":x.type,"case_id":x.case_id,"at":x.occurred_at.isoformat()} for x in events]
-    return sorted(items,key=lambda x:x["at"])
+from app.routers.cases import router as cases_router
+app.include_router(cases_router)
+from app.routers.dashboard import router as dashboard_router
+app.include_router(dashboard_router)
 
 # Background ingestion keeps request handling short and persists every job step.
 INDEX_LOCK=__import__("threading").RLock()
