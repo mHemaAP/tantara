@@ -104,6 +104,8 @@ def document(did:str,user=Depends(current_user)):
 def patch_document(did:str,payload:Payload,user=Depends(current_user)):
     if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     values=payload.model_dump(exclude_unset=True)
+    allowed={"title","document_type","jurisdiction","case_id"}
+    if set(values)-allowed:raise HTTPException(400,"Only document metadata can be updated")
     if values.get("case_id"):
         with SessionLocal() as s:owned(s,Case,values["case_id"],user)
     with session_scope() as s:
@@ -126,8 +128,9 @@ def retry_doc(did:str,user=Depends(current_user)):
     if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:
         d=owned(s,Document,did,user)
-        if not Path(d.stored_path).exists():raise HTTPException(404,"Stored upload is unavailable")
-        data=Path(d.stored_path).read_bytes();jid=str(uuid.uuid4());d.status="queued";s.add(IngestionJob(id=jid,owner_id=user["id"],document_id=did,status="queued",steps=[],warnings=[]))
+        path=Path(d.stored_path).resolve();root=(get_settings().data_dir/"uploads").resolve()
+        if path.parent!=root or not path.is_file():raise HTTPException(404,"Stored upload is unavailable")
+        data=path.read_bytes();jid=str(uuid.uuid4());d.status="queued";s.add(IngestionJob(id=jid,owner_id=user["id"],document_id=did,status="queued",steps=[],warnings=[]))
     pool.submit(process_job,did,jid,user["id"],data,d.filename);return {"job_id":jid,"status":"queued"}
 @router.get("/documents/{did}/text")
 def doc_text(did:str,user=Depends(current_user)):
@@ -139,7 +142,8 @@ def doc_pages(did:str,user=Depends(current_user)):
         return {"pages":[{"page_number":p.page_number,"text":p.text,"ocr_confidence":p.ocr_confidence,"warnings":p.warnings} for p in rows]}
 @router.get("/documents/{did}/file")
 def doc_file(did:str,request:Request,user=Depends(current_user)):
-    with SessionLocal() as s:d=owned(s,Document,did,user);path=d.stored_path;filename=d.filename
+    with SessionLocal() as s:d=owned(s,Document,did,user);path=Path(d.stored_path).resolve();filename=d.filename
+    if path.parent!=(get_settings().data_dir/"uploads").resolve() or not path.is_file():raise HTTPException(404,"Stored upload is unavailable")
     # FileResponse implements single byte-range requests for local previews.
     return FileResponse(path,filename=filename,media_type=mimetypes.guess_type(filename)[0] or "application/octet-stream")
 
