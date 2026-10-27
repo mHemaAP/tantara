@@ -35,7 +35,7 @@ Base URL: `http://127.0.0.1:8010/api/v1`. Authenticated routes use `Authorizatio
 
 - `POST /ai/ask`; `GET /ai/status`; `GET|POST /ai/sessions`; `GET|PATCH|DELETE /ai/sessions/{id}`; `POST /ai/sessions/{id}/messages`; `GET|POST /ai/saved`; `DELETE /ai/saved/{id}`
 - `GET /draft-templates`; CRUD `/drafts`; `POST /drafts/generate`; `GET|POST /drafts/{id}/versions`; `POST /drafts/{id}/regenerate-section`; `GET /drafts/{id}/export?format=docx|pdf`
-- CRUD `/bundles`; `PUT /bundles/{id}/items`; `PUT /bundles/{id}/sections`; `GET /bundles/{id}/preview`; `POST /bundles/{id}/generate`; `GET /bundles/{id}/download`
+- CRUD `/bundles`; `PUT /bundles/{id}/items` accepts optional inclusive `page_start` and `page_end` per source document (omitting both includes all pages); `PUT /bundles/{id}/sections`; `GET /bundles/{id}/preview`; `POST /bundles/{id}/generate`; `GET /bundles/{id}/download`
 - `GET /cases/{id}/autofill`; `POST /cases/{id}/autofill/preview`; `POST /cases/{id}/autofill/apply`
 - `GET|PUT /cases/{id}/strategy`; `POST /cases/{id}/strategy/generate`
 
