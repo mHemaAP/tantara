@@ -61,6 +61,7 @@ def main():
         clients=[]
         for name in ("ABC Pvt. Ltd.","TechBuild Ltd.","Global Traders","Solaris Energy","Apex Construction","Meridian Ports"):
             row=Client(id=str(uuid.uuid4()),owner_id=owner,name=name,organization=name,email="legal@"+name.lower().replace(" ","").replace(".","")+".example",status="active",notes="Demo client",is_demo=True);db.add(row);clients.append(row)
+        db.flush()
         pairs=[("ABC Pvt. Ltd. vs. XYZ Ltd.","SIAC"),("TechBuild vs. Metro Infra","ICC"),("Global Traders vs. Oceanic","LCIA"),("Solaris Energy vs. Volt India","DIAC"),("Apex Construction vs. State","Ad hoc"),("Meridian Ports vs. Eastern Shipping","SIIA"),("Orion Systems vs. Nova Data","SIAC"),("Cedar Infrastructure vs. Riverworks","ICC"),("BluePeak Energy vs. Gridline","LCIA"),("Vantage Retail vs. Northstar","DIAC"),("Pioneer Mining vs. Terra Materials","ICC"),("Crown Hotels vs. Summit Hospitality","Ad hoc")]
         cases=[]
         for i,(title,forum) in enumerate(pairs):
