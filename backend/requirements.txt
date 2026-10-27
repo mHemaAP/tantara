@@ -9,6 +9,7 @@ faiss-cpu
 pypdf
 pypdfium2
 rapidocr-onnxruntime
+wordninja
 python-docx
 reportlab
 duckdb
