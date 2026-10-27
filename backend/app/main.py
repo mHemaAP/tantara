@@ -262,23 +262,8 @@ def doc_file(did:str,request:Request,user=Depends(current_user)):
 
 # FTS5 + FAISS reciprocal-rank fusion is the single retrieval path.
 def retrieve(question,user,top_k=5,case_id=None,jurisdiction=None,document_types=None):
-    vector=embed_query(question);conditions=[Document.owner_id==user["id"]]
-    if case_id:conditions.append(Document.case_id==case_id)
-    if jurisdiction:conditions.append(Document.jurisdiction==jurisdiction)
-    if document_types:conditions.append(Document.document_type.in_(document_types))
-    with SessionLocal() as s:
-        chunks=s.execute(select(DocumentChunk.id,DocumentChunk.document_id,DocumentChunk.content,DocumentChunk.page_number,Document.title,Document.document_type,Document.jurisdiction).join(Document,Document.id==DocumentChunk.document_id).where(*conditions)).all()
-        allowed={x.id:x for x in chunks}
-        faiss_hits=store().search(vector,min(100,len(chunks)));frank={cid:i for i,(cid,_) in enumerate(faiss_hits)}
-        try:
-            rows=s.execute(text("SELECT f.chunk_id FROM chunk_fts f JOIN documents d ON d.id=f.document_id WHERE d.owner_id=:owner AND chunk_fts MATCH :q"),{"owner":user["id"],"q":question}).all();lex=[x[0] for x in rows]
-        except Exception:lex=[]
-        lrank={cid:i for i,cid in enumerate(lex)};ranked=[]
-        for row in chunks:
-            score=(1/(60+lrank[row.id]) if row.id in lrank else 0)+(1/(60+frank[row.id]) if row.id in frank else 0)
-            if score>0:ranked.append((score,row))
-        ranked.sort(key=lambda x:x[0],reverse=True)
-        return [{"document_id":r.document_id,"document_title":r.title,"chunk_id":r.id,"page_number":r.page_number,"snippet":r.content[:900],"score":score,"source_type":r.document_type,"jurisdiction":r.jurisdiction} for score,r in ranked[:top_k]]
+    from app.services.retrieval import retrieval_service
+    return retrieval_service.search(question,user["id"],top_k,case_id,jurisdiction,document_types)
 @app.get("/api/v1/search/documents")
 def search_documents(query:str,page:int=Query(1,ge=1),page_size:int=Query(10,ge=1,le=100),case_ids:str|None=None,document_types:str|None=None,user=Depends(current_user)):
     hits=retrieve(query,user,page*page_size,case_ids.split(",")[0] if case_ids else None,document_types=document_types.split(",") if document_types else None);total=len(hits)
