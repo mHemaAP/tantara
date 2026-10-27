@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { api, authToken } from '@/lib/api/client';
+import { ApiError, api, authToken } from '@/lib/api/client';
 import { RefreshCw, FileText, Download, Sparkles, Pencil, Check } from 'lucide-react';
 import { documentsApi } from '@/features/documents/api';
 import { DocumentStatus } from '@/features/documents/DocumentStatus';
@@ -29,6 +30,7 @@ type Doc = {
 };
 type Page = { page_number: number; text?: string; ocr_confidence?: number; warnings?: string[] };
 type Extraction = {
+  review_required?: boolean;
   fields?: Record<
     string,
     { value: unknown; provenance?: string; source?: string; review_required?: boolean }
@@ -42,6 +44,84 @@ type ChunkHit = {
   retreival_score?: number;
   score?: number;
 };
+
+type AiFailure = 'auth_failure' | 'embedding_failure' | 'extraction_failure' | 'response_loading_failure';
+
+function renderExtractionValue(value: unknown): ReactNode {
+  if (value == null || value === '')
+    return <span className="ai-read-not-found">Not found in this document</span>;
+  if (Array.isArray(value)) {
+    if (!value.length) return <span className="ai-read-not-found">Not found in this document</span>;
+    return (
+      <ul>
+        {value.map((item, index) => (
+          <li key={index}>{renderExtractionValue(item)}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (typeof value === 'object') {
+    const fields = value as Record<string, unknown>;
+    if (fields.found === false) return <span className="ai-read-not-found">Not found in this document</span>;
+    if ('value' in fields) return renderExtractionValue(fields.value);
+    if (typeof fields.quote === 'string' && fields.quote.trim())
+      return <blockquote>{fields.quote}</blockquote>;
+    const entries = Object.entries(fields).filter(
+      ([key, entry]) =>
+        !['page', 'page_number', 'source_page'].includes(key) && entry != null && entry !== '',
+    );
+    if (!entries.length) return <span className="ai-read-not-found">Not found in this document</span>;
+    return (
+      <ul>
+        {entries.map(([key, entry]) => (
+          <li key={key}>
+            <strong>{key.replaceAll('_', ' ')}:</strong> {renderExtractionValue(entry)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return String(value);
+}
+
+function extractionSourcePage(value: unknown): number | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const fields = value as Record<string, unknown>;
+  const page = fields.page ?? fields.page_number ?? fields.source_page;
+  if (typeof page === 'number' && Number.isFinite(page) && page > 0) return page;
+  return extractionSourcePage(fields.value);
+}
+
+function provenanceLabel(value?: string) {
+  if (value === 'ai_suggested') return 'AI suggestion';
+  if (value === 'extracted_reviewed') return 'Reviewed extraction';
+  return value ? value.replaceAll('_', ' ') : 'Candidate extraction';
+}
+
+function aiFailureMessage(failure: AiFailure) {
+  const messages: Record<AiFailure, string> = {
+    auth_failure: 'Your access could not be verified. Sign in again, then retry AI Read.',
+    embedding_failure:
+      'The embedding service could not prepare document passages. Retry when it is available.',
+    extraction_failure: 'The document extraction request failed. No new candidate fields were saved.',
+    response_loading_failure: 'The extraction finished, but its response could not be loaded. Retry AI Read.',
+  };
+  return messages[failure];
+}
+
+function classifyApiFailure(
+  error: unknown,
+  fallback: AiFailure | 'model_unavailable',
+): AiFailure | 'model_unavailable' {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return 'auth_failure';
+  return fallback;
+}
+
+function formatMetadataDate(value?: string) {
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const doc = useQuery({ queryKey: ['documents', id], queryFn: () => api.get<Doc>(`/documents/${id}`) });
@@ -61,10 +141,8 @@ export default function DocumentDetailPage() {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [aiOutcome, setAiOutcome] = useState<
-    'idle' | 'ready' | 'model_unavailable' | 'no_evidence' | 'failed'
+    'idle' | 'ready' | 'model_unavailable' | 'no_evidence' | AiFailure
   >('idle');
-  const [aiError, setAiError] = useState('');
-  const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [copiedHash, setCopiedHash] = useState(false);
   const [chunkSearch, setChunkSearch] = useState('');
   const [submittedChunkSearch, setSubmittedChunkSearch] = useState('');
@@ -115,26 +193,46 @@ export default function DocumentDetailPage() {
   const runAiRead = async () => {
     setReading(true);
     try {
-      const settings = await documentsApi.aiStatus();
-      setAiBaseUrl(settings.base_url);
-      const readiness = await documentsApi.askForReadiness(
-        `Summarize the source document ${doc.data?.title ?? ''} and identify its arbitration terms.`,
-        doc.data?.case_id,
-      );
+      try {
+        await documentsApi.aiStatus();
+      } catch (error) {
+        setAiOutcome(classifyApiFailure(error, 'response_loading_failure'));
+        return;
+      }
+      let readiness;
+      try {
+        readiness = await documentsApi.askForReadiness(
+          `Summarize the source document ${doc.data?.title ?? ''} and identify its arbitration terms.`,
+          doc.data?.case_id,
+        );
+      } catch (error) {
+        setAiOutcome(classifyApiFailure(error, 'model_unavailable'));
+        return;
+      }
       if (readiness.status === 'model_unavailable') {
         setAiOutcome('model_unavailable');
+        return;
+      }
+      if (readiness.status === 'embedding_unavailable') {
+        setAiOutcome('embedding_failure');
         return;
       }
       if (readiness.status === 'no_evidence') {
         setAiOutcome('no_evidence');
         return;
       }
-      await documentsApi.aiRead(id);
-      await extraction.refetch();
+      try {
+        await documentsApi.aiRead(id);
+      } catch (error) {
+        setAiOutcome(classifyApiFailure(error, 'extraction_failure'));
+        return;
+      }
+      const loadedExtraction = await extraction.refetch();
+      if (loadedExtraction.isError) {
+        setAiOutcome('response_loading_failure');
+        return;
+      }
       setAiOutcome('ready');
-    } catch (error) {
-      setAiOutcome('failed');
-      setAiError(error instanceof Error ? error.message : 'AI Read failed');
     } finally {
       setReading(false);
     }
@@ -229,18 +327,34 @@ export default function DocumentDetailPage() {
               <div
                 className="metadata-definition-row"
                 role="group"
-                aria-label={`Created ${doc.data.created_at ? new Date(doc.data.created_at).toLocaleString() : '—'}`}
+                aria-label={`Created ${formatMetadataDate(doc.data.created_at)}`}
               >
-                <dt>Created</dt>{' '}
-                <dd>{doc.data.created_at ? new Date(doc.data.created_at).toLocaleString() : '—'}</dd>
+                <dt>Created</dt> <dd>{formatMetadataDate(doc.data.created_at)}</dd>
               </div>
               <div
                 className="metadata-definition-row"
                 role="group"
-                aria-label={`Processed ${doc.data.processed_at ? new Date(doc.data.processed_at).toLocaleString() : '—'}`}
+                aria-label={`Document processed ${formatMetadataDate(doc.data.processed_at)}`}
               >
-                <dt>Processed</dt>{' '}
-                <dd>{doc.data.processed_at ? new Date(doc.data.processed_at).toLocaleString() : '—'}</dd>
+                <dt>Document processed</dt> <dd>{formatMetadataDate(doc.data.processed_at)}</dd>
+              </div>
+              <div
+                className="metadata-definition-row metadata-review-state"
+                role="group"
+                aria-label={`AI review ${extraction.isLoading ? 'Checking' : extraction.isError ? 'Unavailable' : extraction.data?.fields ? (extraction.data.review_required ? 'Review required' : 'Reviewed') : 'Not started'}`}
+              >
+                <dt>AI review</dt>
+                <dd>
+                  {extraction.isLoading
+                    ? 'Checking'
+                    : extraction.isError
+                      ? 'Unavailable'
+                      : extraction.data?.fields
+                        ? extraction.data.review_required
+                          ? 'Review required'
+                          : 'Reviewed'
+                        : 'Not started'}
+                </dd>
               </div>
               <div
                 className="metadata-definition-row"
@@ -274,10 +388,9 @@ export default function DocumentDetailPage() {
               </button>
             </div>
             {aiOutcome === 'model_unavailable' && (
-              <div className="ai-read-degradation" role="status">
+              <div className="ai-read-degradation" role="status" data-error-category="model_unavailable">
                 <strong>AI model unavailable</strong>
-                <p>The configured model endpoint did not respond. No extraction fields are being shown.</p>
-                <code>{aiBaseUrl || 'Configured endpoint could not be loaded'}</code>
+                <p>The configured model could not respond. No extraction fields are being shown.</p>
                 <button className="primary" onClick={() => void runAiRead()}>
                   Retry AI Read
                 </button>
@@ -292,24 +405,40 @@ export default function DocumentDetailPage() {
                 </p>
               </div>
             )}
-            {aiOutcome === 'failed' && (
-              <p role="status" className="ai-read-error">
-                AI Read failed: {aiError || 'The response could not be processed.'}
-              </p>
+            {(
+              ['auth_failure', 'embedding_failure', 'extraction_failure', 'response_loading_failure'] as const
+            ).includes(aiOutcome as AiFailure) && (
+              <div className="ai-read-error-category" role="status" data-error-category={aiOutcome}>
+                <strong>{aiOutcome.replaceAll('_', ' ')}</strong>
+                <p>{aiFailureMessage(aiOutcome as AiFailure)}</p>
+                <button className="primary" onClick={() => void runAiRead()}>
+                  Retry AI Read
+                </button>
+              </div>
             )}
             {extraction.isError && aiOutcome === 'ready' && (
-              <p role="status" className="ai-read-error">
-                AI Read could not load. Retry the request when the service is available.
-              </p>
+              <div
+                className="ai-read-error-category"
+                role="status"
+                data-error-category="response_loading_failure"
+              >
+                <strong>Response loading failure</strong>
+                <p>{aiFailureMessage('response_loading_failure')}</p>
+              </div>
             )}
             {extraction.data?.fields && showExtractionFields && (
               <div className="ai-read-fields">
                 {Object.entries(extraction.data.fields).map(([key, field]) => {
                   const value = field.value;
-                  const sourcePage =
-                    value && typeof value === 'object' && 'page' in value ? Number(value.page) : undefined;
+                  const sourcePage = extractionSourcePage(value);
+                  const provenanceKey = field.provenance || 'candidate_extraction';
                   return (
-                    <div className="ai-read-field" data-field-key={key} key={key}>
+                    <div
+                      className="ai-read-field"
+                      data-field-key={key}
+                      data-provenance-key={provenanceKey}
+                      key={key}
+                    >
                       <strong>{key.replaceAll('_', ' ')}</strong>
                       {editingField === key ? (
                         <textarea
@@ -319,9 +448,9 @@ export default function DocumentDetailPage() {
                         />
                       ) : (
                         <div className="ai-read-value">
-                          {typeof value === 'string' ? value || '—' : JSON.stringify(value) || '—'}
+                          {renderExtractionValue(value)}
                           <small>
-                            {field.provenance || 'ai_suggested'} · {field.source || 'Source unavailable'}
+                            {provenanceLabel(field.provenance)} · {field.source || 'Source unavailable'}
                             {field.review_required ? ' · Review required' : ''}
                           </small>
                           {sourcePage ? (
