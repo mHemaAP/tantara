@@ -2,7 +2,9 @@
 
 Base URL: `http://127.0.0.1:8010/api/v1`. Authenticated routes use `Authorization: Bearer <access_token>`. Root `/health`, `/ingest/file`, and `/query` are retained as legacy adapters. See the committed [OpenAPI snapshot](../backend/openapi.json) for operation schemas.
 
-The bundled `tantara_admin_password` default is `tantara-local` for local development and tests only. Change `TANTARA_ADMIN_PASSWORD` before using the service outside an isolated local workspace. No production credential or real secret is stored in this repository.
+The bundled `tantara_admin_password` default is `tantara-local` for local development and tests only. **Change this** by setting `TANTARA_ADMIN_PASSWORD` before using the service outside an isolated local workspace. No production credential or real secret is stored in this repository.
+
+`TANTARA_DATA_DIR` (or `DATA_DIR`) is resolved to an absolute path and holds both `tantara.db` and the FAISS index. `DATABASE_URL` explicitly overrides the derived database URL. Alembic can be run from the repository root (`alembic upgrade head`) or from `backend/` (`alembic upgrade head`).
 
 ## Contract conventions
 
@@ -48,4 +50,4 @@ The bundled `tantara_admin_password` default is `tantara-local` for local develo
 - `GET /settings/embeddings`, `/settings/database`, `/settings/database/stats`, `POST /settings/database/backup`, `GET /settings/security`, `POST /settings/password`
 - `GET|POST /settings/data/import` (optional corpus runner)
 
-AI answers return `ok|no_evidence|model_unavailable|embedding_unavailable`. Empty retrieval returns an explicit insufficient-evidence answer and no citations. Citations are populated from returned database chunks, including their actual page numbers and retrieval scores. Both `retreival_score` (legacy misspelling) and `retrieval_score` carry the same numeric value; new clients should use `retrieval_score`.
+AI answers return `ok|no_evidence|model_unavailable|embedding_unavailable`. Search returns `{status,items,total,page,page_size,pages}` with `status: "embedding_unavailable"` if chunks have stored embeddings but the configured embedding backend fails or the FAISS index is missing/stale; lexical hits may still be returned and carry that warning. AI ask uses the same status and only cites returned database chunks. Empty retrieval returns an explicit insufficient-evidence answer and no citations. Citations include actual page numbers and both `retreival_score` (legacy misspelling) and `retrieval_score`, with equal numeric values; new clients should use `retrieval_score`.
