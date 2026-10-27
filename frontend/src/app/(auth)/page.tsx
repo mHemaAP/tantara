@@ -31,6 +31,7 @@ export default function Home() {
     try {
       const r = await endpoints.login(values);
       persistToken(r.access_token);
+      localStorage.removeItem('tantara_preview');
       toast.success('Welcome to TANTARA');
       router.push('/dashboard');
     } catch (e) {
@@ -46,20 +47,27 @@ export default function Home() {
   return (
     <main className="home-layout">
       <section className="hero">
-        <div style={{ fontSize: 13, opacity: 0.9 }}>Welcome to</div>
-        <h1 style={{ letterSpacing: '.18em', marginTop: 8 }}>TANTARA</h1>
-        <p>
-          AI-Powered Legal Workspace
-          <br />
-          for Arbitration Law
-        </p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
-          <a href="#login" className="primary">
-            Continue as Advocate <ArrowRight size={16} />
-          </a>
-          <button onClick={guest} className="guest-btn">
-            Explore as User
-          </button>
+        <div className="hero-content">
+          <div style={{ fontSize: 13, opacity: 0.9 }}>Welcome to</div>
+          <h1 style={{ letterSpacing: '.18em', marginTop: 8 }}>
+            <span className="brandmark" aria-hidden="true">
+              T
+            </span>{' '}
+            TANTARA
+          </h1>
+          <p>
+            AI-Powered Legal Workspace
+            <br />
+            for Arbitration Law
+          </p>
+          <div className="hero-actions">
+            <a href="#login" className="primary">
+              Continue as Advocate <ArrowRight size={16} />
+            </a>
+            <button onClick={guest} className="guest-btn">
+              Explore as User
+            </button>
+          </div>
         </div>
         <div className="home-tiles">
           {[
@@ -68,12 +76,12 @@ export default function Home() {
             [BriefcaseBusiness, 'Manage Cases'],
             [Users, 'Community Support'],
           ].map(([I, label]: any) => (
-            <button key={label} disabled title={`${label} will be available in a later phase`}>
+            <div key={label}>
               <span className="icon-tile">
                 <I size={20} />
               </span>
               {label}
-            </button>
+            </div>
           ))}
         </div>
       </section>
@@ -89,21 +97,25 @@ export default function Home() {
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
           Continue your arbitration work securely.
         </p>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <div className="field">
             <label htmlFor="email">Email address</label>
             <input
               id="email"
-              type="text"
-              autoComplete="off"
+              type="email"
+              autoComplete="username"
               suppressHydrationWarning
               {...register('email')}
             />
-            {errors.email && <small style={{ color: '#be123c' }}>{errors.email.message}</small>}
+            {errors.email && (
+              <small id="email-error" style={{ color: '#be123c' }}>
+                {errors.email.message}
+              </small>
+            )}
           </div>
           <div className="field">
             <label htmlFor="password">Password</label>
-            <div style={{ display: 'flex', border: '1px solid #dfe3ea', borderRadius: 8 }}>
+            <div className="password-field">
               <input
                 id="password"
                 type={show ? 'text' : 'password'}
@@ -116,14 +128,17 @@ export default function Home() {
                 type="button"
                 aria-label={show ? 'Hide password' : 'Show password'}
                 onClick={() => setShow(!show)}
-                style={{ border: 0, background: 'transparent', padding: '0 12px' }}
               >
                 {show ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
-            {errors.password && <small style={{ color: '#be123c' }}>{errors.password.message}</small>}
+            {errors.password && (
+              <small id="password-error" style={{ color: '#be123c' }}>
+                {errors.password.message}
+              </small>
+            )}
           </div>
-          <button className="primary" style={{ width: '100%', marginTop: 8 }} disabled={busy}>
+          <button className="primary" style={{ width: '100%', marginTop: 8, minHeight: 44 }} disabled={busy}>
             {busy ? 'Signing in…' : 'Continue as Advocate'} <ArrowRight size={16} />
           </button>
         </form>
@@ -141,7 +156,7 @@ export default function Home() {
           <br />
           advocate@tantara.local · tantara-local
         </div>
-        <p style={{ fontSize: 10, lineHeight: 1.5, color: '#94a3b8', marginTop: 18 }}>
+        <p style={{ fontSize: 10, lineHeight: 1.5, color: '#64748b', marginTop: 18 }}>
           For legal research assistance only. Verify all authorities and advice against primary sources.
         </p>
       </section>
