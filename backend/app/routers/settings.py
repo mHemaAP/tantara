@@ -1,5 +1,5 @@
 """Local workspace profile, preferences, database operations, and audit views."""
-import shutil,uuid
+import shutil,uuid,subprocess,sys,json
 from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter,Depends,HTTPException,Query
@@ -78,3 +78,13 @@ def password(payload:Password,user=Depends(current_user)):
         if len(payload.new_password)<8:raise HTTPException(400,"Password must be at least 8 characters")
         u.password_hash=hash_password(payload.new_password);record(s,user["id"],"update","password",u.id)
     return {"updated":True}
+
+@router.get("/data/import")
+def corpus_status(user=Depends(current_user)):
+    manifest=get_settings().data_dir/"corpus"/"manifest.json"
+    return json.loads(manifest.read_text()) if manifest.is_file() else {"status":"not_imported","items":[]}
+@router.post("/data/import",status_code=202)
+def corpus_import(user=Depends(current_user)):
+    script=Path(__file__).resolve().parents[3]/"scripts"/"import_corpus.py"
+    proc=subprocess.Popen([sys.executable,str(script)],cwd=str(script.parents[1]),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,close_fds=True)
+    return {"status":"queued","process_id":proc.pid}
