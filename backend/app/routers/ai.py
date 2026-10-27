@@ -4,7 +4,7 @@ from fastapi import APIRouter,Depends,HTTPException,Query
 from pydantic import BaseModel,Field
 from sqlalchemy import select,func
 from app.db import SessionLocal,session_scope
-from app.models import ResearchSession,ResearchMessage,Citation,SavedItem
+from app.models import ResearchSession,ResearchMessage,Citation,SavedItem,CommunityPost
 from app.repositories.domain import get_owned,serialize
 from app.security import current_user
 router=APIRouter(prefix="/api/v1/ai",tags=["ai"])
@@ -47,15 +47,13 @@ def ask_in_session(sid:str,payload:Question,user=Depends(current_user)):
     with SessionLocal() as s:
         if not get_owned(s,ResearchSession,sid,user["id"]):raise HTTPException(404,"Research session not found")
     from app.main import Ask,ask
-    answer=ask(Ask(question=payload.question),user)
-    with session_scope() as s:
-        msg=s.get(ResearchMessage,answer.get("message_id"))
-        if msg:msg.session_id=sid
-    return answer
+    return ask(Ask(question=payload.question,session_id=sid),user)
 @router.post("/saved")
 def save(payload:SavedBody,user=Depends(current_user)):
     if payload.item_type not in {"message","research_item","community_post"}:raise HTTPException(400,"Unsupported saved item type")
     with session_scope() as s:
+        model={"message":ResearchMessage,"research_item":ResearchSession,"community_post":CommunityPost}[payload.item_type]
+        if not get_owned(s,model,payload.item_id,user["id"]):raise HTTPException(404,"Saved item target not found")
         old=s.scalar(select(SavedItem).where(SavedItem.owner_id==user["id"],SavedItem.item_type==payload.item_type,SavedItem.item_id==payload.item_id))
         if old:return serialize(old)
         row=SavedItem(id=str(uuid.uuid4()),owner_id=user["id"],item_type=payload.item_type,item_id=payload.item_id);s.add(row);return serialize(row)
