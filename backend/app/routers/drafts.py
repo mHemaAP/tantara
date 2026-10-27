@@ -24,6 +24,7 @@ def versions(rid:str,user=Depends(current_user)):
         return {"items":[serialize(x) for x in rows]}
 @router.post("/drafts/{rid}/versions")
 def save_version(rid:str,payload:VersionBody,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with session_scope() as s:
         draft=get_owned(s,Draft,rid,user["id"])
         if not draft:raise HTTPException(404,"Draft not found")
@@ -32,6 +33,7 @@ def save_version(rid:str,payload:VersionBody,user=Depends(current_user)):
         draft.content_markdown=payload.content_markdown;s.add(row);record(s,user["id"],"create","draft_version",row.id);return serialize(row)
 @router.post("/drafts/generate")
 def generate(payload:Generate,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     with SessionLocal() as s:
         case=get_owned(s,Case,payload.case_id,user["id"])
         if not case:raise HTTPException(404,"Case not found")
@@ -50,6 +52,7 @@ def generate(payload:Generate,user=Depends(current_user)):
     return {"draft_id":did,"version_id":vid,"content_markdown":content,"warnings":["Draft requires legal review; verify facts, law, and citations."],"review_markers":markers}
 @router.post("/drafts/{rid}/regenerate-section")
 def regenerate(rid:str,payload:SectionBody,user=Depends(current_user)):
+    if user.get("role")=="researcher":raise HTTPException(403,"This role is read-only")
     # A new marked section version preserves the preceding version unchanged.
     with SessionLocal() as s:d=get_owned(s,Draft,rid,user["id"])
     if not d:raise HTTPException(404,"Draft not found")
