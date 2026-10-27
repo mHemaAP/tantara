@@ -1,14 +1,14 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { endpoints } from '@/lib/api/endpoints';
-import { api, authToken } from '@/lib/api/client';
+import { api, authToken, isReadOnlyPreview } from '@/lib/api/client';
 import { keys } from '@/lib/api/keys';
 import {
   User,
@@ -88,6 +88,12 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
     ),
   });
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState(false);
+  useEffect(() => setPreview(isReadOnlyPreview()), []);
+  const fieldLabel = (k: string) =>
+    section === 'local-ai'
+      ? ({ base_url: 'Base URL', model: 'Model', temperature: 'Temperature', top_k: 'Top-k' }[k] ?? k)
+      : k.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   const submit = handleSubmit(async (values) => {
     setSaving(true);
     try {
@@ -117,9 +123,14 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
     <form onSubmit={submit}>
       {list.map((k) => (
         <div className="field" key={k}>
-          <label htmlFor={k}>{k.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</label>
+          <label htmlFor={k}>{fieldLabel(k)}</label>
           {['theme', 'density', 'font'].includes(k) ? (
-            <select id={k} {...register(k)}>
+            <select
+              id={k}
+              disabled={preview}
+              title={preview ? 'Sign in to change settings' : ''}
+              {...register(k)}
+            >
               {(k === 'theme'
                 ? ['light', 'dark', 'system']
                 : k === 'density'
@@ -142,16 +153,37 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
                       : 'text'
               }
               step={k === 'temperature' ? '.1' : undefined}
+              aria-invalid={Boolean(errors[k])}
+              aria-describedby={errors[k] ? `${k}-error` : undefined}
+              disabled={preview}
+              title={preview ? 'Sign in to edit settings' : ''}
               {...register(k)}
             />
           )}
+          {section === 'local-ai' && (
+            <small className="muted">
+              {k === 'base_url'
+                ? 'OpenAI-compatible local API endpoint.'
+                : k === 'temperature'
+                  ? 'Sampling temperature from 0 to 2.'
+                  : k === 'top_k'
+                    ? 'Maximum retrieved context chunks.'
+                    : 'Model identifier served by the configured endpoint.'}
+            </small>
+          )}
           {errors[k] && (
-            <small style={{ color: '#be123c' }}>Please enter a valid {k.replaceAll('_', ' ')}.</small>
+            <small id={`${k}-error`} style={{ color: '#be123c' }}>
+              Please enter a valid {fieldLabel(k).toLowerCase()}.
+            </small>
           )}
         </div>
       ))}
       <div className="settings-actions">
-        <button className="primary" disabled={saving}>
+        <button
+          className="primary"
+          disabled={saving || preview}
+          title={preview ? 'Sign in to save settings' : ''}
+        >
           {saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
@@ -184,6 +216,7 @@ export default function SettingsSection() {
       setSpecial(combined);
       toast.success('AI status received');
     } catch (e) {
+      setSpecial({ reachable: false, status: 'unreachable' });
       toast.error(e instanceof Error ? e.message : 'Connection failed');
     } finally {
       setTesting(false);
@@ -237,17 +270,18 @@ export default function SettingsSection() {
               `Configure ${title.toLowerCase()} for this local workspace.`}
           </p>
           {query.isLoading ? (
-            <p className="muted">Loading settings…</p>
+            <p className="muted" role="status">
+              Loading settings…
+            </p>
           ) : query.isError ? (
             <div className="offline">
               <strong>Backend not reachable at 127.0.0.1:8010</strong>
-              <p>
-                Start it with{' '}
+              <details>
+                <summary>Start command</summary>
                 <code>
                   cd backend &amp;&amp; .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
                 </code>
-                .
-              </p>{' '}
+              </details>
               <button className="primary" onClick={() => void query.refetch()}>
                 <RefreshCw size={14} /> Retry
               </button>
@@ -257,6 +291,15 @@ export default function SettingsSection() {
               <SettingsForm section={section} data={query.data ?? {}} />
               <InstitutionChoices />
             </>
+          ) : section === 'local-ai' ? (
+            <SpecialSettings
+              section={section}
+              data={query.data ?? {}}
+              onBackup={backup}
+              onTest={test}
+              testing={testing}
+              status={special ?? status.data ?? null}
+            />
           ) : fields[section] ? (
             <SettingsForm section={section} data={query.data ?? {}} />
           ) : (
@@ -274,6 +317,34 @@ export default function SettingsSection() {
     </div>
   );
 }
+function connectionSummary(status: Record<string, unknown> | null) {
+  if (!status) return 'Connection has not been tested';
+  const llm = status.llm && typeof status.llm === 'object' ? (status.llm as Record<string, unknown>) : status;
+  const reachable = llm.reachable ?? status.reachable;
+  if (reachable === false || status.status === 'unreachable') return 'Unreachable';
+  if (reachable === true) {
+    const model = typeof llm.model === 'string' ? ` · ${llm.model}` : '';
+    const latency = typeof llm.latency_ms === 'number' ? ` · ${llm.latency_ms} ms` : '';
+    return `Reachable${model}${latency}`;
+  }
+  return 'Connection status unavailable';
+}
+function connectionDetails(status: Record<string, unknown> | null) {
+  if (!status) return 'Test the configured endpoint to check its model and reachability.';
+  const llm = status.llm && typeof status.llm === 'object' ? (status.llm as Record<string, unknown>) : {};
+  const embeddings =
+    status.embeddings && typeof status.embeddings === 'object'
+      ? (status.embeddings as Record<string, unknown>)
+      : {};
+  const details = [
+    typeof llm.provider === 'string' ? `Provider: ${llm.provider}` : null,
+    typeof llm.model === 'string' ? `Model: ${llm.model}` : null,
+    typeof llm.latency_ms === 'number' ? `Latency: ${llm.latency_ms} ms` : null,
+    typeof embeddings.provider === 'string' ? `Embeddings: ${embeddings.provider}` : null,
+    typeof embeddings.dims === 'number' ? `${embeddings.dims} dimensions` : null,
+  ].filter(Boolean);
+  return details.length ? details.join(' · ') : 'The status endpoint did not return model details.';
+}
 function SpecialSettings({
   section,
   data,
@@ -290,6 +361,8 @@ function SpecialSettings({
   status: Record<string, unknown> | null;
 }) {
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
+  useEffect(() => setPreview(isReadOnlyPreview()), []);
   const trigger = async (path: string) => {
     setBusy(true);
     try {
@@ -307,14 +380,15 @@ function SpecialSettings({
       <div>
         <SettingsForm section="local-ai" data={data} />
         <div style={{ borderTop: '1px solid #eef1f5', paddingTop: 17 }}>
-          <button className="primary" onClick={onTest} disabled={testing}>
-            {testing ? 'Testing…' : 'Test connection'}
-          </button>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, color: '#475569' }}>
-            {status
-              ? JSON.stringify(status, null, 2)
-              : 'Connection test reports the configured model and reachability.'}
-          </pre>
+          <div className="connection-row" role="status">
+            <span>{connectionSummary(status)}</span>
+            <button className="secondary-button" onClick={onTest} disabled={testing}>
+              {testing ? 'Testing…' : 'Test connection'}
+            </button>
+          </div>
+          <p className="muted" style={{ fontSize: 12 }}>
+            {connectionDetails(status)}
+          </p>
         </div>
       </div>
     );
@@ -359,7 +433,12 @@ function SpecialSettings({
     return (
       <div>
         <p className="muted">Import public legal materials into the local workspace.</p>
-        <button className="primary" disabled={busy} onClick={() => void trigger('/settings/data/import')}>
+        <button
+          className="primary"
+          disabled={busy || preview}
+          title={preview ? 'Sign in to start an import' : ''}
+          onClick={() => void trigger('/settings/data/import')}
+        >
           <Upload size={15} />
           {busy ? 'Starting…' : 'Start corpus import'}
         </button>
@@ -447,7 +526,9 @@ function InstitutionChoices() {
     <div style={{ marginTop: 24, borderTop: '1px solid #eef1f5', paddingTop: 16 }}>
       <h3 style={{ fontSize: 14 }}>Arbitration institutions</h3>
       {q.isLoading ? (
-        <p className="muted">Loading institutions…</p>
+        <p className="muted" role="status">
+          Loading institutions…
+        </p>
       ) : q.isError ? (
         <p className="muted">Institution list unavailable.</p>
       ) : items?.length ? (
