@@ -27,8 +27,15 @@ def test_reviewable_extraction_page_refs_range_and_hybrid_search(client):
     assert job["status"] == "ready" and job["pages"] == 1
     pages = client.get(f"/api/v1/documents/{did}/pages", headers=h).json()["pages"]
     assert pages[0]["page_number"] == 1
+    extracted = client.get(f"/api/v1/documents/{did}/text", headers=h)
+    assert extracted.status_code == 200 and "Mumbai" in extracted.json()["text"]
     preview = client.get(f"/api/v1/documents/{did}/file", headers={**h, "Range": "bytes=0-9"})
     assert preview.status_code == 206 and preview.content == text[:10]
+    full_file = client.get(f"/api/v1/documents/{did}/file", headers=h)
+    assert full_file.status_code == 200 and full_file.content == text
+    head_file = client.head(f"/api/v1/documents/{did}/file", headers=h)
+    assert head_file.status_code == 200 and int(head_file.headers["content-length"]) == len(text)
+    assert head_file.content == b""
     candidate = client.post(f"/api/v1/documents/{did}/ai-read", headers=h).json()
     assert candidate["review_required"] is True
     assert candidate["fields"]["arbitration_clause"]["provenance"] == "ai_suggested"
@@ -45,9 +52,12 @@ def test_reviewable_extraction_page_refs_range_and_hybrid_search(client):
         params={"query": "arbitration Mumbai", "page": 1, "page_size": 1},
     )
     assert results.status_code == 200 and results.json()["total"] >= 1
+    assert set(results.json()) >= {"items", "total", "page", "page_size", "pages"}
     assert results.json()["items"][0]["document_id"] == did and results.json()["items"][0]["page_number"] == 1
     hit = results.json()["items"][0]
     assert hit["retrieval_score"] == hit["retreival_score"] == hit["score"]
+    documents = client.get("/api/v1/documents", headers=h).json()
+    assert set(documents) >= {"items", "total", "page", "page_size", "pages"}
 
 
 def test_upload_rejections_and_duplicate_error_details(client):
