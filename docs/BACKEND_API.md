@@ -2,6 +2,8 @@
 
 Base URL: `http://127.0.0.1:8010/api/v1`. Authenticated routes use `Authorization: Bearer <access_token>`. Root `/health`, `/ingest/file`, and `/query` are retained as legacy adapters. See the committed [OpenAPI snapshot](../backend/openapi.json) for operation schemas.
 
+The bundled `tantara_admin_password` default is `tantara-local` for local development and tests only. Change `TANTARA_ADMIN_PASSWORD` before using the service outside an isolated local workspace. No production credential or real secret is stored in this repository.
+
 ## Contract conventions
 
 - List responses are `{items,total,page,page_size,pages}`; supported domain filters include `q`, `status`, `case_id`, `page`, `page_size`, and `sort`. Documents also accept `type`; hearings accept `from` and `to`; community posts accept `tag`, `kind`, and `saved`.
