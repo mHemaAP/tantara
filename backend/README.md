@@ -12,7 +12,7 @@ uv pip install -p backend/.venv/bin/python -r backend/requirements.txt -r backen
 cp backend/.env.example backend/.env
 ```
 
-The database, FAISS index, uploads, and corpus files are under `backend/data/`. On first boot the application runs `alembic upgrade head`, enables SQLite WAL and foreign keys, and creates `backend/data/.secret` with mode 0600. The bootstrap advocate is `advocate@tantara.local`; the initial password is `TANTARA_ADMIN_PASSWORD` (default: `tantara-local`). Change it through `POST /api/v1/settings/password`.
+The database, FAISS index, uploads, and corpus files are under the resolved `TANTARA_DATA_DIR` (default: `backend/data/`). Unless `DATABASE_URL` is explicitly set, SQLite lives at `$TANTARA_DATA_DIR/tantara.db`. On first boot the application runs `alembic upgrade head` and enables SQLite WAL and foreign keys. Alembic works from the repository root or `backend/`. The bootstrap advocate is `advocate@tantara.local`; the initial password is `TANTARA_ADMIN_PASSWORD` (default: `tantara-local`). This password is local-only: change it through `POST /api/v1/settings/password` before using the service outside an isolated workspace.
 
 Run on loopback only:
 
