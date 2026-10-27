@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import { taskGroup } from "../src/features/tasks/grouping";
 import { matterStatusClass } from "../src/features/cases/status";
 import { displayClientStatus } from "../src/features/clients/status";
+import { test as browserTest, expect as browserExpect } from "@playwright/test";
+const base = `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8112"}/api/v1`;
 
 test("tasks partition into exclusive workspace-timezone groups including undated open work", () => {
   const now = new Date("2026-10-27T09:00:00Z"); // 14:30 in Asia/Kolkata
@@ -27,3 +29,112 @@ test("missing client status remains unavailable instead of being inferred", () =
   expect(displayClientStatus(undefined)).toBe("—");
   expect(displayClientStatus("inactive")).toBe("inactive");
 });
+
+browserTest(
+  "shell has no activity signal when the real activity feed is empty",
+  async ({ page, request }) => {
+    const login = await request.post(`${base}/auth/login`, {
+      data: {
+        email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+        password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+      },
+    });
+    browserExpect(login.ok()).toBeTruthy();
+    const token = (await login.json()).access_token;
+    await page.addInitScript((value) => {
+      localStorage.setItem("tantara_token", value as string);
+      document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+    }, token);
+    await page.route(`${base}/dashboard/activity`, (route) =>
+      route.fulfill({ json: [] }),
+    );
+    await page.goto("/cases");
+    await page.getByRole("button", { name: "Recent activity" }).click();
+    browserExpect(await page.locator(".activity-dot").count()).toBe(0);
+    await browserExpect(page.getByText("No recent activity.")).toBeVisible();
+  },
+);
+
+browserTest(
+  "shell never displays a fabricated identity while auth is loading",
+  async ({ page, request }) => {
+    const login = await request.post(`${base}/auth/login`, {
+      data: {
+        email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+        password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+      },
+    });
+    browserExpect(login.ok()).toBeTruthy();
+    const token = (await login.json()).access_token;
+    await page.addInitScript((value) => {
+      localStorage.setItem("tantara_token", value as string);
+      document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+    }, token);
+    await page.route(`${base}/auth/me`, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await route.continue();
+    });
+    await page.goto("/cases");
+    await browserExpect(page.getByText("Signing in…")).toBeVisible();
+    await browserExpect(page.getByText("Aarav Mehta")).toHaveCount(0);
+  },
+);
+
+browserTest(
+  "case table resolves next hearing from one hearings collection request",
+  async ({ page, request }) => {
+    const login = await request.post(`${base}/auth/login`, {
+      data: {
+        email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+        password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+      },
+    });
+    browserExpect(login.ok()).toBeTruthy();
+    const token = (await login.json()).access_token;
+    const headers = { Authorization: `Bearer ${token}` };
+    const casesResponse = await request.get(
+      `${base}/cases?page=1&page_size=100`,
+      { headers },
+    );
+    const hearingsResponse = await request.get(
+      `${base}/hearings?page=1&page_size=100&sort=at`,
+      { headers },
+    );
+    browserExpect(casesResponse.ok()).toBeTruthy();
+    browserExpect(hearingsResponse.ok()).toBeTruthy();
+    const caseRows = (await casesResponse.json()).items as Array<{
+      id: string;
+      title: string;
+      next_hearing_at?: string;
+    }>;
+    const hearings = (await hearingsResponse.json()).items as Array<{
+      case_id?: string;
+      at: string;
+    }>;
+    browserExpect(hearings.length).toBeGreaterThan(0);
+    const hearing = hearings.find((item) =>
+      caseRows.some((row) => row.id === item.case_id),
+    );
+    browserExpect(
+      hearing,
+      "seeded hearings should be linked to a listed case",
+    ).toBeTruthy();
+    const linkedCase = caseRows.find((row) => row.id === hearing!.case_id)!;
+    browserExpect(linkedCase.next_hearing_at || null).toBeNull();
+    await page.addInitScript((value) => {
+      localStorage.setItem("tantara_token", value as string);
+      document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+    }, token);
+    await page.goto("/cases");
+    const row = page
+      .getByRole("row")
+      .filter({ has: page.getByRole("link", { name: linkedCase.title }) });
+    await browserExpect(row).toContainText(
+      new Intl.DateTimeFormat("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).format(new Date(hearing!.at)),
+    );
+  },
+);
