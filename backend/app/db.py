@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from app.config import get_settings
 
-TABLES = "roles sessions clients cases case_participants case_events hearings tasks document_pages document_chunks drafts draft_versions notes research_sessions research_messages citations filing_bundles bundle_sections bundle_items community_posts community_replies community_tags saved_items app_preferences ingestion_jobs audit_events extraction_fields ai_conversations".split()
+TABLES = "roles sessions clients cases case_participants case_events hearings tasks document_pages drafts draft_versions notes research_sessions research_messages citations filing_bundles bundle_sections bundle_items community_posts community_replies community_tags saved_items app_preferences ingestion_jobs audit_events extraction_fields ai_conversations".split()
 _engine = None
 
 def engine():
@@ -26,6 +26,11 @@ def init_db():
         c.exec_driver_sql("CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id), case_id TEXT, title TEXT NOT NULL, document_type TEXT, jurisdiction TEXT, source_label TEXT, filename TEXT, stored_path TEXT, content_hash TEXT NOT NULL, status TEXT DEFAULT 'queued', text_content TEXT DEFAULT '', warnings TEXT DEFAULT '[]', page_count INTEGER DEFAULT 0, is_demo INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(owner_id,content_hash))")
         for t in TABLES:
             c.exec_driver_sql(f"CREATE TABLE IF NOT EXISTS {t} (id TEXT PRIMARY KEY, owner_id TEXT, case_id TEXT, data TEXT NOT NULL DEFAULT '{{}}', is_demo INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+        # Repair databases initialized by the early JSON-domain prototype, which
+        # accidentally created document_chunks with the generic columns.
+        chunk_cols={r[1] for r in c.exec_driver_sql("PRAGMA table_info(document_chunks)").all()}
+        if chunk_cols and "document_id" not in chunk_cols:
+            c.exec_driver_sql("DROP TABLE document_chunks")
         c.exec_driver_sql("CREATE INDEX IF NOT EXISTS documents_owner_case_idx ON documents(owner_id,case_id)")
         c.exec_driver_sql("CREATE TABLE IF NOT EXISTS document_chunks (id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE, chunk_index INTEGER NOT NULL, content TEXT NOT NULL, embedding TEXT, page_number INTEGER, start_char INTEGER, end_char INTEGER)")
         c.exec_driver_sql("CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(chunk_id UNINDEXED, document_id UNINDEXED, content)")
