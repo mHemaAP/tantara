@@ -46,6 +46,26 @@ export function CaseList({
     queryKey: ["cases", query],
     queryFn: () => casesApi.list(query),
   });
+  // The cases collection has no computed hearing projection. One bounded
+  // hearings request supplies the visible rows without per-case N+1 calls.
+  const hearingData = useQuery({
+    queryKey: ["case-list-hearings"],
+    queryFn: () => casesApi.hearingsForList(),
+  });
+  const nextHearingByCase = useMemo(() => {
+    const result = new Map<string, string>();
+    for (const hearing of hearingData.data?.items ?? []) {
+      if (!hearing.case_id || !hearing.at) continue;
+      const previous = result.get(hearing.case_id);
+      if (
+        !previous ||
+        new Date(hearing.at).getTime() < new Date(previous).getTime()
+      ) {
+        result.set(hearing.case_id, hearing.at);
+      }
+    }
+    return result;
+  }, [hearingData.data]);
   const rows = data.data?.items ?? [];
   const countQuery = useQuery({
     queryKey: ["cases", "counts"],
@@ -268,11 +288,14 @@ export function CaseList({
                     </td>
                     <td>{c.forum || c.institution || "—"}</td>
                     <td>
-                      {c.next_hearing_at
-                        ? new Date(c.next_hearing_at).toLocaleDateString(
-                            "en-IN",
-                            { day: "2-digit", month: "short", year: "numeric" },
-                          )
+                      {nextHearingByCase.get(c.id) || c.next_hearing_at
+                        ? new Date(
+                            nextHearingByCase.get(c.id) || c.next_hearing_at!,
+                          ).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
                         : "—"}
                     </td>
                     <td>
