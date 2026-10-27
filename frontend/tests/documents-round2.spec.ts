@@ -45,18 +45,143 @@ test('document URL builder encodes identifiers and preserves citation pages', ()
   expect(documentHref('contract-1')).toBe('/documents/contract-1');
 });
 
+test('captures seeded document and search states before fixture uploads', async ({ page, request }) => {
+  const token = await signIn(request);
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  await openWithToken(page, token, '/documents');
+  await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.document-preview-pane canvas')).toBeVisible({ timeout: 30000 });
+  await page.screenshot({ path: '../docs/screenshots/documents-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '../docs/screenshots/documents-mobile.png', fullPage: true });
+
+  await page.getByRole('textbox', { name: 'Search documents' }).fill('no-document-with-this-title-9472');
+  await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
+  await expect(page.getByLabel('Filter by status')).toHaveValue('');
+  await page.screenshot({ path: '../docs/screenshots/documents-empty-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  await page.screenshot({ path: '../docs/screenshots/documents-empty-desktop.png', fullPage: true });
+
+  await page.goto('/search');
+  await page.getByRole('textbox', { name: 'Search documents' }).fill('agreement');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.locator('.search-hit').first()).toBeVisible({ timeout: 30000 });
+  await page.screenshot({ path: '../docs/screenshots/search-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '../docs/screenshots/search-mobile.png', fullPage: true });
+});
+
 test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async ({ page, request }) => {
+  test.setTimeout(60000);
   const { documentId, token } = await uploadFixture(request, 'arbitration-text-layer.pdf');
   await openWithToken(page, token, documentHref(documentId, 2));
   const targetPage = page.locator('.pdf-page-card[data-page-card="2"]');
   await expect(targetPage).toBeVisible({ timeout: 30000 });
   await expect(targetPage).toHaveClass(/pdf-page-deep-link/);
-  await expect(targetPage.locator('canvas')).toHaveAttribute('aria-label', 'PDF page 2');
+  const pageCanvas = targetPage.getByLabel('PDF page 2');
+  await expect(pageCanvas).toBeVisible({ timeout: 45000 });
+  await expect(pageCanvas).toHaveJSProperty('tagName', 'CANVAS');
   await expect.poll(() => targetPage.evaluate((node) => {
     const bounds = node.getBoundingClientRect();
     const viewport = node.closest('.pdf-pages-scroll')?.getBoundingClientRect();
     return Boolean(viewport && bounds.top < viewport.bottom && bounds.bottom > viewport.top);
   })).toBeTruthy();
+  const sidebar = page.locator('.sidebar');
+  const header = page.locator('.topbar');
+  const canvas = pageCanvas;
+  await expect.poll(() => sidebar.evaluate((node) => Math.round(node.getBoundingClientRect().left))).toBe(0);
+  await expect.poll(async () => {
+    const headerBottom = await header.evaluate((node) => node.getBoundingClientRect().bottom);
+    const canvasTop = await canvas.evaluate((node) => node.getBoundingClientRect().top);
+    return canvasTop > headerBottom;
+  }).toBeTruthy();
+  const skipLinkBounds = await page.locator('.skip-link').boundingBox();
+  const mainBounds = await page.locator('#main').boundingBox();
+  expect(skipLinkBounds).not.toBeNull();
+  expect(mainBounds).not.toBeNull();
+  expect(skipLinkBounds!.y + skipLinkBounds!.height).toBeLessThanOrEqual(0);
+  expect(mainBounds!.x).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  await page.screenshot({ path: '../docs/screenshots/document-viewer-desktop-fixture.png', fullPage: true });
+  const mobilePage = await page.context().newPage();
+  await mobilePage.setViewportSize({ width: 390, height: 844 });
+  await openWithToken(mobilePage, token, documentHref(documentId, 2));
+  const mobilePageTwo = mobilePage.locator('.pdf-page-card[data-page-card="2"]');
+  await expect(mobilePageTwo).toBeVisible({ timeout: 45000 });
+  await expect(mobilePageTwo.getByLabel('PDF page 2')).toBeVisible({ timeout: 45000 });
+  await expect.poll(() => mobilePage.locator('.sidebar').evaluate((node) => node.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+  await expect.poll(() => mobilePage.locator('.topbar').evaluate((node) => Math.round(node.getBoundingClientRect().top))).toBe(0);
+  await mobilePage.screenshot({ path: '../docs/screenshots/document-viewer-mobile-fixture.png', fullPage: true });
+  await mobilePage.close();
+});
+
+test('viewer metadata uses separated definition rows and an accessible copy confirmation', async ({ page, request, context }) => {
+  const token = await signIn(request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
+  const document = documents.items.find((item: { filename: string }) => item.filename === 'arbitration-text-layer.pdf');
+  expect(document).toBeTruthy();
+  await openWithToken(page, token, `/documents/${document.id}`);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:3012' });
+  await expect(page.getByRole('group', { name: 'Filename arbitration-text-layer.pdf' })).toHaveText(/Filename\s+arbitration-text-layer\.pdf/);
+  await expect(page.getByRole('group', { name: 'Pages 3' })).toHaveText(/Pages\s+3/);
+  await expect(page.getByRole('group', { name: /^Characters / })).toHaveText(/Characters\s+[\d,]+/);
+  await expect(page.getByRole('group', { name: /^Created / })).toHaveText(/Created\s+.+/);
+  await expect(page.getByRole('group', { name: /^Jurisdiction / })).toHaveText(/Jurisdiction\s+.+/);
+  const copyButton = page.getByRole('button', { name: 'Copy SHA-256' });
+  await expect(copyButton).toBeVisible();
+  await copyButton.click();
+  await expect(page.getByRole('status').filter({ hasText: 'SHA-256 copied' })).toBeVisible();
+  await page.locator('.document-metadata').screenshot({ path: '../docs/screenshots/document-metadata-desktop-fixture.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.document-metadata').screenshot({ path: '../docs/screenshots/document-metadata-mobile-fixture.png' });
+});
+
+test('page-aware chunks find SIAC Rules and open highlighted PDF page 2', async ({ page, request }) => {
+  const token = await signIn(request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
+  const document = documents.items.find((item: { filename: string }) => item.filename === 'arbitration-text-layer.pdf');
+  expect(document).toBeTruthy();
+  await openWithToken(page, token, `/documents/${document.id}`);
+  await page.getByLabel('Search this document').fill('SIAC Rules');
+  await page.getByRole('button', { name: 'Find chunks' }).click();
+  const pageTwoHit = page.locator('.citation-chunk').filter({ hasText: 'Page 2' });
+  await expect(pageTwoHit).toBeVisible({ timeout: 30000 });
+  await expect(pageTwoHit.getByText(/Relevance\s+\d/)).toBeVisible();
+  await pageTwoHit.getByRole('link', { name: 'Open page 2' }).click();
+  await expect(page).toHaveURL(/page=2/);
+  const pageTwo = page.locator('.pdf-page-card[data-page-card="2"]');
+  await expect(pageTwo).toHaveClass(/pdf-page-deep-link/);
+  await expect(pageTwo.locator('canvas')).toHaveAttribute('aria-label', 'PDF page 2');
+});
+
+test('AI Read renders real API fields and persists an edited field after reload', async ({ page, request }) => {
+  const token = await signIn(request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
+  const document = documents.items.find((item: { filename: string; status: string }) => item.filename === 'arbitration-text-layer.pdf' && item.status === 'ready');
+  expect(document).toBeTruthy();
+  await page.route('**/api/v1/ai/ask', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ status: 'ok', answer: 'Evidence passages are available.' }),
+  }));
+  await openWithToken(page, token, `/documents/${document.id}`);
+  await page.getByRole('button', { name: 'Run AI Read' }).click();
+  await expect(page.locator('.ai-read-field').first()).toBeVisible();
+  await expect(page.locator('.ai-read-field[data-field-key="arbitration_clause"]')).toContainText('Page 1');
+  await page.getByRole('button', { name: 'Edit document_type' }).click();
+  await page.getByRole('textbox', { name: 'Edit document_type' }).fill('Reviewed arbitration agreement');
+  await page.getByRole('button', { name: 'Save document_type' }).click();
+  await expect(page.getByText(/extracted_reviewed/).first()).toBeVisible();
+  await page.reload();
+  await expect(page.locator('.ai-read-field').filter({ hasText: 'document type' })).toContainText('Reviewed arbitration agreement');
+  await expect(page.locator('.ai-read-field').filter({ hasText: 'document type' })).toContainText('extracted_reviewed');
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  await page.screenshot({ path: '../docs/screenshots/document-airead-populated-desktop-fixture.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '../docs/screenshots/document-airead-populated-mobile-fixture.png', fullPage: true });
 });
 
 test('scanned fixture yields OCR text and reports the job warnings', async ({ request }) => {
@@ -97,7 +222,7 @@ test('dead AI endpoint shows model_unavailable without fabricated extraction fie
   const headers = { Authorization: `Bearer ${token}` };
   const original = await request.get(`${apiUrl}/settings/ai`, { headers }).then((response) => response.json());
   const docs = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
-  const sourceDocument = docs.items.find((item: { status: string; filename: string }) => item.status === 'ready' && item.filename.endsWith('.pdf'));
+  const sourceDocument = docs.items.find((item: { status: string; filename: string }) => item.status === 'ready' && item.filename === 'scanned-agreement.pdf');
   expect(sourceDocument).toBeTruthy();
   await request.patch(`${apiUrl}/settings/ai`, { headers, data: { base_url: 'http://127.0.0.1:9/v1' } });
   try {
@@ -107,6 +232,9 @@ test('dead AI endpoint shows model_unavailable without fabricated extraction fie
     await expect(page.getByText('http://127.0.0.1:9/v1')).toBeVisible();
     await expect(page.getByText('document type', { exact: false })).toHaveCount(0);
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
+    await page.screenshot({ path: '../docs/screenshots/airead-model-unavailable-desktop.png', fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: '../docs/screenshots/airead-model-unavailable-mobile.png', fullPage: true });
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, { headers, data: { base_url: original.base_url } });
   }
@@ -115,17 +243,26 @@ test('dead AI endpoint shows model_unavailable without fabricated extraction fie
 test('no_evidence is shown without candidate extraction fields', async ({ page, request }) => {
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
-  const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
-  const sourceDocument = documents.items.find((item: { filename: string; status: string }) =>
-    item.filename === 'arbitration-text-layer.pdf' && item.status === 'ready');
+  const docs = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
+  const sourceDocument = docs.items.find((item: { status: string }) => item.status === 'ready');
   expect(sourceDocument).toBeTruthy();
+  const documentId = sourceDocument.id as string;
+  await page.route(`**/api/v1/documents/${documentId}/text`, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ text: '', pages: [] }),
+  }));
   await page.route('**/api/v1/ai/ask', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({ status: 'no_evidence', answer: 'No matching source passages were found.' }),
   }));
-  await openWithToken(page, token, `/documents/${sourceDocument.id}`);
+  await openWithToken(page, token, `/documents/${documentId}`);
+  await expect(page.getByRole('heading', { name: 'Document page chunks' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Run AI Read' }).click();
   await expect(page.getByText('No evidence found')).toBeVisible();
   await expect(page.locator('.ai-read-field')).toHaveCount(0);
+  await page.screenshot({ path: '../docs/screenshots/airead-no-evidence-desktop-fixture.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: '../docs/screenshots/airead-no-evidence-mobile-fixture.png', fullPage: true });
 });
