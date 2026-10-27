@@ -9,6 +9,8 @@ from app.embeddings import embed_query
 from app.models import Document, DocumentChunk
 from app.services.vector_store import store
 
+MIN_SEMANTIC_SIMILARITY = 0.25
+
 
 class RetrievalService:
     def search(
@@ -108,7 +110,9 @@ class RetrievalService:
         if expected_vector_ids and expected_vector_ids != indexed_ids:
             status = "embedding_unavailable"
         semantic = vector_store.search(query_vector, vector_store.count()) if query_vector is not None else []
-        semantic_ids = [cid for cid, _ in semantic if cid in allowed]
+        semantic_ids = [
+            cid for cid, similarity in semantic if cid in allowed and similarity >= MIN_SEMANTIC_SIMILARITY
+        ]
         return fuse_rankings(allowed, lexical, semantic_ids, top_k), status
 
 
