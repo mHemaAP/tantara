@@ -12,6 +12,7 @@ from app.models import (
     Base,
     Case,
     CaseEvent,
+    Client,
     CommunityPost,
     CommunityReply,
     Document,
@@ -60,6 +61,8 @@ def test_data_dirs_derive_separate_database_files_with_independent_rows(tmp_path
     finally:
         for engine in engines:
             engine.dispose()
+    monkeypatch.setenv("TANTARA_LOCAL_LLM_BASE_URL", "http://127.0.0.1:9/v1")
+    assert config.Settings(_env_file=None).local_llm_base_url == "http://127.0.0.1:9/v1"
 
 
 def test_database_and_faiss_store_share_resolved_data_root(client):
@@ -76,12 +79,19 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
     today = datetime.now(UTC).date()
     with SessionLocal() as session:
         documents = session.scalars(select(Document).where(Document.is_demo.is_(True))).all()
-        assert len(documents) >= 3
+        assert len(documents) >= 8
         assert all(document.page_count >= 5 for document in documents)
+        assert sum(document.page_count for document in documents) >= 40
         assert any("scanned" in document.filename for document in documents)
         assert any("contract" in document.filename for document in documents)
+        assert any("page-three-motion" in document.filename for document in documents)
+        assert sum("near-duplicate" in document.filename for document in documents) >= 2
         pages = session.scalars(select(DocumentPage).where(DocumentPage.is_demo.is_(True))).all()
         assert any(page.warnings and "manual review" in str(page.warnings).lower() for page in pages)
+        scanned = next(document for document in documents if "scanned" in document.filename)
+        scanned_pages = [page for page in pages if page.document_id == scanned.id]
+        assert len(scanned_pages) >= 5
+        assert any("seat shall be mumbai" in page.text.lower() for page in scanned_pages)
         assert session.scalar(select(func.count(ExtractionField.id))) > 0
         chunks = session.scalars(select(DocumentChunk)).all()
         assert chunks and all(chunk.is_demo for chunk in chunks)
@@ -97,6 +107,55 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
         assert any(task.due_at and task.due_at.date() < today for task in tasks)
         assert any(task.due_at and task.due_at.date() == today for task in tasks)
         assert all(row.is_demo for row in documents + pages + events)
+        demo_clients = session.scalars(select(Client).where(Client.is_demo.is_(True))).all()
+        assert any(
+            session.scalar(select(func.count(Case.id)).where(Case.client_id == row.id)) == 0
+            for row in demo_clients
+        )
+        demo_cases = session.scalars(select(Case).where(Case.is_demo.is_(True))).all()
+        assert any(row.status == "closed" for row in demo_cases)
+        past_only = next(row for row in demo_cases if row.title.startswith("ABC Pvt."))
+        future_pair = next(row for row in demo_cases if row.title.startswith("TechBuild"))
+        past_hearings = session.scalars(select(Hearing).where(Hearing.case_id == past_only.id)).all()
+        future_hearings = session.scalars(select(Hearing).where(Hearing.case_id == future_pair.id)).all()
+        assert past_hearings and all(hearing.at.date() < today for hearing in past_hearings)
+        assert len([hearing for hearing in future_hearings if hearing.at.date() > today]) >= 2
+        future_expected = min(hearing.at for hearing in future_hearings if hearing.at.date() > today)
+        owner_id = session.scalar(select(User.id).where(User.email == "advocate@tantara.local"))
+
+    from app.security import create_token
+
+    headers = {"Authorization": f"Bearer {create_token(owner_id)}"}
+    client_list = client.get("/api/v1/clients", headers=headers).json()["items"]
+    empty_client = next(row for row in client_list if row["name"] == "No Active Matters Ltd.")
+    assert empty_client["case_count"] == 0
+    case_list = client.get("/api/v1/cases", headers=headers).json()["items"]
+    past_case = next(row for row in case_list if row["title"].startswith("ABC Pvt."))
+    assert past_case["next_hearing_at"] is None
+    future_case = next(row for row in case_list if row["title"].startswith("TechBuild"))
+    expected_iso = future_expected.isoformat()
+    assert future_case["next_hearing_at"].startswith(expected_iso[:19])
+    assert any(row["status"] == "closed" for row in case_list)
+    phrase = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": '"Sapphire Pavilion on the third calendar day"'},
+    ).json()
+    assert phrase["items"][0]["document_title"] == "Page Three Motion"
+    assert phrase["items"][0]["page_number"] == 3
+    semantic = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": "where will the tribunal sit"},
+    ).json()
+    assert semantic["items"]
+    assert any("seat shall be mumbai" in hit["snippet"].lower() for hit in semantic["items"])
+    unique = client.get("/api/v1/search/documents", headers=headers, params={"query": "ZXQORBITKEY"}).json()
+    assert unique["items"][0]["document_title"] == "Unique Term Evidence"
+    unrelated = client.get(
+        "/api/v1/search/documents", headers=headers, params={"query": "violet saxophone excavation quantum"}
+    ).json()
+    assert unrelated["items"] == []
 
 
 def test_empty_seed_retains_only_the_local_advocate_and_no_rows(client, monkeypatch):
