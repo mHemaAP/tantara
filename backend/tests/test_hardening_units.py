@@ -58,3 +58,90 @@ def test_nonexistent_citation_chunk_is_rejected_by_database_foreign_key(tmp_path
         )
     db._engine = None
     config.get_settings.cache_clear()
+
+
+def test_index_rebuild_repairs_stale_ids_and_is_idempotent(client):
+    from app.db import session_scope
+    from app.models import Document, DocumentChunk, User
+    from app.services.index_maintenance import rebuild_index, reconcile_index
+    from app.services.vector_store import store
+
+    first = rebuild_index()
+    assert first["consistent"]
+    with session_scope() as session:
+        from app.security import hash_password
+
+        session.add(
+            User(
+                id="index-owner",
+                name="Index owner",
+                email="index-owner@example.local",
+                password_hash=hash_password("index-test-password"),
+                role="advocate",
+            )
+        )
+        session.flush()
+        session.add(
+            Document(
+                id="index-doc",
+                owner_id="index-owner",
+                title="Index fixture",
+                document_type="Award",
+                filename="fixture.txt",
+                stored_path="/unused",
+                content_hash="index-fixture-hash",
+                status="ready",
+            )
+        )
+        session.flush()
+        import numpy as np
+
+        session.add(
+            DocumentChunk(
+                id="index-chunk",
+                document_id="index-doc",
+                chunk_index=0,
+                content="index evidence",
+                page_number=1,
+                start_char=0,
+                end_char=14,
+                embedding_blob=np.ones(384, dtype="float32").tobytes(),
+            )
+        )
+    store().rebuild([])
+    repaired = reconcile_index()
+    assert repaired["consistent"] and "index-chunk" in store().id_set()
+    assert rebuild_index()["consistent"]
+
+
+def test_security_helpers_reject_bad_credentials_and_tokens(tmp_path, monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from app import config
+    from app.security import _b64, _key, current_user, hash_password, verify_password
+
+    monkeypatch.setenv("TANTARA_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    config.get_settings.cache_clear()
+    encoded = hash_password("a long secure password")
+    assert verify_password("a long secure password", encoded)
+    assert not verify_password("wrong password", encoded)
+    assert not verify_password("x", "malformed")
+    key_path = tmp_path / ".secret"
+    assert len(_key()) == 48 and _key() == key_path.read_bytes()
+    assert key_path.stat().st_mode & 0o777 == 0o600
+    with pytest.raises(HTTPException) as missing:
+        current_user(None)
+    assert missing.value.status_code == 401
+    with pytest.raises(HTTPException) as malformed:
+        current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials="not.a.token"))
+    assert malformed.value.status_code == 401
+    expired_body = _b64(b'{"sub":"missing-user","exp":1}')
+    header = _b64(b'{"alg":"HS256","typ":"JWT"}')
+    token = f"{header}.{expired_body}.bad-signature"
+    with pytest.raises(HTTPException) as invalid:
+        current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))
+    assert invalid.value.status_code == 401
+    config.get_settings.cache_clear()
