@@ -56,7 +56,7 @@ export default function Dashboard() {
   });
   const sessions = useQuery({ queryKey: ['ai', 'sessions'], queryFn: endpoints.sessions });
   const reduceMotion = useReducedMotion();
-  const offline = [summary, activity, upcoming].some((x) => x.isError);
+  const offline = summary.isError || activity.isError || upcoming.isError;
   const refresh = () => {
     void summary.refetch();
     void activity.refetch();
@@ -131,276 +131,233 @@ export default function Dashboard() {
           ))}
         </div>
       ) : null}
-      {offline ? (
-        <div style={{ marginTop: 18 }}>
-          <Offline retry={refresh} />
-        </div>
-      ) : summary.isLoading ? (
-        <div className="metric-grid grid" role="status" aria-label="Loading dashboard metrics">
-          {cards.slice(0, 4).map(([l]) => (
-            <div className="card metric" key={l}>
-              <div className="metric-icon">&nbsp;</div>
-              <strong>—</strong>
-              <span>{l}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid metric-grid">
-          {cards.slice(0, 4).map(([label, value, Icon, color, bg]) => (
-            <motion.article
-              className="card metric"
-              key={label}
-              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18 }}
+      <div className="dashboard-main">
+        <div className="dashboard-primary">
+          {offline && <Offline retry={refresh} />}
+          <div className="grid metric-grid" aria-label="Dashboard metrics">
+            {cards.slice(0, 4).map(([label, value, Icon, color, bg]) => (
+              <motion.article
+                className="card metric"
+                key={label}
+                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18 }}
+              >
+                <div className="metric-icon" style={{ color, background: bg }}>
+                  <Icon size={18} />
+                </div>
+                <strong>{summary.isLoading || summary.isError || value == null ? '—' : value}</strong>
+                <span>{label}</span>
+              </motion.article>
+            ))}
+          </div>
+          <section className="ask-panel">
+            <h2>
+              <Sparkles size={17} style={{ verticalAlign: 'middle', marginRight: 7 }} />
+              Ask TANTARA <span style={{ fontWeight: 400, opacity: 0.8 }}>(Arbitration Law)</span>
+            </h2>
+            <form
+              className="ask-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void ask();
+              }}
             >
-              <div className="metric-icon" style={{ color, background: bg }}>
-                <Icon size={18} />
-              </div>
-              <strong>{value ?? 0}</strong>
-              <span>{label}</span>
-            </motion.article>
-          ))}
-        </div>
-      )}
-      <div className="grid dashboard-columns">
-        <section className="ask-panel">
-          <h2>
-            <Sparkles size={17} style={{ verticalAlign: 'middle', marginRight: 7 }} />
-            Ask TANTARA <span style={{ fontWeight: 400, opacity: 0.8 }}>(Arbitration Law)</span>
-          </h2>
-          <form
-            className="ask-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void ask();
-            }}
-          >
-            <input
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              disabled={preview}
-              title={preview ? 'Sign in to ask TANTARA' : ''}
-              placeholder="Ask about arbitration law, cases, strategy, or a draft…"
-              aria-label="Ask an arbitration law question"
-            />
-            <button
-              disabled={askBusy || preview}
-              title={preview ? 'Sign in to ask TANTARA' : ''}
-              aria-label="Submit question"
-            >
-              <ArrowRight size={18} />
-            </button>
-          </form>
-          <div className="suggestions">
-            {[
-              'Procedure under Arbitration Act',
-              'Recent arbitral awards',
-              'Draft statement of claim',
-              'Relief options',
-            ].map((x) => (
-              <button
-                key={x}
+              <input
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
                 disabled={preview}
                 title={preview ? 'Sign in to ask TANTARA' : ''}
-                onClick={() => void ask(x)}
+                placeholder="Ask about arbitration law, cases, strategy, or a draft…"
+                aria-label="Ask an arbitration law question"
+              />
+              <button
+                disabled={askBusy || preview}
+                title={preview ? 'Sign in to ask TANTARA' : ''}
+                aria-label="Submit question"
               >
-                {x}
+                <ArrowRight size={18} />
               </button>
-            ))}
-          </div>
-          <details className="ask-scope">
-            <summary>Research scope</summary>
-            <div className="form-row">
-              <select aria-label="Scope to case" value={scope} onChange={(e) => setScope(e.target.value)}>
-                <option value="">All cases</option>
-                {cases.data?.items?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Jurisdiction"
-                value={jurisdiction}
-                onChange={(e) => setJurisdiction(e.target.value)}
-              >
-                <option value="">Any jurisdiction</option>
-                {jurisdictions.data?.items?.map((x: any, i: number) => (
-                  <option key={i} value={typeof x === 'string' ? x : x.name}>
-                    {typeof x === 'string' ? x : x.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Knowledge collection"
-                disabled
-                aria-describedby="collection-help"
-                title="Collection scope is not available in the current API"
-              >
-                <option value="">All collections</option>
-              </select>
-            </div>
-            <small id="collection-help">Collection filtering is not available in the current API.</small>
-          </details>
-          {answer && (
-            <div className="result" style={{ background: '#ffffff18', padding: 12, borderRadius: 8 }}>
-              <strong>
-                {answer.status === 'no_evidence'
-                  ? 'Insufficient evidence'
-                  : answer.status === 'model_unavailable'
-                    ? 'Model unavailable'
-                    : answer.status === 'embedding_unavailable'
-                      ? 'Embeddings unavailable'
-                      : 'Answer'}
-              </strong>
-              <p>{answer.answer}</p>
-              {answer.citations?.map((c) => (
-                <Link
-                  key={c.citation_ref}
-                  href={`/documents/${c.document_id}?page=${c.page_number}`}
-                  style={{
-                    display: 'block',
-                    padding: '8px 0',
-                    borderTop: '1px solid #ffffff30',
-                    fontSize: 11,
-                  }}
+            </form>
+            <div className="suggestions">
+              {[
+                'Procedure under Arbitration Act',
+                'Recent arbitral awards',
+                'Draft statement of claim',
+                'Relief options',
+              ].map((x) => (
+                <button
+                  key={x}
+                  disabled={preview}
+                  title={preview ? 'Sign in to ask TANTARA' : ''}
+                  onClick={() => void ask(x)}
                 >
-                  “{c.excerpt}” — {c.document_title}, p. {c.page_number}
-                </Link>
+                  {x}
+                </button>
               ))}
-              {answer.disclaimer && <small>{answer.disclaimer}</small>}
             </div>
-          )}
-          {askBusy && (
-            <p style={{ fontSize: 12 }} role="status">
-              Searching your workspace…
-            </p>
-          )}
-        </section>
-        <section className="card surface">
-          <h2 className="section-title">
-            Upcoming hearings &amp; deadlines <CalendarDays size={16} color="#4f46e5" />
-          </h2>
-          {upcoming.isLoading ? (
-            <p className="muted" role="status">
-              Loading calendar…
-            </p>
-          ) : upcoming.isError ? (
-            <p className="muted">Calendar is unavailable.</p>
-          ) : upcoming.data?.length ? (
-            <div>
-              {upcoming.data.slice(0, 5).map((x: Upcoming) => (
-                <div className="upcoming-row" key={x.id}>
-                  <span className="pill">{x.due_in_days === 0 ? 'Today' : `${x.due_in_days}d`}</span>
-                  <div>
-                    <strong>{x.title}</strong>
+            <details className="ask-scope">
+              <summary>Research scope</summary>
+              <div className="form-row">
+                <select aria-label="Scope to case" value={scope} onChange={(e) => setScope(e.target.value)}>
+                  <option value="">All cases</option>
+                  {cases.data?.items?.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Jurisdiction"
+                  value={jurisdiction}
+                  onChange={(e) => setJurisdiction(e.target.value)}
+                >
+                  <option value="">Any jurisdiction</option>
+                  {jurisdictions.data?.items?.map((x: any, i: number) => (
+                    <option key={i} value={typeof x === 'string' ? x : x.name}>
+                      {typeof x === 'string' ? x : x.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Knowledge collection"
+                  disabled
+                  aria-describedby="collection-help"
+                  title="Collection scope is not available in the current API"
+                >
+                  <option value="">All collections</option>
+                </select>
+              </div>
+              <small id="collection-help">Collection filtering is not available in the current API.</small>
+            </details>
+            {answer && (
+              <div className="result" style={{ background: '#ffffff18', padding: 12, borderRadius: 8 }}>
+                <strong>
+                  {answer.status === 'no_evidence'
+                    ? 'Insufficient evidence'
+                    : answer.status === 'model_unavailable'
+                      ? 'Model unavailable'
+                      : answer.status === 'embedding_unavailable'
+                        ? 'Embeddings unavailable'
+                        : 'Answer'}
+                </strong>
+                <p>{answer.answer}</p>
+                {answer.citations?.map((c) => (
+                  <Link
+                    key={c.citation_ref}
+                    href={`/documents/${c.document_id}?page=${c.page_number}`}
+                    style={{
+                      display: 'block',
+                      padding: '8px 0',
+                      borderTop: '1px solid #ffffff30',
+                      fontSize: 11,
+                    }}
+                  >
+                    “{c.excerpt}” — {c.document_title}, p. {c.page_number}
+                  </Link>
+                ))}
+                {answer.disclaimer && <small>{answer.disclaimer}</small>}
+              </div>
+            )}
+            {askBusy && (
+              <p style={{ fontSize: 12 }} role="status">
+                Searching your workspace…
+              </p>
+            )}
+          </section>
+          <section className="card surface recent-questions-card">
+            <h2 className="section-title">Recent questions</h2>
+            {sessions.isLoading ? (
+              <p className="muted" role="status">
+                Loading research history…
+              </p>
+            ) : sessions.isError ? (
+              <p className="muted">Research sessions are unavailable.</p>
+            ) : sessions.data?.items?.length ? (
+              sessions.data.items.slice(0, 3).map((x) => <p key={x.id}>{x.title}</p>)
+            ) : (
+              <p className="muted">No previous questions in this workspace.</p>
+            )}
+          </section>
+          <section className="card surface">
+            <h2 className="section-title">Recent activity</h2>
+            {activity.isLoading ? (
+              <p className="muted" role="status">
+                Loading activity…
+              </p>
+            ) : activity.isError ? (
+              <p className="muted">Activity is unavailable.</p>
+            ) : activity.data?.length ? (
+              activity.data.slice(0, 5).map((x: Activity) => (
+                <div className="activity-row" key={x.id}>
+                  <span className="small-icon">
+                    <Scale size={16} />
+                  </span>
+                  <span>
+                    {x.title}
                     <small style={{ display: 'block', color: '#64748b', marginTop: 3 }}>
-                      {x.case_title || x.type}
+                      {x.actor || 'Workspace'} ·{' '}
+                      {new Date(x.at).toLocaleString('en-IN', { timeStyle: 'short', dateStyle: 'medium' })}
                     </small>
-                  </div>
-                  <span className="right muted">
-                    {new Date(x.at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                   </span>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty">
-              <img src="/brand/empty-state.svg" alt="" />
-              <div>No upcoming hearings or deadlines.</div>
-            </div>
-          )}
-        </section>
-      </div>
-      <div className="grid dashboard-columns" style={{ marginTop: 12 }}>
-        <section className="card surface recent-questions-card">
-          <h2 className="section-title">Recent questions</h2>
-          {sessions.isLoading ? (
-            <p className="muted" role="status">
-              Loading research history…
-            </p>
-          ) : sessions.isError ? (
-            <p className="muted">Research sessions are unavailable.</p>
-          ) : sessions.data?.items?.length ? (
-            sessions.data.items.slice(0, 3).map((x) => <p key={x.id}>{x.title}</p>)
-          ) : (
-            <p className="muted">No previous questions in this workspace.</p>
-          )}
-          <span className="muted">Research Desk will be available in a later phase.</span>
-        </section>
-        <div className="secondary-summary">
-          {cards.slice(4).map(([label, value, Icon, color]) => (
-            <div className="card" key={label}>
-              <Icon size={14} color={color} /> {value ?? 0} {label}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="grid dashboard-columns" style={{ marginTop: 14 }}>
-        <section className="card surface">
-          <h2 className="section-title">Recent activity</h2>
-          {activity.isLoading ? (
-            <p className="muted" role="status">
-              Loading activity…
-            </p>
-          ) : activity.isError ? (
-            <p className="muted">Activity is unavailable.</p>
-          ) : activity.data?.length ? (
-            activity.data.slice(0, 5).map((x: Activity) => (
-              <div className="activity-row" key={x.id}>
-                <span className="small-icon">
-                  <Scale size={16} />
-                </span>
-                <span>
-                  {x.title}
-                  <small style={{ display: 'block', color: '#64748b', marginTop: 3 }}>
-                    {x.actor || 'Workspace'} ·{' '}
-                    {new Date(x.at).toLocaleString('en-IN', { timeStyle: 'short', dateStyle: 'medium' })}
-                  </small>
-                </span>
+              ))
+            ) : (
+              <div className="empty">
+                <img src="/brand/empty-state.svg" alt="" />
+                Activity will appear here as you work.
               </div>
-            ))
-          ) : (
-            <div className="empty">
-              <img src="/brand/empty-state.svg" alt="" />
-              Activity will appear here as you work.
-            </div>
-          )}
-        </section>
-        <section className="card surface">
-          <h2 className="section-title">Quick actions</h2>
-          <div className="quick-links">
-            {[
-              ['Create case', 'Cases'],
-              ['Upload document', 'Documents'],
-              ['Generate draft', 'Drafts'],
-              ['Add hearing', 'Calendar'],
-              ['Open research', 'Research'],
-              ['Build filing bundle', 'Bundles'],
-            ].map(([label, area]) => (
-              <button
-                key={label}
-                disabled
-                title={`${area} will be available in a later release`}
-                style={{
-                  opacity: 0.58,
-                  cursor: 'not-allowed',
-                  border: '1px solid #e7eaf0',
-                  background: '#f8fafc',
-                  borderRadius: 8,
-                  padding: '9px 11px',
-                  fontSize: 11,
-                  color: '#334155',
-                }}
-              >
-                {label} · coming soon
-              </button>
-            ))}
-          </div>
-        </section>
+            )}
+          </section>
+          <p className="muted workspace-tools-note">Additional workspace tools are not available yet.</p>
+        </div>
+        <aside className="dashboard-aside">
+          <section className="matters-slot" data-slot="dashboard-matters" />
+          <section className="card surface">
+            <h2 className="section-title">
+              Upcoming hearings &amp; deadlines <CalendarDays size={16} color="#4f46e5" />
+            </h2>
+            {upcoming.isLoading ? (
+              <p className="muted" role="status">
+                Loading calendar…
+              </p>
+            ) : upcoming.isError ? (
+              <p className="muted">Calendar is unavailable.</p>
+            ) : upcoming.data?.length ? (
+              <div>
+                {upcoming.data.slice(0, 5).map((x: Upcoming) => (
+                  <div className="upcoming-row" key={x.id}>
+                    <span className="pill">{x.due_in_days === 0 ? 'Today' : `${x.due_in_days}d`}</span>
+                    <div>
+                      <strong>{x.title}</strong>
+                      <small style={{ display: 'block', color: '#64748b', marginTop: 3 }}>
+                        {x.case_title || x.type}
+                      </small>
+                    </div>
+                    <span className="right muted">
+                      {new Date(x.at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty">
+                <img src="/brand/empty-state.svg" alt="" />
+                <div>No upcoming hearings or deadlines.</div>
+              </div>
+            )}
+          </section>
+        </aside>
       </div>
+      <section className="card secondary-summary" aria-label="Other dashboard totals">
+        {cards.slice(4).map(([label, value, Icon, color]) => (
+          <div className="secondary-summary-item" key={label}>
+            <Icon size={16} color={color} />
+            <strong>{summary.isLoading || summary.isError || value == null ? '—' : value}</strong>
+            <span>{label}</span>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
