@@ -482,7 +482,9 @@ export default function ResearchPage() {
   const otherGroups = useMemo(() => groupSources(otherRetrievedSources), [otherRetrievedSources]);
   const modelId = answer?.model?.model;
   const generationKind = answer?.generation_kind ?? answer?.answer_kind;
-  const hasModelProvenance = generationKind === 'model_generated' && typeof modelId === 'string';
+  const hasModelProvenance =
+    (generationKind === 'model_generated' || generationKind === 'model_synthesis') &&
+    typeof modelId === 'string';
   const answerIsInsufficient =
     answerHasInsufficientEvidence ||
     answerHasInsufficientEvidence ||
