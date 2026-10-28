@@ -127,8 +127,6 @@ async function answerQuestion(page: Page, question: string, via: 'button' | 'sug
       page_number: number;
       excerpt: string;
       retrieval_score?: number;
-      retreival_score?: number;
-      score?: number;
     }>;
     sources?: Array<{
       citation_ref?: string;
@@ -138,8 +136,6 @@ async function answerQuestion(page: Page, question: string, via: 'button' | 'sug
       page_number: number;
       excerpt: string;
       retrieval_score?: number;
-      retreival_score?: number;
-      score?: number;
     }>;
     disclaimer?: string;
     model?: unknown;
@@ -181,7 +177,7 @@ test('citation formatter, source grouping, and human status labels stay readable
       chunk_id: 'chunk-2',
       page_number: 2,
       excerpt: 'Same quotation.',
-      retreival_score: 0.03,
+      retrieval_score: 0.03,
     },
   ];
   expect(citationLink(sources[0])).toEqual({
@@ -471,7 +467,7 @@ test.describe('Research Desk live API controls', () => {
     await expect(page.locator('.source-relevance').first()).toContainText('relative to this query');
     for (const source of citations) {
       expect(
-        source.retrieval_score ?? source.retreival_score ?? source.score,
+        source.retrieval_score,
         'citation must expose one supported relevance score field',
       ).toBeDefined();
     }
