@@ -148,3 +148,75 @@ class PageEnvelope(RequestModel):
     page: int
     page_size: int
     pages: int
+
+
+class SearchHit(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    document_id: str
+    document_title: str
+    chunk_id: str
+    page_number: int | None = None
+    snippet: str
+    retrieval_score: float
+    source_type: str | None = None
+    jurisdiction: str | None = None
+
+
+class SearchResponse(BaseModel):
+    status: str
+    items: list[SearchHit]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class ResearchCitation(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    citation_ref: str
+    citation_number: int
+    document_id: str
+    document_title: str
+    chunk_id: str
+    page_number: int | None = None
+    excerpt: str
+    retrieval_score: float
+    source_type: str | None = None
+    jurisdiction: str | None = None
+
+
+class ResearchSupport(BaseModel):
+    chunk_id: str
+    document_id: str
+    page_number: int | None = None
+    quote: str
+
+
+class ResearchMeta(BaseModel):
+    retrieval_status: str
+
+
+class ModelInfo(BaseModel):
+    provider: str
+    model: str
+
+
+class AskResponse(BaseModel):
+    status: str
+    meta: ResearchMeta
+    answer: str
+    answer_kind: str
+    citations: list[ResearchCitation]
+    supports: list[ResearchSupport]
+    answer_basis: str
+    context_fields: list[dict[str, object]]
+    conflicts: list[dict[str, object]]
+    total: int
+    citation_count: int
+    follow_ups: list[str]
+    model: ModelInfo | None
+    disclaimer: str
+    research_session_id: str | None
+    message_id: str | None
