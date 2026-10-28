@@ -70,6 +70,11 @@ def test_bundle_labels_rotation_and_page_count_are_preserved(client):
     generated = client.post(f"/api/v1/bundles/{bundle['id']}/generate", headers=headers)
     assert generated.status_code == 202
     response = client.get(f"/api/v1/bundles/{bundle['id']}/download", headers=headers)
+    detail = client.get(f"/api/v1/bundles/{bundle['id']}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["page_count"] == 5
+    assert detail.json()["sections"] == [{"title": "Evidence", "order": 1}]
+    assert detail.json()["items"][0]["page_start"] == 2
     reader = PdfReader(io.BytesIO(response.content))
     requested_source_pages = 2 - 2 + 1
     assert len(reader.pages) == 4 + requested_source_pages
