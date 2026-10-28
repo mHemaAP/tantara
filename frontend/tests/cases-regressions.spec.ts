@@ -138,13 +138,23 @@ browserTest(
         // Case creation correctly rejects future filing dates. Keep the event
         // under test in the future while the actual filing date is historical.
         filed_at: '2020-01-01T00:00:00+05:30',
-        notice_date: `${day}T00:00:00+05:30`,
       },
     });
     browserExpect(created.ok()).toBeTruthy();
     const caseId = (await created.json()).id as string;
     let eventId: string | undefined;
+    let deadlineId: string | undefined;
     try {
+      const createdDeadline = await request.post(`${base}/tasks`, {
+        headers,
+        data: {
+          title: 'All-day deadline proof',
+          case_id: caseId,
+          due_at: `${day}T00:00:00+05:30`,
+        },
+      });
+      browserExpect(createdDeadline.ok()).toBeTruthy();
+      deadlineId = (await createdDeadline.json()).id as string;
       const createdEvent = await request.post(`${base}/cases/${caseId}/events`, {
         headers,
         data: { type: 'event', occurred_at: `${day}T00:00:00+05:30`, detail: 'All-day event proof' },
@@ -157,9 +167,9 @@ browserTest(
       }, token);
       await page.goto('/calendar');
       const event = page.getByRole('button', { name: /View All day.*UTC calendar all-day proof/ }).first();
-      const deadline = page
-        .getByRole('button', { name: /View Deadline.*UTC calendar all-day proof/ })
-        .first();
+      const deadline = page.getByRole('button', {
+        name: /View Deadline.*All-day deadline proof.*UTC calendar all-day proof/,
+      });
       await browserExpect(event).toBeVisible();
       await browserExpect(deadline).toBeVisible();
       await browserExpect(event.locator('time')).toHaveCount(0);
@@ -174,6 +184,7 @@ browserTest(
       browserExpect(await page.evaluate(() => document.documentElement.scrollWidth <= 1440)).toBeTruthy();
       await page.screenshot({ path: 'test-results/calendar-all-day-proof.png', fullPage: false });
     } finally {
+      if (deadlineId) await request.delete(`${base}/tasks/${deadlineId}`, { headers });
       if (eventId) await request.delete(`${base}/cases/${caseId}/events/${eventId}`, { headers });
       await request.delete(`${base}/cases/${caseId}`, { headers });
     }
