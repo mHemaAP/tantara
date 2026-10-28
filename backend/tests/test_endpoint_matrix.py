@@ -51,7 +51,7 @@ def _assert_list_envelope(payload):
 def test_domain_crud_role_isolation_validation_and_pagination(client, path, create, patch):
     owner = _auth(client)
     created = client.post(f"/api/v1/{path}", headers=owner, json=create)
-    assert created.status_code == 200
+    assert created.status_code == (201 if path == "cases" else 200)
     record_id = created.json()["id"]
     assert client.get(f"/api/v1/{path}/{record_id}", headers=owner).status_code == 200
     assert client.patch(f"/api/v1/{path}/{record_id}", headers=owner, json=patch).status_code == 200
