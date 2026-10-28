@@ -9,13 +9,13 @@
 | Real-corpus viewer, metadata and successful AI Read were not evidenced | The tests navigate from the real library row for `page-three-motion.pdf`, with no route registrations, wait for the canvas, run AI Read based on authenticated `settings.runtime_status.reachable`, and capture the completed fields. | Desktop test asserts zero route registrations, populated prose, source page, separate metadata rows, bounded/expandable summary and page citation. Mobile performs the same real-corpus flow and checks the summary is reachable. |
 | AI extraction could expose arrays/JSON or repeated text as a summary | Extraction values are unwrapped and rendered as prose, empty evidence is labelled “Not extracted,” duplicate text is removed, and long summary text is bounded until expanded. Provenance uses human-readable labels while preserving machine values in `data-*`. | E2E rejects raw JSON and enum keys, asserts the real summary prose and candidate provenance, and expands the summary to verify the full value. Fixture extraction tests remain explicitly named `-fixture`. |
 | Endpoint details could leak in errors | Error copy omits configured hosts, URLs and ports. | Dead-endpoint test configures `http://127.0.0.1:9/v1`; asserts no candidate fields and no visible `https?://` or `:\\d{2,5}`. Separate tests cover authentication, embedding, extraction, response-loading, model-unavailable and no-evidence states. |
-| Capture dimensions and black artifacts were unreliable | Capture tests set the viewport themselves and capture the viewport (not an unbounded full page). Screenshot helpers assert exact dimensions and sample corner pixels for near-black contamination. | Round 5 screenshots are 1440×900 or 390×844. The capture tests fail on a black sampled corner. |
+| Capture dimensions and black artifacts were unreliable | Capture tests set the viewport themselves and capture the viewport (not an unbounded full page). Screenshot helpers assert exact dimensions and sample corner pixels for near-black contamination. Removed older mobile captures that still showed an open drawer, a black band, or non-viewport metadata crops. | Round 5 screenshots are 1440×900 or 390×844. The capture tests fail on a black sampled corner; a post-run audit confirmed the new Round 5 captures have no near-black corners. |
 | Upload outcome needed real proof | Upload runs through the UI, the ingestion job is polled to `ready`, and the uploaded PDF renders. AI extraction is requested from the real API and the rendered field must include its source page. Cleanup retries transient connection resets and must succeed. | `documents-round5.spec.ts` upload outcome test; its capture is named `-fixture.png` because its document is a generated fixture. |
 | Library fixture count and stale count could be mistaken for live data | Real corpus captures use the seeded backend; fixture and controlled failure captures are suffixed `-fixture`. List failures do not present an old count as current. | Mobile test compares the live API’s eight demo records to the displayed cards. The real library capture is separate from the fixture captures. |
 
 ## Verification
 
-The preceding complete Round 5 run had **32 passed / 2 failed**: a seeded-library wait timed out under suite load, and the upload test hit a transient backend connection reset during cleanup. The library test now has a 90-second timeout without changing its assertions. The upload test exercises actual upload, ready job, PDF render and API extraction; cleanup retries the transient reset and asserts success. Its focused rerun passed **1/1**. The final full run passed **34/34**, with no skipped or weakened assertions.
+The preceding complete Round 5 run had **32 passed / 2 failed**: a seeded-library wait timed out under suite load, and the upload test hit a transient backend connection reset during cleanup. The library test now has a 90-second timeout without changing its assertions. The upload test exercises actual upload, ready job, PDF render and API extraction; cleanup retries the transient reset and asserts success. Its focused rerun passed **1/1**. The next full run passed **34/34**; after adding the explicit mobile search/empty/failure/unavailable/no-evidence capture test and removing legacy screenshots that showed drawer overlap or black bands, the final full run passed **35/35**, with no skipped or weakened assertions.
 
 Commands and results:
 
@@ -24,7 +24,7 @@ pnpm format       passed
 pnpm lint         passed; no ESLint warnings or errors (Next next-lint deprecation notice only)
 pnpm typecheck    passed
 pnpm build        passed; /documents, /documents/[id], /search included
-pnpm test:e2e     34 passed, 0 failed (4.3 minutes)
+pnpm test:e2e     35 passed, 0 failed (5.9 minutes)
 ```
 
 E2E command:
@@ -59,7 +59,15 @@ Mobile captures (390×844):
 - `docs/screenshots/documents-round5-airead-mobile-390-populated-real.png` — completed extraction with bounded summary.
 - `docs/screenshots/documents-round5-citation-page3-mobile-390-real.png` — citation result and supporting passage.
 
-The generated multi-page upload capture is `docs/screenshots/documents-round5-upload-outcome-desktop-1440-fixture.png` and is explicitly fixture-labelled. Existing empty, offline, model-unavailable, no-evidence, OCR-warning and other fixture-backed screenshots retain their `-fixture` labels. They are not presented as real seeded-corpus records.
+The generated multi-page upload capture is `docs/screenshots/documents-round5-upload-outcome-desktop-1440-fixture.png` and is explicitly fixture-labelled. Mobile empty and search states use real API data. Mobile failure, model-unavailable (empty extraction response controlled in the test), and no-evidence states are fixture-labelled; they are not presented as real seeded-corpus extraction results.
+
+Additional settled mobile state captures (390×844):
+
+- `docs/screenshots/documents-round5-search-mobile-390-real.png` — real seeded search results with resolved document titles.
+- `docs/screenshots/documents-round5-empty-mobile-390-real.png` — real library query with no matching rows.
+- `docs/screenshots/documents-round5-failure-mobile-390-fixture.png` — controlled documents API failure.
+- `docs/screenshots/documents-round5-ai-read-unavailable-mobile-390-fixture.png` — dead model configuration, with an empty extraction response, no candidate fields, and no endpoint text.
+- `docs/screenshots/documents-round5-ai-read-no-evidence-mobile-390-fixture.png` — controlled no-evidence response.
 
 ## Remaining gaps
 
