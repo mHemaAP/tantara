@@ -325,19 +325,31 @@ browserTest(
     });
     browserExpect(createdCase.ok()).toBeTruthy();
     const caseId = (await createdCase.json()).id as string;
+    let eventId: string | undefined;
     try {
       const createdEvent = await request.post(`${base}/cases/${caseId}/events`, {
         headers,
         data: { type: 'event', occurred_at: `${parts}T00:00:00+05:30`, detail: 'All-day event test record' },
       });
       browserExpect(createdEvent.ok()).toBeTruthy();
+      eventId = (await createdEvent.json()).id as string;
       await page.addInitScript((value) => {
         localStorage.setItem('tantara_token', value as string);
         document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
       }, token);
+      const calendarResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/v1/calendar' && response.status() === 200,
+      );
       await page.goto('/calendar');
+      const calendarPayload = await (await calendarResponse).json();
+      const calendarItems = Array.isArray(calendarPayload) ? calendarPayload : calendarPayload.items;
+      browserExpect(
+        calendarItems.some((item: { id: string }) => item.id === eventId),
+        `calendar API should contain created event ${eventId} for ${parts}`,
+      ).toBeTruthy();
       const allDayEvent = page.getByRole('button', { name: 'View All day', exact: true }).first();
-      await browserExpect(allDayEvent).toBeVisible();
+      await browserExpect(allDayEvent).toBeVisible({ timeout: 15_000 });
       await browserExpect(allDayEvent.locator('time')).toHaveCount(0);
       await allDayEvent.click();
       const details = page.getByRole('dialog', { name: 'Event details' });
@@ -347,6 +359,7 @@ browserTest(
         /all_day_event|first_hearing|hearing_completed/i,
       );
     } finally {
+      if (eventId) await request.delete(`${base}/cases/${caseId}/events/${eventId}`, { headers });
       await request.delete(`${base}/cases/${caseId}`, { headers });
     }
   },
