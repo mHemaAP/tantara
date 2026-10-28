@@ -41,6 +41,10 @@ export function PdfDocumentViewer({
   useEffect(() => {
     let active = true;
     let loadingTask: import('pdfjs-dist').PDFDocumentLoadingTask | undefined;
+    setError('');
+    setLoading(true);
+    setPdf(null);
+    setPages([]);
     const loadPdf = async () => {
       try {
         const pdfjs = await import('pdfjs-dist');
@@ -181,8 +185,13 @@ export function PdfDocumentViewer({
       }
     };
     void render().catch((renderError) => {
-      if (!cancelled)
-        setError(renderError instanceof Error ? renderError.message : 'Could not render this PDF page.');
+      const errorName =
+        typeof renderError === 'object' && renderError !== null && 'name' in renderError
+          ? String((renderError as { name: unknown }).name)
+          : '';
+      const message = renderError instanceof Error ? renderError.message : 'Could not render this PDF page.';
+      if (!cancelled && errorName !== 'RenderingCancelledException' && !/rendering cancelled/i.test(message))
+        setError(message);
     });
     return () => {
       cancelled = true;
