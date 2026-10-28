@@ -406,11 +406,12 @@ test.describe('Research Desk live API controls', () => {
     await capture(page, 'research-desktop-ask-button');
     await page.reload();
     await waitSettled(page);
+    const answerLead = asked
+      .answer!.split(/[\n.]|\[\d+\]/)[0]
+      .replace(/[“”]$/, '')
+      .trim();
     await expect(page.locator('.turn.assistant').last().locator('.answer-text')).toContainText(
-      asked
-        .answer!.split(/[\n.]/)[0]
-        .replace(/[“”\[\]0-9]/g, '')
-        .trim(),
+      answerLead.replace(/[,;:\s]+$/, ''),
     );
     const restoredCitations = asked.citations ?? asked.sources ?? [];
     await expect(page.locator('.turn.assistant').last().locator('.answer-citation')).toHaveCount(
@@ -455,11 +456,16 @@ test.describe('Research Desk live API controls', () => {
     }
     await expect(page.locator('.status-chip').last()).toHaveAttribute('data-status', asked.status);
     const answerKind = asked.answer_kind ?? asked.generation_kind;
-    if (answerKind === 'model_generated') {
+    if (answerKind === 'model_synthesis') {
       await expect(page.locator('.status-chip').last()).toContainText('Model response · review sources');
       await expect(page.locator('.answer-provenance')).toContainText(
         String((asked.model as { model: string }).model),
       );
+      const markers = [...asked.answer!.matchAll(/\[(\d+)\]/g)];
+      expect(markers.length).toBeGreaterThan(0);
+      for (const marker of markers) {
+        expect(citations.some((citation) => citation.citation_number === Number(marker[1]))).toBeTruthy();
+      }
     } else {
       expect(answerKind).toBe('cited_excerpts');
       await expect(page.locator('.status-chip').last()).toContainText('Retrieved material only');
