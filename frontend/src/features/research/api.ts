@@ -14,8 +14,7 @@ export type ResearchSource = {
 };
 
 export type ResearchAnswer = {
-  status:
-    'ok' | 'answered' | 'insufficient_evidence' | 'model_unavailable' | 'embedding_unavailable' | 'error';
+  status: 'ok' | 'answered' | 'no_evidence' | 'model_unavailable' | 'embedding_unavailable' | 'error';
   raw_status?: string;
   answer?: string;
   citations?: ResearchSource[];
@@ -58,6 +57,7 @@ export type ResearchSession = {
     role: 'user' | 'assistant';
     content: string;
     status?: string;
+    raw_status?: string;
     citations?: ResearchSource[];
   }>;
 };
@@ -73,7 +73,7 @@ export function normalizeResearchAnswer<T extends Omit<ResearchAnswer, 'status'>
   return {
     ...response,
     raw_status: response.raw_status ?? response.status,
-    status: insufficient ? 'insufficient_evidence' : (response.status as ResearchAnswer['status']),
+    status: insufficient ? 'no_evidence' : (response.status as ResearchAnswer['status']),
   };
 }
 
