@@ -309,7 +309,7 @@ test('strategy reflects reachable model output honestly and citation links targe
   };
   await authenticatePage(page);
   await page.goto(`/cases/${seededCaseId}/strategy?tab=Legal%20Arguments`);
-  await expect(page.getByRole('button', { name: 'Legal Arguments' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('tab', { name: 'Legal Arguments' })).toHaveAttribute('aria-selected', 'true');
   if (result.status === 'model_generated') {
     expect(settings.runtime_status?.reachable).toBeTruthy();
     expect(result.model).toBeTruthy();
