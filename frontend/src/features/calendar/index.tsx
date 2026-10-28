@@ -2,6 +2,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api/client';
+import {
+  WORKSPACE_TIME_ZONE,
+  calendarDateParts,
+  calendarDay,
+  calendarDayOffset,
+  workspaceDateKey,
+  workspaceDateTimeInput,
+  workspaceDateTimeIso,
+} from '@/lib/datetime';
 import '../cases/styles.css';
 
 type Event = {
@@ -16,7 +25,9 @@ type Event = {
   all_day?: boolean;
 };
 const eventLabels: Record<string, string> = {
-  all_day_event: 'All-day event',
+  all_day_event: 'All day',
+  event: 'All day',
+  deadline: 'Deadline',
   first_hearing: 'First hearing',
   hearing_completed: 'Hearing completed',
 };
@@ -28,9 +39,17 @@ function eventLabel(event: Event) {
   );
 }
 function isAllDay(event: Event) {
-  return event.all_day === true || event.type === 'all_day_event' || event.title === 'all_day_event';
+  if (
+    event.all_day === true ||
+    event.type === 'all_day_event' ||
+    event.type === 'event' ||
+    event.title === 'all_day_event'
+  )
+    return true;
+  if (event.type !== 'deadline') return /^\d{4}-\d{2}-\d{2}$/.test(event.date || '');
+  return workspaceDateTimeInput(event.at || event.starts_at || event.date).endsWith('T00:00');
 }
-const zone = 'Asia/Kolkata';
+const zone = WORKSPACE_TIME_ZONE;
 function todayInZone() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: zone,
@@ -39,21 +58,25 @@ function todayInZone() {
     day: 'numeric',
   }).formatToParts(new Date());
   const get = (key: string) => Number(parts.find((part) => part.type === key)?.value);
-  return new Date(get('year'), get('month') - 1, get('day'));
-}
-function localKey(date: Date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: zone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
+  return calendarDay(get('year'), get('month') - 1, get('day'));
 }
 function offsetIso(year: number, month: number, day: number) {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00+05:30`;
+  return workspaceDateTimeIso(
+    `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00`,
+  )!;
 }
 function eventDate(event: Event) {
   return new Date(event.at || event.starts_at || event.date || '');
+}
+function eventDayKey(event: Event) {
+  const value = event.at || event.starts_at || event.date || '';
+  return isAllDay(event) && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : workspaceDateKey(value, zone);
+}
+function dayKey(day: Date) {
+  return `${day.getUTCFullYear()}-${String(day.getUTCMonth() + 1).padStart(2, '0')}-${String(day.getUTCDate()).padStart(2, '0')}`;
+}
+function civilDate(day: Date, options: Intl.DateTimeFormatOptions) {
+  return day.toLocaleDateString('en-IN', { ...options, timeZone: 'UTC' });
 }
 function eventList(data: unknown): Event[] {
   if (Array.isArray(data)) return data as Event[];
@@ -74,22 +97,21 @@ export default function CalendarPage() {
   useEffect(() => {
     if (window.matchMedia('(max-width: 650px)').matches) setView('Agenda');
   }, []);
-  const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const cursorParts = calendarDateParts(cursor);
+  const monthStart = calendarDay(cursorParts.year, cursorParts.month, 1);
   const firstDay =
     view === 'Week'
       ? (() => {
-          const d = new Date(cursor);
-          d.setDate(d.getDate() - d.getDay());
-          return d;
+          return calendarDayOffset(cursor, -cursor.getUTCDay());
         })()
       : monthStart;
   const rangeStart = view === 'Week' ? firstDay : monthStart;
   const rangeEnd =
     view === 'Week'
-      ? new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + 7)
-      : new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-  const from = offsetIso(rangeStart.getFullYear(), rangeStart.getMonth() + 1, rangeStart.getDate());
-  const to = offsetIso(rangeEnd.getFullYear(), rangeEnd.getMonth() + 1, rangeEnd.getDate());
+      ? calendarDayOffset(firstDay, 7)
+      : calendarDay(cursorParts.year, cursorParts.month + 1, 1);
+  const from = offsetIso(rangeStart.getUTCFullYear(), rangeStart.getUTCMonth() + 1, rangeStart.getUTCDate());
+  const to = offsetIso(rangeEnd.getUTCFullYear(), rangeEnd.getUTCMonth() + 1, rangeEnd.getUTCDate());
   const q = useQuery({
     queryKey: ['calendar', from, to],
     queryFn: () =>
@@ -105,49 +127,45 @@ export default function CalendarPage() {
   const days = useMemo(
     () =>
       view === 'Week'
-        ? Array.from(
-            { length: 7 },
-            (_, i) => new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + i),
-          )
+        ? Array.from({ length: 7 }, (_, i) => calendarDayOffset(firstDay, i))
         : Array.from(
             {
-              length: new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate(),
+              length: calendarDay(cursorParts.year, cursorParts.month + 1, 0).getUTCDate(),
             },
-            (_, i) => new Date(cursor.getFullYear(), cursor.getMonth(), i + 1),
+            (_, i) => calendarDay(cursorParts.year, cursorParts.month, i + 1),
           ),
     [view, cursor, firstDay],
   );
-  const today = localKey(new Date());
+  const today = workspaceDateKey(new Date(), zone);
   const back = () =>
     setCursor(
       view === 'Week'
-        ? new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - 7)
-        : new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1),
+        ? calendarDayOffset(cursor, -7)
+        : calendarDay(cursorParts.year, cursorParts.month - 1, 1),
     );
   const next = () =>
     setCursor(
       view === 'Week'
-        ? new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 7)
-        : new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1),
+        ? calendarDayOffset(cursor, 7)
+        : calendarDay(cursorParts.year, cursorParts.month + 1, 1),
     );
-  const displayEvents = (day: Date) => events.filter((event) => localKey(eventDate(event)) === localKey(day));
+  const displayEvents = (day: Date) => events.filter((event) => eventDayKey(event) === dayKey(day));
   const datedDays = days.filter((day) => displayEvents(day).length > 0);
   const agendaPages = Math.max(1, Math.ceil(datedDays.length / 7));
   const visibleAgendaDays = datedDays.slice(agendaPage * 7, agendaPage * 7 + 7);
   const heading =
     view === 'Week'
-      ? `${firstDay.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: zone })} – ${new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + 6).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: zone })}`
-      : cursor.toLocaleDateString('en-IN', {
+      ? `${civilDate(firstDay, { day: 'numeric', month: 'short' })} – ${civilDate(calendarDayOffset(firstDay, 6), { day: 'numeric', month: 'short', year: 'numeric' })}`
+      : civilDate(cursor, {
           month: 'long',
           year: 'numeric',
-          timeZone: zone,
         });
   return (
     <section className="matter-wrap">
       <div className="matter-head">
         <div>
           <h1 className="matter-title">Calendar</h1>
-          <p className="subheading">Hearings, deadlines and case events · Asia/Kolkata</p>
+          <p className="subheading">Hearings, deadlines and case events · {zone}</p>
         </div>
         <button className="matter-action" onClick={() => setCursor(todayInZone())}>
           Today
@@ -188,7 +206,7 @@ export default function CalendarPage() {
             {visibleAgendaDays.map((day) => {
               const dated = displayEvents(day);
               return (
-                <section key={localKey(day)}>
+                <section key={dayKey(day)}>
                   <h2>
                     {day.toLocaleDateString('en-IN', {
                       weekday: 'long',
@@ -202,7 +220,7 @@ export default function CalendarPage() {
                       className="calendar-agenda-row"
                       key={event.id}
                       onClick={() => setSelectedEvent(event)}
-                      aria-label={`View ${isAllDay(event) ? 'All-day event' : eventLabel(event)}`}
+                      aria-label={`View ${eventLabel(event)}`}
                     >
                       {!isAllDay(event) && (
                         <time>
@@ -249,22 +267,22 @@ export default function CalendarPage() {
                 </strong>
               ))}
             {view === 'Month' &&
-              Array.from({ length: monthStart.getDay() }, (_, i) => (
+              Array.from({ length: monthStart.getUTCDay() }, (_, i) => (
                 <div className="calendar-blank" key={`blank-${i}`} />
               ))}
             {days.map((day) => {
-              const isToday = localKey(day) === today;
+              const isToday = dayKey(day) === today;
               return (
                 <div
                   className={`calendar-day${isToday ? ' is-today' : ''}`}
                   data-calendar-day
-                  key={localKey(day)}
+                  key={dayKey(day)}
                 >
                   <span
                     className="calendar-date"
-                    aria-label={isToday ? `${day.getDate()}, today` : String(day.getDate())}
+                    aria-label={isToday ? `${day.getUTCDate()}, today` : String(day.getUTCDate())}
                   >
-                    {day.getDate()}
+                    {day.getUTCDate()}
                     {isToday && <small>Today</small>}
                   </span>
                   {displayEvents(day).map((event) => (
@@ -272,7 +290,7 @@ export default function CalendarPage() {
                       className="calendar-event"
                       key={event.id}
                       onClick={() => setSelectedEvent(event)}
-                      aria-label={`View ${isAllDay(event) ? 'All-day event' : eventLabel(event)}`}
+                      aria-label={`View ${eventLabel(event)}`}
                     >
                       {!isAllDay(event) && (
                         <time>
@@ -305,7 +323,7 @@ export default function CalendarPage() {
             <p>{selectedEvent.case_title || caseTitles.get(selectedEvent.case_id || '') || 'Case event'}</p>
             <p>
               {isAllDay(selectedEvent)
-                ? 'All-day'
+                ? 'All day'
                 : eventDate(selectedEvent).toLocaleString('en-IN', {
                     dateStyle: 'medium',
                     timeStyle: 'short',
