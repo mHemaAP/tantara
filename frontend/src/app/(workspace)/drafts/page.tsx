@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
 import { draftsApi, type Row } from '@/features/drafts/api';
 import '@/features/drafts/styles.css';
@@ -29,7 +30,7 @@ const safeHtml = (value: string, documents: Row[] = []) =>
         const title = citation[2].replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
         const doc = documents.find((x) => textOf(x.title ?? x.filename ?? x.name) === citation[2]);
         const source = doc
-          ? `<a href="/documents/${doc.id}?page=${citation[3]}">${title} · Page ${citation[3]}</a>`
+          ? `<a class="draft-evidence-link" href="/documents/${doc.id}?page=${citation[3]}">${title} · Page ${citation[3]}</a>`
           : 'Source page unavailable';
         return `<p class="draft-evidence" data-chunk-id="${citation[1]}">${citation[4] ? `${citation[4].replaceAll('<', '&lt;').replaceAll('>', '&gt;')} · ` : ''}${source}</p>`;
       }
@@ -119,6 +120,7 @@ const versionLabel = (v: Row) =>
     : `Snapshot · ${stamp(v.created_at).date} ${stamp(v.created_at).time}`;
 
 export default function DraftsPage() {
+  const router = useRouter();
   const [templates, setTemplates] = useState<Row[]>([]),
     [cases, setCases] = useState<Row[]>([]),
     [institutions, setInstitutions] = useState<any[]>([]),
@@ -639,6 +641,14 @@ export default function DraftsPage() {
                       className="draft-editor"
                       contentEditable
                       suppressContentEditableWarning
+                      onClick={(event) => {
+                        const link = (event.target as HTMLElement).closest<HTMLAnchorElement>(
+                          'a.draft-evidence-link[href]',
+                        );
+                        if (!link || !event.currentTarget.contains(link)) return;
+                        event.preventDefault();
+                        router.push(link.getAttribute('href')!);
+                      }}
                       onInput={(e) => setContent(editorMarkdown(e.currentTarget))}
                       dangerouslySetInnerHTML={{
                         __html: safeHtml(
