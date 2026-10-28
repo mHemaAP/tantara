@@ -16,6 +16,10 @@ export type Bundle = {
   status: string;
   created_at: string;
   updated_at?: string;
+  case_title?: string | null;
+  section_count?: number;
+  page_count?: number;
+  file_size_bytes?: number | null;
   settings?: Record<string, boolean>;
   downloadable?: boolean;
   download_url?: string | null;
