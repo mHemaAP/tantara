@@ -21,7 +21,7 @@ async function authenticate(
   page: import('@playwright/test').Page,
   request: import('@playwright/test').APIRequestContext,
 ) {
-  const origin = process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010';
+  const origin = process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010';
   const response = await request.post(`${origin}/api/v1/auth/login`, {
     data: { email: 'advocate@tantara.local', password: 'tantara-local' },
   });
