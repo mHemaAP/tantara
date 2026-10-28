@@ -15,6 +15,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { documentsApi, type DocumentRecord, type IngestionJob } from '@/features/documents/api';
+import { WorkspaceModuleNav } from '@/features/documents/WorkspaceModuleNav';
 import { DocumentStatus } from '@/features/documents/DocumentStatus';
 import { PdfDocumentViewer } from '@/features/viewer/PdfDocumentViewer';
 import { api } from '@/lib/api/client';
@@ -124,6 +125,7 @@ export default function DocumentsPage() {
   const caseTitles = new Map((cases.data?.items ?? []).map((item) => [item.id, item.title]));
   return (
     <main className="documents-page">
+      <WorkspaceModuleNav />
       <header className="documents-heading">
         <div>
           <p className="documents-eyebrow">Workspace</p>
@@ -198,7 +200,13 @@ export default function DocumentsPage() {
         <div className="documents-library-toolbar">
           <div>
             <h2>Library</h2>
-            <span>{documents.isError ? '—' : (documents.data?.total ?? '—')} documents</span>
+            <span>
+              {documents.isError
+                ? '—'
+                : query && documents.data?.total === 0
+                  ? '0 matching documents'
+                  : `${documents.data?.total ?? '—'} documents`}
+            </span>
           </div>
           <div className="documents-toolbar-controls">
             <label className="documents-search">
@@ -261,7 +269,7 @@ export default function DocumentsPage() {
         ) : documentsList.length === 0 ? (
           <div className="documents-empty">
             <FileText size={32} />
-            <h3>{query ? 'No matching documents' : 'Your library is ready'}</h3>
+            <h3>{query ? '0 matching documents' : 'Your library is ready'}</h3>
             <p>
               {query
                 ? 'Try another search term or clear your filters.'
@@ -423,7 +431,11 @@ function DocumentRow({
   const uploaded = document.created_at ? new Date(document.created_at).toLocaleDateString() : '—';
   const pageCount = document.page_count ?? document.pages;
   return (
-    <tr className={previewed ? 'document-row previewed' : 'document-row'} onClick={onPreview}>
+    <tr
+      className={previewed ? 'document-row previewed' : 'document-row'}
+      data-document-id={document.id}
+      onClick={onPreview}
+    >
       <td>
         <div className="document-row-title">
           <input
@@ -495,7 +507,7 @@ function DocumentCard({
     refetchInterval: ['queued', 'processing'].includes(document.status) ? 1800 : false,
   });
   return (
-    <article className="document-card">
+    <article className="document-card" data-document-id={document.id}>
       <div className="document-card-top">
         <input
           type="checkbox"
