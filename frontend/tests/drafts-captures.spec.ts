@@ -301,8 +301,7 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
   await expect(editor).toContainText(uniquePhrase);
   const saveRequest = page.waitForRequest(
     (request) =>
-      new URL(request.url()).pathname === `/api/v1/drafts/${draftId}/versions` &&
-      request.method() === 'POST',
+      new URL(request.url()).pathname === `/api/v1/drafts/${draftId}/versions` && request.method() === 'POST',
   );
   const saveResponse = page.waitForResponse(
     (response) =>
