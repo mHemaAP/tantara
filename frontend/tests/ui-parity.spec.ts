@@ -105,9 +105,16 @@ test('settings section navigation keeps one visible page-level current link', as
   const pageCurrent = page.locator('a[aria-current="page"]');
   await expect(pageCurrent).toHaveCount(1);
   await expect(pageCurrent).toHaveAttribute('href', '/settings/profile');
-  await expect(
-    page.getByRole('navigation', { name: 'Settings navigation' }).getByRole('link', { name: 'Profile' }),
-  ).toHaveAttribute('aria-current', 'location');
+  const profile = page
+    .getByRole('navigation', { name: 'Settings navigation' })
+    .getByRole('link', { name: 'Profile' });
+  await expect(profile).toHaveAttribute('aria-current', 'location');
+  const activeStyle = await profile.evaluate((element) => ({
+    color: getComputedStyle(element).color,
+    backgroundColor: getComputedStyle(element).backgroundColor,
+  }));
+  expect(activeStyle.color).toBe('rgb(55, 48, 163)');
+  expect(activeStyle.backgroundColor).toBe('rgb(238, 240, 255)');
 });
 
 test('shared shell matches measured desktop target geometry and artwork', async ({ page, request }) => {
@@ -156,6 +163,8 @@ test('dashboard renders four metrics before Ask TANTARA and keeps both secondary
 }) => {
   await authenticate(page, request);
   await page.goto('/dashboard');
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expect(page.getByRole('heading', { level: 2, name: 'Case Management' })).toBeVisible();
   const cards = page.locator('.dashboard-primary .metric-grid .metric');
   await expect(cards).toHaveCount(4);
   await expect(cards.nth(0)).toContainText('Active Cases');
