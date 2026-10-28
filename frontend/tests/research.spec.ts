@@ -457,7 +457,7 @@ test.describe('Research Desk live API controls', () => {
     await expect(page.locator('.status-chip').last()).toHaveAttribute('data-status', asked.status);
     const answerKind = asked.answer_kind ?? asked.generation_kind;
     if (answerKind === 'model_synthesis') {
-      await expect(page.locator('.status-chip').last()).toContainText('Model response · review sources');
+      await expect(page.locator('.status-chip').last()).toContainText('Model synthesis · review sources');
       await expect(page.locator('.answer-provenance')).toContainText(
         String((asked.model as { model: string }).model),
       );
