@@ -93,7 +93,7 @@ def test_private_posts_stay_private_and_workspace_posts_are_shared_with_author_i
     )
     assert response.status_code == 200
     reply = response.json()
-    assert reply["author"] == {"display_name": "Aarav Mehta", "role": "advocate"}
+    assert reply["author"] == {"display_name": "Workspace Advocate", "role": "advocate"}
     reply_list = client.get(f"/api/v1/community/posts/{workspace['id']}/replies", headers=researcher).json()
     assert reply_list["total"] == 1 and reply_list["items"][0]["id"] == reply["id"]
 
