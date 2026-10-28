@@ -106,7 +106,10 @@ export function ClientDirectory() {
               onSubmit={async (e) => {
                 e.preventDefault();
                 try {
-                  await clientsApi.create({ name, email });
+                  await clientsApi.create({
+                    name: name.trim(),
+                    ...(email.trim() ? { email: email.trim() } : {}),
+                  });
                   M(false);
                   N('');
                   E('');
