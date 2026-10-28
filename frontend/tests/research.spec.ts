@@ -9,7 +9,7 @@ import {
   normalizeDocumentTitle,
 } from '../src/features/research/presentation';
 
-const apiBase = process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010';
+const apiBase = process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010';
 const apiRoot = `${apiBase}/api/v1`;
 const credentials = { email: 'advocate@tantara.local', password: 'tantara-local' };
 test.describe.configure({ timeout: 180_000 });
