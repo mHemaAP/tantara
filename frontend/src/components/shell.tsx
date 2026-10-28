@@ -4,13 +4,25 @@ import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, Command, House, Menu, Search, Settings, X, ArrowRight } from 'lucide-react';
+import {
+  Bell,
+  BriefcaseBusiness,
+  ChevronDown,
+  Command,
+  House,
+  Menu,
+  Search,
+  Settings,
+  X,
+  ArrowRight,
+} from 'lucide-react';
 import { api, clearToken } from '@/lib/api/client';
 import { toast } from 'sonner';
 import type { Activity } from '@/lib/api/types';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', Icon: House },
+  { href: '/community', label: 'Community', Icon: BriefcaseBusiness },
   { href: '/settings/profile', label: 'Settings', Icon: Settings },
 ];
 type Hit = { title: string; href: string; kind: string };
@@ -156,7 +168,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
               key={href}
               href={href}
               aria-current={
-                path === href || (path.startsWith('/settings') && label === 'Settings') ? 'page' : undefined
+                path === href ||
+                (href === '/community' && path.startsWith('/community')) ||
+                (path.startsWith('/settings') && label === 'Settings')
+                  ? 'page'
+                  : undefined
               }
               onClick={() => setOpen(false)}
             >
