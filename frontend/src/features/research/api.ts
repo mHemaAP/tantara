@@ -65,6 +65,9 @@ export type ResearchSession = {
 export function normalizeResearchAnswer<T extends Omit<ResearchAnswer, 'status'> & { status: string }>(
   response: T,
 ): ResearchAnswer {
+  if (response.status === 'model_unavailable') {
+    return { ...response, raw_status: response.raw_status ?? response.status, status: 'model_unavailable' };
+  }
   const insufficient =
     response.status === 'no_evidence' ||
     response.status === 'insufficient_evidence' ||
