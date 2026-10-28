@@ -215,7 +215,9 @@ test('real AI Read uses the reachable model and captures settled extracted field
       'Not extracted',
     );
     await expect(page.locator('.ai-read-panel')).not.toContainText(/\[\]|\{"found"/);
-    await expect(page.locator('.ai-read-panel blockquote')).not.toContainText(/\\n|"quote"/);
+    await expect(page.locator('.ai-read-field[data-field-key="arbitration_clause"]')).toContainText(
+      'Not extracted',
+    );
     await expect(page.locator('.ai-read-panel .ai-source-page').first()).toBeVisible();
     await page.screenshot({
       path: `${screenshots}/documents-ai-read-success-desktop-1440-real.png`,
