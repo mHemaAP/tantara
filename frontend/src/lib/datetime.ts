@@ -73,7 +73,7 @@ export function workspaceDateTimeDisplay(
   const raw = value instanceof Date ? value.toISOString() : value;
   const zonedValue =
     typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(value)
-      ? workspaceDateTimeIso(value.slice(0, 16)) ?? value
+      ? (workspaceDateTimeIso(value.slice(0, 16)) ?? value)
       : raw;
   const instant = new Date(zonedValue);
   if (Number.isNaN(instant.valueOf())) return raw;
