@@ -40,7 +40,7 @@ Final sanitized live curl/HTTPX smoke evidence:
 
 ```text
 GET /health                     200 {"status":"ok","service":"TANTARA Local Workspace API","version":"1.1.0"}
-POST /auth/login                200 token_type=bearer; local user Aarav Mehta, role=advocate
+POST /auth/login                200 token_type=bearer; local user Workspace Advocate, role=advocate
 GET /dashboard/summary          200 active_cases=20, hearings_this_week=11, documents_processed=10
 GET /documents?page=1&page_size=3 200; latest real upload is ready, page_count=1
 POST /ai/ask                    200 status=ok, answer="Mumbai"; citations include the uploaded document on page 1 with nonzero retrieval scores
