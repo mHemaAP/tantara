@@ -55,6 +55,7 @@ test('workspace shell, skip link, metadata, and PDF page controls are stable on 
   page,
   request,
 }) => {
+  test.setTimeout(90000);
   const token = await signIn(request);
   const document = await getSeededPdf(request, token);
   const pageCount = document.page_count ?? 1;
@@ -133,7 +134,12 @@ test('workspace shell, skip link, metadata, and PDF page controls are stable on 
   });
   await openWithToken(page, token, '/documents');
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('.document-preview-pane canvas')).toBeVisible({ timeout: 60000 });
+  const pdfRow = page.locator('.documents-table tbody tr').filter({ hasText: document.filename });
+  await expect(pdfRow).toBeVisible();
+  await pdfRow.locator('td').nth(1).click();
+  const previewCanvas = page.locator('.document-preview-pane canvas');
+  await expect(previewCanvas).toBeVisible({ timeout: 60000 });
+  await expect(previewCanvas).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
   await page.getByLabel('Filter by status').selectOption('failed');
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
