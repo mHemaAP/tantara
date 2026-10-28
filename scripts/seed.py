@@ -34,6 +34,7 @@ from app.models import (
     DraftVersion,
     ExtractionField,
     FilingBundle,
+    KnowledgeCollection,
     Hearing,
     IngestionJob,
     Note,
@@ -115,6 +116,31 @@ def make_scanned_pdf(path):
     c.save()
 
 
+DEMO_COLLECTIONS = (
+    ("Agreements & Contracts", "Agreements, contract terms, and arbitration clauses."),
+    ("Awards & Authorities", "Awards, authorities, and procedural decisions."),
+    ("Pleadings & Evidence", "Pleadings, motions, and supporting evidence."),
+)
+
+
+def ensure_demo_collections(db, owner_id):
+    collections = {}
+    for name, description in DEMO_COLLECTIONS:
+        collection = db.scalar(
+            select(KnowledgeCollection).where(
+                KnowledgeCollection.owner_id == owner_id, KnowledgeCollection.name == name
+            )
+        )
+        if collection is None:
+            collection = KnowledgeCollection(
+                id=str(uuid.uuid4()), owner_id=owner_id, name=name, description=description, is_demo=True
+            )
+            db.add(collection)
+            db.flush()
+        collections[name] = collection.id
+    return collections
+
+
 def seed_junior_workspace():
     """Create a researcher-owned demo matter for real cross-account checks."""
     settings = get_settings()
@@ -133,6 +159,11 @@ def seed_junior_workspace():
             db.add(junior)
             db.flush()
         owner = junior.id
+        collections = ensure_demo_collections(db, owner)
+        for document in db.scalars(
+            select(Document).where(Document.owner_id == owner, Document.is_demo.is_(True))
+        ):
+            document.collection_id = collections["Pleadings & Evidence"]
         if db.scalar(select(Client.id).where(Client.owner_id == owner, Client.is_demo.is_(True))):
             return
         client = Client(
@@ -236,6 +267,7 @@ def seed_junior_workspace():
             id=document_id,
             owner_id=owner,
             case_id=case.id,
+            collection_id=collections["Pleadings & Evidence"],
             title="Junior Demo Evidence",
             document_type="Research Note",
             jurisdiction="India",
@@ -429,6 +461,7 @@ def main():
                 Hearing,
                 Note,
                 CommunityPost,
+                KnowledgeCollection,
                 Case,
                 Client,
             ):
@@ -459,6 +492,19 @@ def main():
             db.rollback()
             seed_junior_workspace()
             seed_community_workspace()
+            with session_scope() as db:
+                collections = ensure_demo_collections(db, owner)
+                agreement_names = {"agreement.pdf", "contract.pdf", "near-duplicate-agreement-a.pdf", "near-duplicate-agreement-b.pdf"}
+                authority_names = {"award.pdf"}
+                for document in db.scalars(
+                    select(Document).where(Document.owner_id == owner, Document.is_demo.is_(True))
+                ):
+                    if document.filename in agreement_names:
+                        document.collection_id = collections["Agreements & Contracts"]
+                    elif document.filename in authority_names:
+                        document.collection_id = collections["Awards & Authorities"]
+                    else:
+                        document.collection_id = collections["Pleadings & Evidence"]
             print("Demo workspace already seeded; researcher workspace reconciled.")
             return
         users = []
@@ -841,16 +887,27 @@ def main():
         )
         db.flush()
         case_id = cases[0].id
+        collections = ensure_demo_collections(db, owner)
+        agreement_names = {"agreement.pdf", "contract.pdf", "near-duplicate-agreement-a.pdf", "near-duplicate-agreement-b.pdf"}
+        authority_names = {"award.pdf"}
         bundle_id = bundle.id
         docs = []
         for order, (filename, title, blob) in enumerate(files):
             did, jid = str(uuid.uuid4()), str(uuid.uuid4())
             digest = __import__("hashlib").sha256(blob).hexdigest()
             stored = __import__("app.ingestion", fromlist=["DocumentStorage"]).DocumentStorage().save(blob)
+            collection_name = (
+                "Agreements & Contracts"
+                if filename in agreement_names
+                else "Awards & Authorities"
+                if filename in authority_names
+                else "Pleadings & Evidence"
+            )
             doc = Document(
                 id=did,
                 owner_id=owner,
                 case_id=case_id,
+                collection_id=collections[collection_name],
                 title=title,
                 document_type="Arbitration Agreement" if "Agreement" in title else title,
                 jurisdiction="India",
