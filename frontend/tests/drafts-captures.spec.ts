@@ -1,6 +1,6 @@
 import { expect, request, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiOrigin = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8115').replace(/\/$/, '');
+const apiOrigin = (process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010').replace(/\/$/, '');
 const apiV1 = `${apiOrigin}/api/v1`;
 const shots = 'docs/screenshots';
 const desktop = { width: 1440, height: 900 };
@@ -92,8 +92,8 @@ function ascii85Decode(input: string) {
 test('captures live seeded drafts and autofill states at desktop and mobile sizes', async ({ page }) => {
   test.setTimeout(420_000);
   const api = await request.newContext();
-  expect(new URL(apiOrigin).port, 'capture suite targets the private lane backend').toBe('8115');
-  expect(new URL(apiOrigin).port, 'capture test must use lane API port 8115').toBe('8115');
+  expect(new URL(apiOrigin).port, 'capture suite targets the integration backend').toBe('8010');
+  expect(new URL(apiOrigin).port, 'capture test uses the integration API port').toBe('8010');
   const token = await login(api);
   const headers = { Authorization: `Bearer ${token}` };
   await page.addInitScript((value) => localStorage.setItem('tantara_token', value), token);
@@ -135,6 +135,10 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
   await capture(page, 'drafts-list-desktop-1440', desktop);
   await capture(page, 'drafts-list-mobile-390', mobile);
   await page.getByRole('button', { name: 'Open navigation' }).click();
+  await expect(page.locator('.sidebar')).toHaveClass(/open/);
+  await expect
+    .poll(async () => (await page.locator('.sidebar').boundingBox())?.x ?? -1)
+    .toBeGreaterThanOrEqual(0);
   const draftsNavLink = page
     .getByRole('navigation', { name: 'Main navigation' })
     .getByRole('link', { name: 'AI Drafts' });
@@ -165,9 +169,20 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
 
   await page.locator('#case').selectOption(String(selectedCase.id));
   const source = page.locator('.draft-source input').first();
-  if (await source.count()) await source.check();
+  await expect.poll(() => page.locator('.draft-source input').count()).toBeGreaterThan(0);
+  await page.getByText(/Choose from \d+ case documents/).click();
+  await expect(source).toBeVisible();
+  await source.check();
   await expect(page.locator('#case')).toHaveValue(String(selectedCase.id));
+  const generationResponsePromise = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/drafts/generate' &&
+      response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Generate Draft' }).click();
+  const generationResponse = await generationResponsePromise;
+  expect(generationResponse.status(), await generationResponse.text()).toBe(200);
+  const generated = await generationResponse.json();
   await expect(page.locator('.draft-case-reference')).toBeVisible({ timeout: 180_000 });
   await expect(page.locator('.draft-case-reference')).toContainText(caseReference);
   const draftUrl = new URL(page.url());
@@ -175,7 +190,7 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
   expect(draftId).toBeTruthy();
   const persisted = await api.get(`${apiV1}/drafts/${draftId}`, { headers });
   expect(persisted.status()).toBe(200);
-  const generated = await persisted.json();
+  expect((await persisted.json()).content_markdown).toBe(generated.content_markdown);
   expect(String(generated.generation_kind)).toBeTruthy();
   if (generated.model?.model)
     await expect(page.locator('.draft-generation-meta')).toContainText(generated.model.model);
@@ -191,17 +206,22 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
   if (await generatedPageLink.count()) {
     const href = await generatedPageLink.getAttribute('href');
     expect(href).toBeTruthy();
+    page.on('pageerror', (error) => console.log(`citation page error: ${error.stack ?? error.message}`));
+    page.on('response', (response) => {
+      if (response.status() >= 400) console.log(`citation response ${response.status()} ${response.url()}`);
+    });
     const destination = new URL(href!, 'http://localhost');
     const pageNumber = destination.searchParams.get('page')!;
     await generatedPageLink.click();
     await expect(page).toHaveURL(
       new RegExp(`/documents/${destination.pathname.split('/').at(-1)}\\?page=${pageNumber}`),
     );
-    const destinationPage = page.locator(`#page-${pageNumber}`);
+    const destinationPage = page.locator(`.pdf-page-card[data-page-card="${pageNumber}"]`);
     await expect(destinationPage).toBeVisible();
     await expect(destinationPage).toContainText(`Page ${pageNumber}`);
     await page.goto(`/drafts?id=${draftId}`);
   }
+  await expect(page.locator('.draft-editor, .draft-unrecognized')).toBeVisible({ timeout: 60000 });
   let editor = page.locator('.draft-editor');
   const generatedEditorWasRendered = (await editor.count()) > 0;
   if (generatedEditorWasRendered) expect(await editor.innerText()).not.toMatch(/We need to draft a/i);
@@ -211,7 +231,7 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
     await expect(
       page.getByRole('heading', { name: 'Generated text needs editing — structure not recognised' }),
     ).toBeVisible();
-    expect(await page.locator('.draft-unrecognized pre').count()).toBe(0);
+    await expect(page.locator('.draft-unrecognized pre')).toBeHidden();
     await expect(page.locator('.draft-unrecognized')).toContainText('Retry');
     await capture(page, 'draft-review-needed-desktop-1440', desktop);
     await capture(page, 'draft-review-needed-mobile-390', mobile);
@@ -269,11 +289,15 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
   const uniquePhrase = 'COUNSEL REVIEW PHRASE LUNA 2026';
   editor = page.locator('.draft-editor');
   if (await editor.count()) {
+    await page.getByRole('tab', { name: 'Draft', exact: true }).click();
+    await expect(editor).toBeVisible();
     await editor.click();
     await page.keyboard.press('ControlOrMeta+End');
     await page.keyboard.press('Enter');
     await page.keyboard.insertText(uniquePhrase);
-    await page.getByRole('button', { name: 'Save version' }).click();
+    const saveVersion = page.getByRole('button', { name: 'Save version' });
+    await expect(saveVersion).toBeVisible();
+    await saveVersion.click();
     await expect(page.getByRole('status')).toContainText(/saved/i);
   }
   await page.reload();
