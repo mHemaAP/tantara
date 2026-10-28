@@ -16,7 +16,9 @@ function formatFileSize(bytes?: number | null) {
 }
 function formatUpdated(value?: string) {
   if (!value) return '—';
-  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(value),
+  );
 }
 
 export default function BundlesPage() {
@@ -119,11 +121,11 @@ export default function BundlesPage() {
             <span className="bundle-step">YOUR WORKSPACE</span>
             <h2 id="bundle-list-title">Saved bundles</h2>
           </div>
-            {!loading && (
-              <span className="bundle-count">
-                {bundles.length} {bundles.length === 1 ? 'bundle' : 'bundles'}
-              </span>
-            )}
+          {!loading && (
+            <span className="bundle-count">
+              {bundles.length} {bundles.length === 1 ? 'bundle' : 'bundles'}
+            </span>
+          )}
         </div>
         {loading ? (
           <div className="bundle-load-state" role="status">
