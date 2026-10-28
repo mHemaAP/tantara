@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, FileText, Plus } from 'lucide-react';
 import { bundleApi, type Bundle, type CaseOption } from '@/features/bundles/api';
+import { workspaceDateTimeDisplay } from '@/lib/datetime';
 import '@/features/bundles/bundles.css';
 
 type ListedBundle = Bundle;
@@ -16,9 +17,7 @@ function formatFileSize(bytes?: number | null) {
 }
 function formatUpdated(value?: string) {
   if (!value) return '—';
-  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
+  return workspaceDateTimeDisplay(value);
 }
 
 export default function BundlesPage() {
