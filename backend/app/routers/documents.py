@@ -173,6 +173,7 @@ async def upload(
     document_type: str | None = Form(None),
     jurisdiction: str | None = Form(None),
     case_id: str | None = Form(None),
+    collection_id: str | None = Form(None),
     user=Depends(current_user),
 ):
     if user.get("role") == "researcher":
@@ -221,6 +222,11 @@ async def upload(
     if case_id:
         with SessionLocal() as s:
             owned(s, Case, case_id, user)
+    if collection_id:
+        from app.models import KnowledgeCollection
+
+        with SessionLocal() as s:
+            owned(s, KnowledgeCollection, collection_id, user)
     digest = hashlib.sha256(data).hexdigest()
     with SessionLocal() as s:
         old = s.scalar(
@@ -237,6 +243,7 @@ async def upload(
             id=did,
             owner_id=user["id"],
             case_id=case_id,
+            collection_id=collection_id,
             title=title or filename,
             document_type=document_type or "Other",
             jurisdiction=jurisdiction or "India",
@@ -266,6 +273,7 @@ def documents(
     status: str | None = None,
     type: str | None = None,
     case_id: str | None = None,
+    collection_id: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     sort: str = "-created_at",
@@ -282,6 +290,8 @@ def documents(
             stmt = stmt.where(Document.document_type == type)
         if case_id:
             stmt = stmt.where(Document.case_id == case_id)
+        if collection_id:
+            stmt = stmt.where(Document.collection_id == collection_id)
         total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = s.scalars(
             stmt.order_by(Document.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
@@ -318,12 +328,17 @@ def patch_document(did: str, payload: Payload, user=Depends(current_user)):
     if user.get("role") == "researcher":
         raise HTTPException(403, "This role is read-only")
     values = payload.model_dump(exclude_unset=True)
-    allowed = {"title", "document_type", "jurisdiction", "case_id"}
+    allowed = {"title", "document_type", "jurisdiction", "case_id", "collection_id"}
     if set(values) - allowed:
         raise HTTPException(400, "Only document metadata can be updated")
     if values.get("case_id"):
         with SessionLocal() as s:
             owned(s, Case, values["case_id"], user)
+    if values.get("collection_id"):
+        from app.models import KnowledgeCollection
+
+        with SessionLocal() as s:
+            owned(s, KnowledgeCollection, values["collection_id"], user)
     with session_scope() as s:
         d = owned(s, Document, did, user)
         repo_update(s, d, values)
