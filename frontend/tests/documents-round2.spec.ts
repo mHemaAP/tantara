@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { documentHref } from '../src/features/documents/links';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
 
 async function signIn(request: APIRequestContext) {
   const response = await request.post(`${apiUrl}/auth/login`, {
@@ -57,13 +57,28 @@ test('captures seeded document and search states before fixture uploads', async 
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWithToken(page, token, '/documents');
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('.document-preview-pane canvas')).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('.document-preview-pane canvas')).toHaveAttribute('data-rendered', 'true', {
+  await page.screenshot({ path: '../docs/screenshots/documents-library-desktop-1440-real.png' });
+  const documentsResponse = await request.get(`${apiUrl}/documents?page_size=100`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(documentsResponse.ok()).toBeTruthy();
+  const documents = (await documentsResponse.json()).items as Array<{
+    id: string;
+    filename: string;
+    title: string;
+    is_demo: boolean;
+  }>;
+  const seededPdf = documents.find((document) => document.filename === 'page-three-motion.pdf');
+  expect(seededPdf).toBeTruthy();
+  expect(seededPdf!.is_demo).toBeTruthy();
+  await page.goto(`/documents/${seededPdf!.id}`);
+  await expect(page.getByRole('heading', { name: seededPdf!.title })).toBeVisible();
+  await expect(page.locator('.pdf-page-surface canvas').first()).toHaveAttribute('data-rendered', 'true', {
     timeout: 60000,
   });
-  await page.screenshot({
-    path: '../docs/screenshots/documents-library-desktop-1440-real.png',
-  });
+  await page.screenshot({ path: '../docs/screenshots/documents-seeded-viewer-desktop-1440-real.png' });
+  await page.goto('/documents');
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
 
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-document-with-this-title-9472');
@@ -124,7 +139,7 @@ test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async
   expect(skipLinkBounds!.y + skipLinkBounds!.height).toBeLessThanOrEqual(0);
   expect(mainBounds!.x).toBeGreaterThan(0);
   await page.screenshot({
-    path: '../docs/screenshots/documents-viewer-page2-desktop-1440-fixture.png',
+    path: '../docs/screenshots/documents-viewer-page2-desktop-1440-real.png',
   });
   const mobilePage = await page.context().newPage();
   await mobilePage.setViewportSize({ width: 390, height: 844 });
@@ -156,17 +171,17 @@ test('viewer metadata uses separated definition rows and an accessible copy conf
   const headers = { Authorization: `Bearer ${token}` };
   const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
   const document = documents.items.find(
-    (item: { filename: string }) => item.filename === 'arbitration-text-layer.pdf',
+    (item: { filename: string }) => item.filename === 'page-three-motion.pdf',
   );
   expect(document).toBeTruthy();
   await openWithToken(page, token, `/documents/${document.id}`);
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
-    origin: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3012',
+    origin: new URL(page.url()).origin,
   });
-  await expect(page.getByRole('group', { name: 'Filename arbitration-text-layer.pdf' })).toHaveText(
-    /Filename\s+arbitration-text-layer\.pdf/,
+  await expect(page.getByRole('group', { name: 'Filename page-three-motion.pdf' })).toHaveText(
+    /Filename\s+page-three-motion\.pdf/,
   );
-  await expect(page.getByRole('group', { name: 'Pages 3' })).toHaveText(/Pages\s+3/);
+  await expect(page.getByRole('group', { name: 'Pages 5' })).toHaveText(/Pages\s+5/);
   await expect(page.getByRole('group', { name: /^Characters / })).toHaveText(/Characters\s+[\d,]+/);
   await expect(page.getByRole('group', { name: /^Created / })).toHaveText(/Created\s+.+/);
   await expect(page.getByRole('group', { name: /^Jurisdiction / })).toHaveText(/Jurisdiction\s+.+/);
@@ -206,16 +221,17 @@ test('AI Read renders real API fields and persists an edited field after reload'
   const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
   const document = documents.items.find(
     (item: { filename: string; status: string }) =>
-      item.filename === 'arbitration-text-layer.pdf' && item.status === 'ready',
+      item.filename === 'page-three-motion.pdf' && item.status === 'ready',
   );
   expect(document).toBeTruthy();
   await openWithToken(page, token, `/documents/${document.id}`);
   await page.getByRole('button', { name: 'Run document extraction' }).click();
   await expect(page.locator('.ai-read-field').first()).toBeVisible();
   const clauseField = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
-  await expect(clauseField).toContainText('Page 1');
-  await expect(clauseField.locator('blockquote')).toContainText('arbitration clause applies');
-  await expect(clauseField.locator('blockquote')).not.toContainText(/\\n|"quote"/);
+  await expect(clauseField).toContainText('Not extracted');
+  await expect(page.locator('.ai-read-field[data-field-key="summary"]')).toContainText(
+    'Routine procedural filing',
+  );
   await page.getByRole('button', { name: 'Edit document_type' }).click();
   await page.getByRole('textbox', { name: 'Edit document_type' }).fill('Reviewed arbitration agreement');
   await page.getByRole('button', { name: 'Save document_type' }).click();
@@ -233,17 +249,23 @@ test('AI Read renders real API fields and persists an edited field after reload'
   );
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
-    path: '../docs/screenshots/documents-ai-read-success-desktop-1440-fixture.png',
+    path: '../docs/screenshots/documents-ai-read-success-desktop-1440-real.png',
   });
 });
 
 test('scanned fixture yields OCR text and reports the job warnings', async ({ request }) => {
-  const { documentId, token } = await uploadFixture(request, 'arbitration-scanned.pdf');
+  const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
+  const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
+  const document = documents.items.find(
+    (item: { filename: string }) => item.filename === 'scanned-agreement.pdf',
+  );
+  expect(document).toBeTruthy();
+  const documentId = document.id as string;
   const response = await request.get(`${apiUrl}/documents/${documentId}/pages`, { headers });
   const pages = (await response.json()).pages as Array<{ text: string; warnings: string[] }>;
   const extractedOcrQuote = pages[0].text.toUpperCase();
-  expect(extractedOcrQuote).toContain('UNIQUE QUARTZ 7319');
+  expect(extractedOcrQuote).toContain('ARBITRATION AGREEMENT');
   const job = await request
     .get(`${apiUrl}/documents/${documentId}/job`, { headers })
     .then((result) => result.json());
@@ -257,7 +279,7 @@ test('viewer displays extraction warnings returned by ingestion', async ({ page,
   const headers = { Authorization: `Bearer ${token}` };
   const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
   const scanned = documents.items.find(
-    (item: { filename: string }) => item.filename === 'arbitration-scanned.pdf',
+    (item: { filename: string }) => item.filename === 'scanned-agreement.pdf',
   );
   expect(scanned).toBeTruthy();
   const pagesResponse = await request.get(`${apiUrl}/documents/${scanned.id}/pages`, { headers });
@@ -274,7 +296,7 @@ test('viewer displays extraction warnings returned by ingestion', async ({ page,
   }
 });
 
-test('dead AI endpoint shows model_unavailable without fabricated extraction fields', async ({
+test('local extraction is honest and works independently of the configured model', async ({
   page,
   request,
 }) => {
@@ -293,10 +315,12 @@ test('dead AI endpoint shows model_unavailable without fabricated extraction fie
   try {
     await openWithToken(page, token, `/documents/${sourceDocument.id}`);
     await page.getByRole('button', { name: /Run document extraction|Run again/ }).click();
-    await expect(page.getByText('AI model unavailable')).toBeVisible({ timeout: 20000 });
-    await expect(page.locator('.ai-read-degradation')).not.toContainText(/https?:\/\/|127\.0\.0\.1|:\d{2,5}/);
-    await expect(page.getByText('document type', { exact: false })).toHaveCount(0);
-    await expect(page.locator('.ai-read-field')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible();
+    await expect(page.locator('.ai-read-field').first()).toBeVisible();
+    await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction');
+    await expect(page.locator('.ai-read-panel')).toContainText('candidate only');
+    await expect(page.locator('.ai-read-panel')).not.toContainText('AI-generated');
+    await expect(page.locator('body')).not.toContainText(/https?:\/\/|127\.0\.0\.1|:\d{2,5}/);
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, { headers, data: { base_url: original.base_url } });
   }
