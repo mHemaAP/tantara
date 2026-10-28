@@ -74,6 +74,9 @@ def test_database_and_faiss_store_share_resolved_data_root(client):
 
 
 def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, monkeypatch):
+    seed_source = (Path(__file__).resolve().parents[2] / "scripts" / "seed.py").read_text()
+    for raw_event_type in ("first_hearing", "all_day_event", "document_uploaded", "deadline_set"):
+        assert raw_event_type not in seed_source
     monkeypatch.setattr(sys, "argv", ["seed.py", "--demo"])
     runpy.run_path(str(Path(__file__).resolve().parents[2] / "scripts" / "seed.py"), run_name="seed_test")[
         "main"
@@ -105,9 +108,19 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
         assert session.scalar(select(func.count(CommunityPost.id))) >= 5
         assert session.scalar(select(func.count(CommunityReply.id))) >= 5
         tasks = session.scalars(select(Task).where(Task.is_demo.is_(True), Task.status != "done")).all()
+        assert len(tasks) == 18
+        task_title_counts = {}
+        for task in tasks:
+            task_title_counts[task.title] = task_title_counts.get(task.title, 0) + 1
+        assert len(task_title_counts) >= 10
+        assert max(task_title_counts.values()) <= 2
         assert any(task.due_at is None for task in tasks)
         assert any(task.due_at and task.due_at.date() < today for task in tasks)
         assert any(task.due_at and task.due_at.date() == today for task in tasks)
+        assert sum(task.due_at is None for task in tasks) == 3
+        assert sum(task.due_at is not None and task.due_at.date() < today for task in tasks) == 4
+        assert sum(task.due_at is not None and task.due_at.date() == today for task in tasks) == 2
+        assert sum(task.due_at is not None and task.due_at.date() > today for task in tasks) == 9
         assert all(row.is_demo for row in documents + pages + events)
         demo_clients = session.scalars(select(Client).where(Client.is_demo.is_(True))).all()
         assert any(
