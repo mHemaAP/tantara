@@ -145,10 +145,6 @@ test('workspace shell, skip link, metadata, and PDF page controls are stable on 
   await page.screenshot({
     path: `${screenshots}/documents-viewer-page${targetPage}-desktop-1440-real.png`,
   });
-  await page.locator('.document-metadata').screenshot({
-    path: `${screenshots}/documents-metadata-desktop-1440-real.png`,
-  });
-
   await openWithToken(page, token, '/documents');
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
   await expect(page.locator('.document-preview-pane canvas')).toBeVisible({ timeout: 60000 });
