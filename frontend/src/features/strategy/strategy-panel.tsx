@@ -258,6 +258,12 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
           <button onClick={() => setError('')}>Dismiss</button>
         </div>
       )}
+      {!!data?.validation_warnings?.length && (
+        <div className="strategy-alert" role="status">
+          {data.validation_warnings.length} model claim(s) were omitted because their citations did not
+          resolve to retrieved sources. Review the source excerpts before relying on this strategy.
+        </div>
+      )}
 
       <section className="strategy-case-context" aria-label="Strategy case context">
         <div className="strategy-case-picker">
