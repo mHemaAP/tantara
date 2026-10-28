@@ -374,14 +374,30 @@ test('case, calendar and client routes each expose one active navigation link', 
     headers: { Authorization: `Bearer ${token}` },
   });
   const caseId = (await listing.json()).items[0].id as string;
+  const clients = await request.get(`${base}/clients?page_size=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const clientId = (await clients.json()).items[0].id as string;
   await page.addInitScript((value) => {
     localStorage.setItem('tantara_token', value as string);
     document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
   }, token);
-  for (const route of ['/cases', `/cases/${caseId}`, '/clients', '/tasks', '/calendar']) {
+  for (const route of [
+    '/cases',
+    `/cases/${caseId}`,
+    '/clients',
+    `/clients/${clientId}`,
+    '/tasks',
+    '/calendar',
+  ]) {
     await page.goto(route);
     await expect(page.locator('.nav a[aria-current="page"]')).toHaveCount(1);
     await expect(page.locator('.nav a')).toHaveCount(14);
+    if (route.startsWith('/clients/')) {
+      const current = page.locator('.nav a[aria-current="page"]');
+      await expect(current).toHaveAttribute('href', '/clients');
+      await expect(current).toContainText('Clients');
+    }
   }
 });
 
