@@ -168,8 +168,10 @@ from app.routers.strategy import router as strategy_router
 app.include_router(strategy_router)
 from app.routers.documents import router as document_router
 from app.routers.documents import upload as document_upload
+from app.routers.collections import router as collections_router
 
 app.include_router(document_router)
+app.include_router(collections_router)
 from app.routers.ai import router as ai_router
 
 app.include_router(ai_router)
@@ -187,6 +189,7 @@ class Ask(Payload):
     top_k: int = Field(5, ge=1, le=30)
     case_id: str | None = None
     collection_id: str | None = None
+    collection_ids: list[str] | None = None
     jurisdiction: str | None = None
     document_types: list[str] | None = None
     session_id: str | None = None
@@ -210,11 +213,27 @@ app.include_router(dashboard_router)
 
 
 # FTS5 + FAISS reciprocal-rank fusion is the single retrieval path.
-def retrieve(question, user, top_k=5, case_id=None, jurisdiction=None, document_types=None):
+def retrieve(
+    question,
+    user,
+    top_k=5,
+    case_id=None,
+    jurisdiction=None,
+    document_types=None,
+    collection_id=None,
+    collection_ids=None,
+):
     from app.services.retrieval import retrieval_service
 
     return retrieval_service.search_with_status(
-        question, user["id"], top_k, case_id, jurisdiction, document_types
+        question,
+        user["id"],
+        top_k,
+        case_id,
+        jurisdiction,
+        document_types,
+        collection_id=collection_id,
+        collection_ids=collection_ids,
     )
 
 
@@ -281,6 +300,11 @@ def llm_answer(question, hits, base_url=None, model=None, json_mode=False):
 
 @app.post("/api/v1/ai/ask")
 def ask(req: Ask, user=Depends(current_user)):
+    from app.routers.collections import validate_collection_ids
+
+    collection_ids = validate_collection_ids(
+        (req.collection_ids or []) + ([req.collection_id] if req.collection_id else []), user["id"]
+    )
     if req.case_id:
         with SessionLocal() as s:
             owned(s, Case, req.case_id, user)
@@ -294,7 +318,13 @@ def ask(req: Ask, user=Depends(current_user)):
                 raise HTTPException(404, "Research session not found")
     try:
         hits, retrieval_status = retrieve(
-            req.question, user, req.top_k, req.case_id, req.jurisdiction, req.document_types
+            req.question,
+            user,
+            req.top_k,
+            req.case_id,
+            req.jurisdiction,
+            req.document_types,
+            collection_ids=collection_ids,
         )
     except Exception:
         return {
