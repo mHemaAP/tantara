@@ -11,7 +11,8 @@
     "gen:api": "node scripts/gen-api.mjs",
     "screenshots": "node scripts/shoot.mjs",
     "test:e2e": "playwright test",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/app/\\\\(workspace\\\\)/community/page.tsx\" \"src/app/\\\\(workspace\\\\)/community/\\\\[id\\\\]/page.tsx\" \"src/features/community/*.{ts,tsx}\" \"src/features/settings-data/*.tsx\" \"src/app/\\\\(workspace\\\\)/settings/\\\\[section\\\\]/page.tsx\" src/components/shell.tsx playwright.config.ts tests/community.spec.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
