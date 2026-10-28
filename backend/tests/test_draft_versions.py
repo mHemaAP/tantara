@@ -1,3 +1,4 @@
+import io
 import uuid
 
 from sqlalchemy import select
@@ -296,3 +297,33 @@ def test_deleted_draft_history_is_not_recoverable_and_two_patches_both_survive(c
     with SessionLocal() as session:
         assert session.get(Draft, draft["id"]) is None
         assert session.scalar(select(DraftVersion.id).where(DraftVersion.draft_id == draft["id"])) is None
+
+
+def test_whitespace_version_save_is_rejected_without_mutating_content_or_history(client):
+    headers = _login(client)
+    draft = _create_draft(client, headers, "Verified draft content")
+    response = client.post(
+        f"/api/v1/drafts/{draft['id']}/versions",
+        headers=headers,
+        json={"content_markdown": "   \n  "},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
+    current = client.get(f"/api/v1/drafts/{draft['id']}", headers=headers).json()
+    assert current["content_markdown"] == "Verified draft content"
+    assert client.get(f"/api/v1/drafts/{draft['id']}/versions", headers=headers).json()["total"] == 0
+
+
+def test_pdf_export_wraps_long_paragraph_and_keeps_markdown_heading(client):
+    from pypdf import PdfReader
+
+    headers = _login(client)
+    paragraph = "It is submitted that " + "the respondent remains liable under the arbitration agreement " * 12
+    draft = _create_draft(client, headers, f"## Submissions\n\n{paragraph}")
+    response = client.get(f"/api/v1/drafts/{draft['id']}/export?format=pdf", headers=headers)
+    assert response.status_code == 200
+    reader = PdfReader(io.BytesIO(response.content))
+    extracted = " ".join(page.extract_text() or "" for page in reader.pages)
+    assert "Submissions" in extracted
+    assert "the respondent remains liable under the arbitration agreement" in extracted
+    assert "arbitration agreement" in extracted
