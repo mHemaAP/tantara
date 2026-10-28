@@ -7,7 +7,8 @@ from sqlalchemy import select, text
 from app.db import SessionLocal
 from app.embeddings import embed_query
 from app.models import Document, DocumentChunk
-from app.services.vector_store import store
+from app.services.index_maintenance import reconcile_index
+from app.services.vector_store import INDEX_LOCK, store
 
 MIN_SEMANTIC_SIMILARITY = 0.35
 
@@ -65,7 +66,9 @@ class RetrievalService:
             clauses.append(Document.jurisdiction == jurisdiction)
         if document_types:
             clauses.append(Document.document_type.in_(document_types))
-        selected_collections = list(dict.fromkeys(collection_ids or ([collection_id] if collection_id else [])))
+        selected_collections = list(
+            dict.fromkeys(collection_ids or ([collection_id] if collection_id else []))
+        )
         if selected_collections:
             clauses.append(Document.collection_id.in_(selected_collections))
         with SessionLocal() as session:
@@ -84,11 +87,6 @@ class RetrievalService:
             )
             rows = session.execute(stmt).all()
             allowed = {r.id: r for r in rows}
-            expected_vector_ids = set(
-                session.scalars(
-                    select(DocumentChunk.id).join(Document, Document.id == DocumentChunk.document_id)
-                ).all()
-            )
             where = "d.owner_id=:owner"
             tokens = re.findall(r"[\w-]{2,}", question)
             fts_query = " OR ".join('"' + t.replace('"', '""') + '"' for t in tokens) or '""'
@@ -125,10 +123,24 @@ class RetrievalService:
             except Exception:
                 lexical = []
         vector_store = store()
-        indexed_ids = vector_store.id_set()
-        if expected_vector_ids and expected_vector_ids != indexed_ids:
-            status = "embedding_unavailable"
-        semantic = vector_store.search(query_vector, vector_store.count()) if query_vector is not None else []
+        with INDEX_LOCK:
+            with SessionLocal() as session:
+                expected_vector_ids = set(
+                    session.scalars(
+                        select(DocumentChunk.id).join(Document, Document.id == DocumentChunk.document_id)
+                    ).all()
+                )
+            indexed_ids = vector_store.id_set()
+            if expected_vector_ids != indexed_ids:
+                try:
+                    repair = reconcile_index()
+                except Exception:
+                    repair = {"consistent": False}
+                if not repair.get("consistent"):
+                    status = "embedding_unavailable"
+            semantic = (
+                vector_store.search(query_vector, vector_store.count()) if query_vector is not None else []
+            )
         semantic_scores = {cid: similarity for cid, similarity in semantic if cid in allowed}
         semantic_ids = [cid for cid in semantic_scores]
         return (
