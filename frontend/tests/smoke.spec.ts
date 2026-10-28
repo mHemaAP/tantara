@@ -113,7 +113,11 @@ test('local AI status and guest mutation controls are accessible', async ({ page
 
 test('dashboard shows unavailable metrics as em dashes without dead actions', async ({ page }) => {
   await page.route('**/api/v1/dashboard/summary', (route) =>
-    route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { code: 'offline', message: 'Unavailable' } }) }),
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'offline', message: 'Unavailable' } }),
+    }),
   );
   await page.goto('/dashboard');
   await expect(page.getByText('Backend not reachable at 127.0.0.1:8010')).toBeVisible();
@@ -124,7 +128,7 @@ test('dashboard shows unavailable metrics as em dashes without dead actions', as
   await expect(page.getByText('Research Desk will be available in a later phase.')).toHaveCount(0);
 });
 
-for (const width of [360, 768, 1024, 1440]) {
+for (const width of [360, 390, 768, 1024, 1440]) {
   test(`responsive workspace at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/dashboard');
