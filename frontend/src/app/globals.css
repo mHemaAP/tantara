@@ -522,7 +522,7 @@ a {
   outline: 2px solid #6366f1;
   outline-offset: 2px;
 }
-.settings-nav a[aria-current='page'] {
+.settings-nav a[aria-current='location'] {
   color: #3730a3;
   background: #eef0ff;
 }
