@@ -1,14 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { requirePlaywrightApi } from './api-readiness';
 const base = `${process.env.TANTARA_API_ORIGIN || 'http://127.0.0.1:8010'}/api/v1`;
-async function apiReady() {
-  try {
-    return (await fetch(`${base}/health`)).ok;
-  } catch {
-    return false;
-  }
-}
+test.beforeAll(async () => requirePlaywrightApi());
 test('real API workflow persists client, case, party, hearing and task', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   test.setTimeout(90000);
   const email = process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
     password = process.env.TANTARA_E2E_PASSWORD || 'tantara-local';
@@ -156,7 +150,6 @@ test('new case routes remain usable without horizontal overflow at target widths
   page,
   request,
 }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -187,7 +180,6 @@ test('new case routes remain usable without horizontal overflow at target widths
 });
 
 test('case detail reports an unreadable id with a retryable not-found state', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -208,7 +200,6 @@ test('closed status restores from URL and table sorting toggles direction access
   page,
   request,
 }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -231,7 +222,6 @@ test('closed status restores from URL and table sorting toggles direction access
 });
 
 test('calendar week view renders seven distinct dates', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -254,7 +244,6 @@ test('calendar week view renders seven distinct dates', async ({ page, request }
 });
 
 test('mobile cases keep title, hearing and status inside the viewport', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -279,7 +268,6 @@ test('mobile cases keep title, hearing and status inside the viewport', async ({
 });
 
 test('calendar mobile defaults to readable agenda view', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -341,7 +329,6 @@ test('calendar mobile defaults to readable agenda view', async ({ page, request 
 });
 
 test('task Retry recovers when the API responds again', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -376,7 +363,6 @@ test('task Retry recovers when the API responds again', async ({ page, request }
 });
 
 test('case, calendar and client routes each expose one active navigation link', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
@@ -400,7 +386,6 @@ test('case, calendar and client routes each expose one active navigation link', 
 });
 
 test('mobile task actions remain available and open a labelled menu', async ({ page, request }) => {
-  test.skip(!(await apiReady()), 'TANTARA API is not running');
   const login = await request.post(`${base}/auth/login`, {
     data: {
       email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
