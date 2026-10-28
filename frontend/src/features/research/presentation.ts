@@ -17,9 +17,13 @@ export function citationLabel(page: number): string {
   return `Page ${page}`;
 }
 
+export function citationAccessibleLabel(source: ResearchSource): string {
+  return `${normalizeDocumentTitle(source.document_title ?? 'Untitled document')} · ${citationLabel(source.page_number)}`;
+}
+
 export function citationLink(source: ResearchSource) {
   return {
-    label: citationLabel(source.page_number),
+    label: citationAccessibleLabel(source),
     href: documentPageUrl(source.document_id, source.page_number, source.chunk_id),
     chunkId: source.chunk_id,
   };
@@ -72,11 +76,15 @@ export function groupSources(sources: ResearchSource[]): CitationGroup[] {
   }));
 }
 
-export function answerStatusLabel(status: string): string {
+export function answerStatusLabel(status: string, answerKind?: string, generationKind?: string): string {
   switch (status) {
     case 'ok':
     case 'answered':
-      return 'Answered from sources';
+      if (answerKind === 'model_generated' || generationKind === 'model_generated')
+        return 'Model response · review sources';
+      if (answerKind === 'case_record' || generationKind === 'case_record') return 'From the case record';
+      if (answerKind || generationKind) return 'Retrieved material only';
+      return 'Response returned · provenance unavailable';
     case 'model_unavailable':
       return 'Evidence only — model unavailable';
     case 'no_evidence':
