@@ -2,7 +2,8 @@ import { api } from './client';
 import type { Activity, Case, Summary, Upcoming, User } from './types';
 export type List<T> = { items: T[]; total: number; page: number; page_size: number; pages: number };
 export type AskResponse = {
-  status: 'ok' | 'no_evidence' | 'model_unavailable' | 'embedding_unavailable';
+  status: 'ok' | 'no_evidence' | 'insufficient_evidence' | 'model_unavailable' | 'embedding_unavailable';
+  answer_basis?: string;
   answer: string;
   citations: Array<{
     citation_ref: string;
