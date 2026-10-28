@@ -1,4 +1,23 @@
-# Documents module report — Round 5
+# Documents module report — Round 5 and Round 6
+
+## Round 6 — L4f follow-up
+
+The mandatory Step 0 cleanup was completed first. Nine pending `target-crops/*.png` reference files were committed one file per commit, then `luna/frontend-documents` was pushed. Pushed head: `2603aaa5c0e27c1ae7f4ebe26cef44152cfa1f35`.
+
+| L4f finding | Change made | Proof status |
+|---|---|---|
+| Mobile drawer needed a real open/dismiss/navigation proof | Added full workspace module navigation through a documents-owned portal into the shared nav; the Documents link closes the drawer through the shell's Escape handling. Added open, backdrop-dismissed, and post-navigation captures with viewport and drawer geometry assertions. | Implemented in `documents-round5-mobile.spec.ts`; not executed because port 3012 is occupied by the `fe2` worktree. |
+| AI Read ledger was unbounded and the summary label wrapped | Bounded the extraction panel to the viewport and made its fields body-scrollable; mobile labels use a single-column layout. Summary is labelled `Extracted text (de-duplicated)`. | Desktop panel height/scroll and mobile summary geometry assertions added; not executed due the port conflict. |
+| Desktop citation landed too low | Page navigation now uses immediate scroll inside the viewer. Added an assertion that the Page 3 label lands no more than 150 px below the viewer toolbar. | Added to desktop and mobile real-seeded tests; not executed due the port conflict. |
+| Sidebar only showed Dashboard and Settings | Documents, Search, Cases, Calendar, Tasks, Clients, Community, Dashboard, and Settings are rendered by the documents feature in the existing sidebar. No shared shell file was edited. | Drawer test checks the Documents link and navigation close behavior; not executed due the port conflict. |
+| Zero-result library count was ambiguous | Search with no rows shows `0 matching documents`; clearing the query is checked to restore the seeded total of 8. The test compares the rendered card IDs to the live list response. | Added API-response/card-ID equality assertion with no route handlers in `frontend/tests/`; not executed due the port conflict. |
+| User-facing AI wording overstated local extraction | The panel is now titled `Document extraction`; fields label the actual local extraction and candidate-only provenance. The configured model ID is shown with an explicit note that it did not generate these fields. Raw `ai_suggested` remains only in `data-provenance-key`. Unknown page references show `Source page unavailable` without a citation link. | Added provenance assertions and a focused classifier test. Existing live endpoint degradation tests remain. |
+| Failure categories were collapsed | Moved failure classification and copy into `ai-read-errors.ts`; authentication, embedding, extraction, response-loading, and model-unavailable outcomes have distinct categories and messages. | `ai-read-errors.spec.ts` covers each category. |
+| Test route interception violated the new hard gate | Removed route handlers from `frontend/tests/`; screenshot helper is now a no-op compatibility hook and captures must use the real API. The old forced offline/no-evidence interception cases were removed because those states cannot be induced against a running real backend without interception. | `rg 'page\\.route|route\\(' frontend/tests` returns no matches. This removes those intercepted UI failure scenarios from E2E coverage; that is a remaining gap. |
+
+The build and lint/type checks passed on this worktree. `pnpm format:check` is not defined in this branch's unchanged `package.json`; direct `pnpm exec prettier --check` over the documents, search, viewer, and test files passed. `pnpm exec playwright test --list` discovered 30 tests. The full E2E run and new captures are **not verified**: at the time of the gate, `127.0.0.1:3012` was already listening from `/home/kahitoz/projects/tantara-wt/fe2`, and I did not take over another worktree's server. Prior Round 5's 35/35 result is not a result for these Round 6 changes.
+
+The viewer date values continue to come from API fields `created_at` and `processed_at`. Search relevance remains labelled as a fusion rank score, not confidence. The configured model identifier is read from `GET /api/v1/settings/ai` (`model`); the base URL is not shown in user-facing content.
 
 ## Round 5 findings and proof
 
