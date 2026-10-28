@@ -15,6 +15,7 @@ from app.db import SessionLocal, session_scope
 from app.models import BundleItem, BundleSection, Case, Document, FilingBundle, Hearing
 from app.repositories.domain import get_owned
 from app.security import current_user
+from app.storage_paths import stored_path
 from app.services.audit import record
 
 router = APIRouter(prefix="/api/v1/bundles", tags=["bundles"])
@@ -50,9 +51,7 @@ def _items(s, bundle, user):
         try:
             from pypdf import PdfReader
 
-            upload_path = Path(d.stored_path).resolve()
-            if upload_path.parent != (get_settings().data_dir / "uploads").resolve():
-                raise ValueError("Unsafe source path")
+            upload_path = stored_path("uploads", d.stored_path)
             pages = len(PdfReader(upload_path).pages)
         except Exception:
             pages = 0
@@ -266,9 +265,7 @@ def generate(rid: str, user=Depends(current_user)):
         for x in items:
             d = s.get(Document, x["document_id"])
             try:
-                upload_path = Path(d.stored_path).resolve()
-                if upload_path.parent != (get_settings().data_dir / "uploads").resolve():
-                    continue
+                upload_path = stored_path("uploads", d.stored_path)
                 reader = PdfReader(upload_path)
             except Exception:
                 continue
@@ -382,7 +379,7 @@ def generate(rid: str, user=Depends(current_user)):
         writer.write(f)
     with session_scope() as s:
         b = get_owned(s, FilingBundle, rid, user["id"])
-        b.output_path = str(output)
+        b.output_path = f"bundles/{output.name}"
         b.status = "ready"
         record(s, user["id"], "generate", "bundle", rid)
     return {
@@ -400,11 +397,10 @@ def download(rid: str, user=Depends(current_user)):
         path = b.output_path if b else None
     if not b:
         raise HTTPException(404, "Bundle not found")
-    safe_path = Path(path).resolve() if path else None
-    if (
-        not safe_path
-        or safe_path.parent != (get_settings().data_dir / "bundles").resolve()
-        or not safe_path.is_file()
-    ):
+    try:
+        safe_path = stored_path("bundles", path) if path else None
+    except ValueError:
+        safe_path = None
+    if not safe_path or not safe_path.is_file():
         raise HTTPException(404, "Bundle has not been generated")
     return FileResponse(safe_path, filename=f"{rid}.pdf", media_type="application/pdf")
