@@ -62,6 +62,15 @@ test('workspace navigation exposes all module routes and each route resolves', a
     expect([...visiblePaths].sort(), `${route} should expose every module in the rail`).toEqual(
       [...moduleRoutes].sort(),
     );
+    const railLinks = page.locator('.sidebar .nav a[href]').filter({ visible: true });
+    await expect(railLinks, `${route} should expose all links in the visible rail`).toHaveCount(14);
+    const railPaths = await railLinks.evaluateAll((links) =>
+      links.map((link) => new URL((link as HTMLAnchorElement).href).pathname),
+    );
+    expect(new Set(railPaths).size, `${route} rail should not duplicate hrefs`).toBe(14);
+    expect([...railPaths].sort(), `${route} visible rail should include every module route`).toEqual(
+      [...moduleRoutes].sort(),
+    );
     const current = nav.locator('a[aria-current="page"]');
     await expect(current, `${route} should have one current rail link`).toHaveCount(1);
     await expect(current).toHaveAttribute('href', route);
