@@ -1,5 +1,4 @@
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
@@ -20,8 +19,7 @@ async function openWithToken(page: Page, token: string, href: string) {
 
 async function captureMobile(page: Page, name: string) {
   const screenshotPath = `${screenshots}/${name}.png`;
-  const image = await page.screenshot({ path: screenshotPath });
-  writeFileSync(`/tmp/${name}.png`, image);
+  await page.screenshot({ path: screenshotPath });
   const pixelData = execFileSync('python', [
     '-c',
     [
@@ -58,19 +56,28 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   const docsResponse = await request.get(`${apiUrl}/documents?page_size=100`, { headers });
-  const docs = (await docsResponse.json()).items as Array<{ id: string; filename: string }>;
+  const docs = (await docsResponse.json()).items as Array<{
+    id: string;
+    filename: string;
+    is_demo?: boolean;
+  }>;
+  expect(docs.filter((item) => item.is_demo).length).toBe(8);
   const seededDocument = docs.find((item) => item.filename === 'page-three-motion.pdf');
   expect(seededDocument).toBeTruthy();
-  const settings = await request.get(`${apiUrl}/settings/ai`, { headers }).then((response) => response.json());
+  const settings = await request
+    .get(`${apiUrl}/settings/ai`, { headers })
+    .then((response) => response.json());
 
   await openWithToken(page, token, '/documents');
   const sidebar = page.locator('.sidebar');
-  const main = page.locator('main');
+  const main = page.locator('#main');
   const heading = page.getByRole('heading', { name: 'Documents', exact: true });
   await expect(heading).toBeVisible({ timeout: 60000 });
-  await expect(page.locator('.documents-mobile-cards .document-card')).toHaveCount(8);
+  await expect(page.locator('.documents-mobile-cards .document-card')).toHaveCount(docs.length);
   await expect.poll(() => page.evaluate(() => window.document.documentElement.scrollWidth)).toBe(390);
-  await expect.poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+  await expect
+    .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0);
   const headingBounds = await heading.boundingBox();
   expect(headingBounds).not.toBeNull();
   expect(headingBounds!.x).toBeGreaterThanOrEqual(0);
@@ -87,13 +94,20 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
 
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await expect(page.getByRole('button', { name: 'Close menu' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close menu' }).click();
-  await expect.poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
+  await page.keyboard.press('Escape');
+  await expect
+    .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0);
   await expect(heading).toBeVisible();
-  const documentLink = page.locator('.documents-mobile-cards').getByRole('link', { name: 'Page Three Motion' });
+  const documentLink = page
+    .locator('.documents-mobile-cards')
+    .getByRole('link', { name: 'Page Three Motion' });
   await documentLink.click();
   await expect(page).toHaveURL(new RegExp(`/documents/${seededDocument!.id}$`));
   await expect(page.getByLabel('PDF page 1')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
   await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
   await expect(page.getByLabel('Jump to page')).toHaveValue('1');
   await expectPageRatio(page, 1);
@@ -107,6 +121,7 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
 
   if (settings.runtime_status?.reachable) {
     await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 150000 });
     await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 150000 });
     const arbitrationClause = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
     const summary = page.locator('.ai-read-field[data-field-key="summary"]');
@@ -136,9 +151,15 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   await expect(page).toHaveURL(/page=3/);
   await expect(page.getByLabel('Jump to page')).toHaveValue('3', { timeout: 60000 });
   await expect(page.getByLabel('PDF page 3')).toBeVisible({ timeout: 60000 });
-  await expect(
-    page.getByText(/Unique page three clause: Sapphire Pavilion shall host the special procedural conference/),
-  ).toBeVisible();
+  await expect(page.getByLabel('PDF page 3')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
+  await expect(page.locator('#page-3')).toContainText(
+    /Unique page three clause: Sapphire Pavilion shall host the special procedural conference/,
+  );
+  await expect(page.locator('.pdf-page-card[data-page-card="3"] .pdf-text-layer')).toContainText(
+    /Unique page three clause/,
+  );
   await expectPageRatio(page, 3);
   await captureMobile(page, 'documents-round5-citation-page3-mobile-390-real');
 });
