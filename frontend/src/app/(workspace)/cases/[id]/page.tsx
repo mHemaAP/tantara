@@ -4,6 +4,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '@/lib/api/client';
+import { workspaceDateTimeInput, workspaceDateTimeIso } from '@/lib/datetime';
 import { casesApi } from '@/features/cases/api';
 import { RefreshCw } from 'lucide-react';
 import { StrategyPanel } from '@/features/cases/components/strategy';
@@ -165,7 +166,7 @@ export default function CaseDetailPage() {
       if (editor === 'Timeline') {
         const value = {
           type: editorTitle,
-          occurred_at: editorDate,
+          occurred_at: workspaceDateTimeIso(editorDate),
           detail: editorBody,
         };
         if (recordId) await casesApi.updateEvent(id, recordId, value);
@@ -175,7 +176,7 @@ export default function CaseDetailPage() {
         const value = {
           case_id: id,
           title: editorTitle,
-          at: editorDate,
+          at: workspaceDateTimeIso(editorDate),
           notes: editorBody,
         };
         if (recordId) await casesApi.updateHearing(recordId, value);
@@ -219,7 +220,7 @@ export default function CaseDetailPage() {
     setRecordId(String(row.id || ''));
     setEditor(section);
     setEditorTitle(String(row.title || row.type || row.name || ''));
-    setEditorDate(String(row.at || row.occurred_at || '').slice(0, 16));
+    setEditorDate(workspaceDateTimeInput(String(row.at || row.occurred_at || '')));
     setEditorBody(String(row.body || row.detail || row.notes || row.organization || ''));
     setEditorRole(String(row.party_role || 'counsel'));
   };
