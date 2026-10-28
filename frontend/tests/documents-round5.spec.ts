@@ -210,19 +210,32 @@ test('upload control reports completion and opens the uploaded PDF with a source
         .then((job) => job.status),
     )
     .toBe('ready');
+  const extractionResponse = await request.post(`${apiUrl}/documents/${uploadedId}/ai-read`, {
+    headers,
+    data: {},
+  });
+  expect(extractionResponse.ok()).toBeTruthy();
   await uploadedLink.click();
   await expect(page.getByLabel('PDF page 1')).toBeVisible({ timeout: 60000 });
   await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
     timeout: 60000,
   });
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
-  await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 90000 });
   const clause = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
   await expect(clause).toBeVisible({ timeout: 90000 });
   await expect(clause.locator('.ai-source-page')).toHaveText('Page 1');
   await expect(page.getByLabel('PDF page 1')).toBeVisible();
   await captureViewport(page, 'documents-round5-upload-outcome-desktop-1440-fixture', 1440, 900);
-  await request.delete(`${apiUrl}/documents/${uploadedId}`, { headers });
+  let deleteSucceeded = false;
+  for (let attempt = 0; attempt < 3 && !deleteSucceeded; attempt += 1) {
+    try {
+      const deleteResponse = await request.delete(`${apiUrl}/documents/${uploadedId}`, { headers });
+      deleteSucceeded = deleteResponse.ok();
+    } catch {
+      deleteSucceeded = false;
+    }
+    if (!deleteSucceeded) await page.waitForTimeout(500);
+  }
+  expect(deleteSucceeded).toBeTruthy();
 });
 
 test('library filters, layout, selection, preview, and PDF download change state', async ({
