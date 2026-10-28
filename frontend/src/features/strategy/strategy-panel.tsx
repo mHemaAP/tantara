@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ArrowUpRight, Check, ClipboardList, Save, Sparkles } from 'lucide-react';
 import {
   strategyApi,
@@ -26,6 +26,7 @@ const fields: Record<StrategyTab, keyof StrategyWrite> = {
 };
 
 export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
+  const tabId = useId();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -332,13 +333,30 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
         )}
       </div>
 
-      <nav className="strategy-tabs" aria-label="Strategy sections" role="tablist">
+      <nav
+        className="strategy-tabs"
+        aria-label="Strategy sections"
+        role="tablist"
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          event.preventDefault();
+          const currentIndex = strategyTabs.indexOf(tab);
+          const direction = event.key === 'ArrowRight' ? 1 : -1;
+          const nextIndex = (currentIndex + direction + strategyTabs.length) % strategyTabs.length;
+          const nextTab = strategyTabs[nextIndex];
+          selectTab(nextTab);
+          event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+        }}
+      >
         {strategyTabs.map((label) => (
           <button
             key={label}
             role="tab"
+            id={`${tabId}-tab-${strategyTabs.indexOf(label)}`}
+            aria-controls={`${tabId}-tabpanel`}
             className={tab === label ? 'active' : ''}
             aria-selected={tab === label}
+            tabIndex={tab === label ? 0 : -1}
             onClick={() => selectTab(label)}
           >
             {label}
@@ -346,7 +364,13 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
         ))}
       </nav>
 
-      <section className="strategy-content">
+      <section
+        className="strategy-content"
+        role="tabpanel"
+        id={`${tabId}-tabpanel`}
+        aria-labelledby={`${tabId}-tab-${strategyTabs.indexOf(tab)}`}
+        tabIndex={0}
+      >
         <div className="strategy-content-head">
           <div>
             <span className="strategy-kicker">
