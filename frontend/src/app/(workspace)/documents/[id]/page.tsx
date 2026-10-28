@@ -473,7 +473,14 @@ export default function DocumentDetailPage() {
                         />
                       ) : (
                         <div className="ai-read-value">
-                          {renderExtractionValue(value)}
+                          {key === 'summary' && typeof value === 'string' ? (
+                            <details className="ai-read-summary-disclosure">
+                              <summary>{value.slice(0, 180)}{value.length > 180 ? '…' : ''}</summary>
+                              <div>{renderExtractionValue(value)}</div>
+                            </details>
+                          ) : (
+                            renderExtractionValue(value)
+                          )}
                           <small>
                             {provenanceLabel(field.provenance)} · {field.source || 'Source unavailable'}
                             {field.review_required ? ' · Review required' : ''}
