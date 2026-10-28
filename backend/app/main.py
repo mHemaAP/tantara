@@ -215,7 +215,7 @@ def retrieve(question, user, top_k=5, case_id=None, jurisdiction=None, document_
 DISCLAIMER = "AI-generated research assistance only. Verify against current authoritative law and original sources; professional legal review is required."
 
 
-def llm_answer(question, hits, base_url=None, model=None):
+def llm_answer(question, hits, base_url=None, model=None, json_mode=False):
     s = get_settings()
     prompt = (
         "Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers.\nQuestion: "
@@ -225,17 +225,21 @@ def llm_answer(question, hits, base_url=None, model=None):
     )
     try:
         if s.ai_provider == "local":
+            payload = {
+                "model": model or s.local_llm_model,
+                "messages": [
+                    {"role": "system", "content": "You are a careful legal research assistant."},
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 4096,
+                "temperature": 0.1,
+            }
+            if json_mode:
+                payload["response_format"] = {"type": "json_object"}
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
             r = httpx.post(
                 (base_url or s.local_llm_base_url).rstrip("/") + "/chat/completions",
-                json={
-                    "model": model or s.local_llm_model,
-                    "messages": [
-                        {"role": "system", "content": "You are a careful legal research assistant."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "max_tokens": 4096,
-                    "temperature": 0.1,
-                },
+                json=payload,
                 timeout=120,
             )
             r.raise_for_status()
