@@ -69,9 +69,14 @@ export function ClientDirectory() {
             <p className="matter-skeleton" />
           </>
         ) : list.isError ? (
-          <div className="matter-error">
-            Clients are unavailable. Check the workspace API connection.
-            <button onClick={() => void list.refetch()}>Retry</button>
+          <div className="matter-error client-error">
+            <p>Clients are unavailable.</p>
+            <button
+              className="matter-action"
+              onClick={() => void list.refetch()}
+            >
+              Retry
+            </button>
           </div>
         ) : list.data?.items.length ? (
           <div
