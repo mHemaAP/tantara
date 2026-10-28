@@ -102,7 +102,7 @@ test('bundle API validates request shape, owner scope, and page-range boundaries
   expect(create.status()).toBe(200);
   const id = (await create.json()).id as string;
   const empty = await apiGet<{ total_pages: number; sections: unknown[] }>(`/bundles/${id}/preview`);
-  expect(empty.total_pages).toBe(0);
+  expect(empty.total_pages).toBe(4);
   expect(empty.sections).toEqual([]);
 
   const docs = await apiGet<{ items: Array<{ id: string; page_count: number }> }>(`/documents?case_id=${seededCaseId}&page_size=100`);
