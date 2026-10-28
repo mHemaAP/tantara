@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
 
 class RequestModel(BaseModel):
@@ -72,6 +72,22 @@ class DraftCreate(RequestModel):
     template_id: str | None = None
 
 
+class DraftPatch(RequestModel):
+    title: str | None = None
+    case_id: str | None = None
+    document_type: str | None = None
+    status: str | None = None
+    content_markdown: str | None = None
+    template_id: str | None = None
+
+    @field_validator("content_markdown")
+    @classmethod
+    def content_must_not_be_blank(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("Draft content cannot be empty")
+        return value
+
+
 class BundleCreate(RequestModel):
     name: str = Field(min_length=1, max_length=300)
     case_id: str | None = None
@@ -123,6 +139,7 @@ PATCH_SCHEMAS = {
     key: partial_schema(model, model.__name__.replace("Create", "Patch"))
     for key, model in CREATE_SCHEMAS.items()
 }
+PATCH_SCHEMAS["drafts"] = DraftPatch
 
 
 class PageEnvelope(RequestModel):
