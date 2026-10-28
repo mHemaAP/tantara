@@ -88,7 +88,8 @@ export function answerStatusLabel(status: string, answerKind?: string, generatio
     case 'model_unavailable':
       return 'Evidence only — model unavailable';
     case 'no_evidence':
-      return 'No supporting excerpts';
+    case 'insufficient_evidence':
+      return 'Insufficient evidence';
     case 'embedding_unavailable':
       return 'Lexical only — embeddings unavailable';
     default:
