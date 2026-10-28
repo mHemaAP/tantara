@@ -298,8 +298,7 @@ export default function Dashboard() {
                   <span>
                     {x.title}
                     <small style={{ display: 'block', color: '#64748b', marginTop: 3 }}>
-                      {x.actor || 'Workspace'} ·{' '}
-                      {workspaceDateTimeDisplay(x.at)}
+                      {x.actor || 'Workspace'} · {workspaceDateTimeDisplay(x.at)}
                     </small>
                   </span>
                 </div>
