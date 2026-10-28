@@ -2,7 +2,8 @@ import { api } from './client';
 import type { Activity, Case, Summary, Upcoming, User } from './types';
 export type List<T> = { items: T[]; total: number; page: number; page_size: number; pages: number };
 export type AskResponse = {
-  status: 'ok' | 'no_evidence' | 'insufficient_evidence' | 'model_unavailable' | 'embedding_unavailable';
+  status: 'ok' | 'no_evidence' | 'model_unavailable' | 'embedding_unavailable';
+  raw_status?: string;
   answer_basis?: string;
   answer: string;
   citations: Array<{
@@ -19,6 +20,16 @@ export type AskResponse = {
   research_session_id?: string;
   message_id?: string;
 };
+type RawAskResponse = Omit<AskResponse, 'status'> & { status: string };
+export function normalizeAskResponse(response: RawAskResponse): AskResponse {
+  const insufficient =
+    response.status === 'insufficient_evidence' || response.answer_basis === 'insufficient_evidence';
+  return {
+    ...response,
+    status: insufficient ? 'no_evidence' : (response.status as AskResponse['status']),
+    raw_status: response.status,
+  };
+}
 export const endpoints = {
   login: (body: { email: string; password: string }) =>
     api.post<{ access_token: string; token_type: string; user: User }>('/auth/login', body),
@@ -84,14 +95,17 @@ export const endpoints = {
         score: number;
       }>;
     }>(`/search/documents?query=${encodeURIComponent(query)}`),
-  ask: (body: {
+  ask: async (body: {
     question: string;
     top_k?: number;
     case_id?: string;
     collection_id?: string;
     jurisdiction?: string;
     document_types?: string[];
-  }) => api.post<AskResponse>('/ai/ask', body),
+  }): Promise<AskResponse> => {
+    const response = await api.post<RawAskResponse>('/ai/ask', body);
+    return normalizeAskResponse(response);
+  },
   sessions: () => api.get<List<{ id: string; title: string; updated_at?: string }>>('/ai/sessions'),
   session: (id: string) => api.get<unknown>(`/ai/sessions/${id}`),
   createSession: (body: unknown = {}) => api.post<unknown>('/ai/sessions', body),
