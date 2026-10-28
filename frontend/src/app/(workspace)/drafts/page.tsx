@@ -353,7 +353,6 @@ export default function DraftsPage() {
         createPortal(
           <a
             href="/drafts"
-            aria-current="page"
             onClick={() => document.querySelector<HTMLButtonElement>('.sidebar-backdrop')?.click()}
           >
             AI Drafts
