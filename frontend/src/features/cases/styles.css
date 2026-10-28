@@ -149,8 +149,19 @@
   width: 14%;
 }
 .matter-wrap.compact .matter-table {
+  min-width: 720px;
   table-layout: fixed;
   font-size: 12px;
+}
+.matters-slot,
+.matter-wrap.compact,
+.matter-wrap.compact .matter-card,
+.matter-wrap.compact .matter-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+}
+.matter-wrap.compact .matter-table-scroll {
+  width: 100%;
 }
 .matter-wrap.compact .matter-table th:first-child {
   width: 30%;
