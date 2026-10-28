@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError } from '@/lib/api/client';
+import { workspaceDateTimeDisplay } from '@/lib/datetime';
 import {
   CaseItem,
   CommunityPost,
@@ -30,11 +31,7 @@ function authorName(value: { author?: { name?: string; display_name?: string }; 
 
 function timestamp(value?: string) {
   if (!value) return 'Timestamp not provided by the API';
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
-  const date = new Date(hasZone ? value : `${value}Z`);
-  return Number.isNaN(date.getTime())
-    ? value
-    : `${new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(date)} UTC`;
+  return workspaceDateTimeDisplay(value);
 }
 
 function DemoBadge() {
