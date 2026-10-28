@@ -12,6 +12,7 @@ const tabs = [
   ['active', 'Active'],
   ['pending', 'Pending'],
   ['closed', 'Closed'],
+  ['archived', 'Archived'],
 ] as const;
 export function CaseList({
   initialStatus = 'all',
@@ -103,18 +104,16 @@ export function CaseList({
       </div>
       <div className="matter-card">
         <nav className="matter-tabs" aria-label="Case status">
-          {[...tabs, ...(initialStatus === 'archived' ? [['archived', 'Archived'] as const] : [])].map(
-            ([key, label]) => (
-              <button
-                key={key}
-                className={status === key ? 'active' : ''}
-                aria-pressed={status === key}
-                onClick={() => choose(key)}
-              >
-                {label} ({counts?.[key] ?? '—'})
-              </button>
-            ),
-          )}
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              className={status === key ? 'active' : ''}
+              aria-pressed={status === key}
+              onClick={() => choose(key)}
+            >
+              {label} ({counts?.[key] ?? '—'})
+            </button>
+          ))}
         </nav>
         {!compact && (
           <div className="matter-tools">
