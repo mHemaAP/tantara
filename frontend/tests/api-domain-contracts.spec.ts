@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { requirePlaywrightApi } from './api-readiness';
 
 const base = `${process.env.TANTARA_API_ORIGIN || 'http://127.0.0.1:8010'}/api/v1`;
+test.beforeAll(async () => requirePlaywrightApi());
 
 test('calendar, task and client API contracts cover auth, validation, empty and pagination edges', async ({
   request,
@@ -11,7 +13,7 @@ test('calendar, task and client API contracts cover auth, validation, empty and 
       password: process.env.TANTARA_E2E_PASSWORD || 'tantara-local',
     },
   });
-  test.skip(!login.ok(), 'TANTARA seeded API is not available');
+  expect(login.ok(), `Seeded API login failed at ${base}/auth/login`).toBeTruthy();
   const token = (await login.json()).access_token as string;
   const headers = { Authorization: `Bearer ${token}` };
   const suffix = Date.now();
