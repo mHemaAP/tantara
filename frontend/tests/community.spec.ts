@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 
-const backend = 'http://127.0.0.1:8117/api/v1';
+const backend = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
 const captures = resolve(process.cwd(), '../captures-fe7');
 mkdirSync(captures, { recursive: true });
 
@@ -483,7 +483,7 @@ test('offline state explains the failed request and retry recovers when the API 
     .poll(
       async () => {
         try {
-          return (await fetch('http://127.0.0.1:8117/health')).status;
+          return (await fetch(`${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/health`)).status;
         } catch {
           return 0;
         }
@@ -520,7 +520,7 @@ test('offline state explains the failed request and retry recovers when the API 
     .poll(
       async () => {
         try {
-          return (await fetch('http://127.0.0.1:8117/health')).status;
+          return (await fetch(`${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/health`)).status;
         } catch {
           return 0;
         }
