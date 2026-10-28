@@ -14,7 +14,7 @@ function scrollPageInsideViewer(container: HTMLDivElement, page: HTMLElement) {
   const pageBounds = page.getBoundingClientRect();
   container.scrollTo({
     top: container.scrollTop + pageBounds.top - containerBounds.top,
-    behavior: 'smooth',
+    behavior: 'auto',
   });
 }
 
