@@ -11,7 +11,7 @@ from app import config, db
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _upgrade(path, tmp_path, monkeypatch):
+def _upgrade(path, tmp_path, monkeypatch, revision="head"):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path}")
     monkeypatch.setenv("TANTARA_DATA_DIR", str(tmp_path))
     monkeypatch.delenv("DATA_DIR", raising=False)
@@ -22,8 +22,8 @@ def _upgrade(path, tmp_path, monkeypatch):
     db._SessionLocal = None
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(ROOT / "alembic"))
-    command.upgrade(cfg, "head")
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, revision)
+    command.upgrade(cfg, revision)
     config.get_settings.cache_clear()
     return create_engine(f"sqlite:///{path}")
 
@@ -42,6 +42,41 @@ def test_fresh_upgrade_is_idempotent(tmp_path, monkeypatch):
     } <= names
     assert "data" not in {c["name"] for c in inspect(engine).get_columns("cases")}
     assert "embedding" not in {c["name"] for c in inspect(engine).get_columns("document_chunks")}
+    assert "visibility" in {c["name"] for c in inspect(engine).get_columns("community_posts")}
+    engine.dispose()
+
+
+def test_0008_migrates_existing_community_posts_to_private(tmp_path, monkeypatch):
+    path = tmp_path / "existing-community.db"
+    engine = _upgrade(path, tmp_path, monkeypatch, "0007_demo_chunk_flag")
+    # Earlier revisions import current metadata, so remove the additive field to
+    # model the actual pre-0008 schema this upgrade must preserve.
+    with engine.begin() as connection:
+        connection.exec_driver_sql("ALTER TABLE community_posts DROP COLUMN visibility")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users(id,name,email,password_hash,role,created_at) "
+                "VALUES('owner','Owner','owner@example.local','hash','advocate',CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO community_posts "
+                "(id,owner_id,is_demo,created_at,updated_at,title,body,kind,case_ref,tags) "
+                "VALUES('legacy-post','owner',1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,"
+                "'Legacy private post','Existing text','discussion',NULL,'[]')"
+            )
+        )
+    engine.dispose()
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(cfg, "head")
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT body,visibility FROM community_posts WHERE id='legacy-post'")
+        ).one() == ("Existing text", "private")
     engine.dispose()
 
 
