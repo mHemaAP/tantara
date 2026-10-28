@@ -129,6 +129,10 @@
 .ai-read-panel {
   position: static;
   min-width: 0;
+  max-height: calc(100vh - 220px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 16px;
 }
 
@@ -156,11 +160,22 @@
   font-size: 12px;
 }
 
+.ai-configured-model {
+  display: block;
+  margin-top: 5px;
+  color: #748099;
+  font-size: 10px;
+}
+
 .ai-read-fields {
   display: grid;
+  min-height: 0;
   gap: 0;
   margin-top: 8px;
-  overflow: visible;
+  max-height: min(42vh, 390px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .ai-read-field {
@@ -173,9 +188,17 @@
 }
 
 .ai-read-field > strong {
+  min-width: 0;
   color: #31436a;
   font-size: 12px;
   text-transform: capitalize;
+  overflow-wrap: anywhere;
+}
+
+.ai-read-provenance {
+  grid-column: 2 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .ai-read-field > button {
@@ -216,6 +239,16 @@
   padding-left: 10px;
   border-left: 2px solid #c8c6ff;
   white-space: pre-wrap;
+}
+
+.ai-source-page-unavailable {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 3px 7px;
+  color: #75819a;
+  background: #f3f5f9;
+  border-radius: 999px;
+  font-size: 10px;
 }
 
 .ai-read-summary-disclosure > summary {
@@ -378,6 +411,7 @@
 
   .ai-read-panel {
     position: static;
+    max-height: 75vh;
   }
 }
 
@@ -399,6 +433,25 @@
   }
 
   .ai-read-field {
-    grid-template-columns: minmax(78px, 0.42fr) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 8px;
+  }
+
+  .ai-read-field > strong {
+    grid-column: 1;
+    font-size: 12px;
+  }
+
+  .ai-read-field > .ai-read-value,
+  .ai-read-field > textarea {
+    grid-column: 1 / -1;
+  }
+
+  .ai-read-provenance {
+    grid-column: 1 / -1;
+  }
+
+  .ai-read-fields {
+    max-height: 45vh;
   }
 }
