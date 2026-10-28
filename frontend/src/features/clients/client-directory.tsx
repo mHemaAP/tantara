@@ -1,25 +1,20 @@
-"use client";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { clientsApi } from "./api";
-import { displayClientStatus } from "./status";
-import * as Dialog from "@radix-ui/react-dialog";
-import "../cases/styles.css";
+'use client';
+import Link from 'next/link';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { clientsApi } from './api';
+import { displayClientStatus } from './status';
+import * as Dialog from '@radix-ui/react-dialog';
+import '../cases/styles.css';
 export function ClientDirectory() {
-  const [q, S] = useState(""),
+  const [q, S] = useState(''),
     [modal, M] = useState(false),
-    [name, N] = useState(""),
-    [email, E] = useState("");
+    [name, N] = useState(''),
+    [email, E] = useState('');
   const list = useQuery({
-    queryKey: ["clients", q],
+    queryKey: ['clients', q],
     queryFn: () => clientsApi.list(`?q=${encodeURIComponent(q)}&page_size=50`),
   });
-  const [preview, setPreview] = useState(false);
-  useEffect(
-    () => setPreview(localStorage.getItem("tantara_preview") === "true"),
-    [],
-  );
   return (
     <section className="matter-wrap">
       <div className="matter-head">
@@ -27,14 +22,7 @@ export function ClientDirectory() {
           <h1 className="matter-title">Clients</h1>
           <p className="subheading">Client directory</p>
         </div>
-        <button
-          className="matter-action"
-          disabled={preview}
-          title={
-            preview ? "Changes are disabled in read-only preview" : undefined
-          }
-          onClick={() => M(true)}
-        >
+        <button className="matter-action" onClick={() => M(true)}>
           ＋ New Client
         </button>
       </div>
@@ -49,12 +37,7 @@ export function ClientDirectory() {
         </div>
         {list.isLoading ? (
           <>
-            <div
-              className="matter-table-scroll"
-              role="region"
-              aria-label="Clients table"
-              tabIndex={0}
-            >
+            <div className="matter-table-scroll" role="region" aria-label="Clients table" tabIndex={0}>
               <table className="matter-table">
                 <thead>
                   <tr>
@@ -71,10 +54,7 @@ export function ClientDirectory() {
         ) : list.isError ? (
           <div className="matter-error client-error">
             <p>Clients are unavailable.</p>
-            <button
-              className="matter-action"
-              onClick={() => void list.refetch()}
-            >
+            <button className="matter-action" onClick={() => void list.refetch()}>
               Retry
             </button>
           </div>
@@ -100,14 +80,10 @@ export function ClientDirectory() {
                     <td>
                       <Link href={`/clients/${c.id}`}>{c.name}</Link>
                     </td>
-                    <td>{c.email || "—"}</td>
-                    <td>{String(c.case_count ?? "—")}</td>
+                    <td>{c.email || '—'}</td>
+                    <td>{String(c.case_count ?? '—')}</td>
                     <td>
-                      {c.status || (
-                        <span title="Status unavailable">
-                          {displayClientStatus(c.status)}
-                        </span>
-                      )}
+                      {c.status || <span title="Status unavailable">{displayClientStatus(c.status)}</span>}
                     </td>
                   </tr>
                 ))}
@@ -115,18 +91,13 @@ export function ClientDirectory() {
             </table>
           </div>
         ) : (
-          <div className="matter-empty">
-            {q ? "No matching clients" : "No clients yet"}
-          </div>
+          <div className="matter-empty">{q ? 'No matching clients' : 'No clients yet'}</div>
         )}
       </div>
       <Dialog.Root open={modal} onOpenChange={M}>
         <Dialog.Portal>
           <Dialog.Overlay className="matter-dialog-overlay" />
-          <Dialog.Content
-            className="matter-dialog"
-            aria-describedby="client-dialog-description"
-          >
+          <Dialog.Content className="matter-dialog" aria-describedby="client-dialog-description">
             <Dialog.Title>New client</Dialog.Title>
             <Dialog.Description id="client-dialog-description">
               Add a client to your workspace.
@@ -134,34 +105,20 @@ export function ClientDirectory() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (
-                  preview ||
-                  localStorage.getItem("tantara_preview") === "true"
-                )
-                  return;
                 try {
                   await clientsApi.create({ name, email });
                   M(false);
-                  N("");
-                  E("");
+                  N('');
+                  E('');
                   await list.refetch();
                 } catch (err) {
-                  alert(
-                    err instanceof Error
-                      ? err.message
-                      : "Unable to save client",
-                  );
+                  alert(err instanceof Error ? err.message : 'Unable to save client');
                 }
               }}
             >
               <label>
                 Name
-                <input
-                  aria-label="Client name"
-                  required
-                  value={name}
-                  onChange={(e) => N(e.target.value)}
-                />
+                <input aria-label="Client name" required value={name} onChange={(e) => N(e.target.value)} />
               </label>
               <label>
                 Email
@@ -172,17 +129,7 @@ export function ClientDirectory() {
                   onChange={(e) => E(e.target.value)}
                 />
               </label>
-              <button
-                className="matter-action"
-                disabled={preview}
-                title={
-                  preview
-                    ? "Changes are disabled in read-only preview"
-                    : undefined
-                }
-              >
-                Save client
-              </button>
+              <button className="matter-action">Save client</button>
               <button type="button" onClick={() => M(false)}>
                 Cancel
               </button>
