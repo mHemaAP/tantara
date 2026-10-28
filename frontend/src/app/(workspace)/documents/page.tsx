@@ -279,6 +279,27 @@ export default function DocumentsPage() {
         ) : (
           <div className={`documents-workspace ${layout}`}>
             <div className="documents-table-wrap">
+              <div className="documents-mobile-cards">
+                {documentsList.map((document) => (
+                  <DocumentCard
+                    key={document.id}
+                    document={document}
+                    selected={selected.includes(document.id)}
+                    onSelect={() =>
+                      setSelected((current) =>
+                        current.includes(document.id)
+                          ? current.filter((id) => id !== document.id)
+                          : [...current, document.id],
+                      )
+                    }
+                    onDelete={() => void remove(document)}
+                    onRetry={async () => {
+                      await documentsApi.retry(document.id);
+                      await queryClient.invalidateQueries({ queryKey: ['documents'] });
+                    }}
+                  />
+                ))}
+              </div>
               {layout === 'list' ? (
                 <table className="documents-table">
                   <thead>
