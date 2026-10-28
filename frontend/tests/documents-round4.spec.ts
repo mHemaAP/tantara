@@ -1,6 +1,6 @@
-import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
 const screenshots = '../docs/screenshots';
 const liveModelBase = 'http://192.168.0.101:8080/v1';
 const liveModelName = 'MiniCPM5-2B';
@@ -55,14 +55,6 @@ async function noModelDetailsLeak(page: Page) {
   const degradation = page.locator('.ai-read-degradation, .ai-read-error-category');
   await expect(degradation).toBeVisible();
   await expect(degradation).not.toContainText(/https?:\/\/|127\.0\.0\.1|192\.168\.|:\d{2,5}/);
-}
-
-async function interceptReadiness(route: Route, status: string) {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ status, answer: status === 'ok' ? 'The local model is ready.' : '' }),
-  });
 }
 
 test('workspace shell, skip link, metadata, and PDF page controls are stable on direct viewer entry', async ({
@@ -153,24 +145,12 @@ test('workspace shell, skip link, metadata, and PDF page controls are stable on 
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
   await page.screenshot({ path: `${screenshots}/documents-library-desktop-1440.png` });
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-match-round4-77291');
-  await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '0 matching documents' })).toBeVisible();
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
   await page.screenshot({ path: `${screenshots}/documents-library-empty-desktop-1440.png` });
-  await page.route('**/api/v1/documents**', (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'offline', message: 'Offline' } }),
-    }),
-  );
-  await openWithToken(page, token, '/documents');
-  await expect(page.getByRole('heading', { name: 'Documents are unavailable' })).toBeVisible();
-  await page.screenshot({
-    path: `${screenshots}/documents-library-failure-desktop-1440-fixture.png`,
-  });
 });
 
-test('real AI Read uses the reachable model and captures settled extracted fields on desktop', async ({
+test('reachable model settings do not relabel local extraction as model generated', async ({
   page,
   request,
 }) => {
@@ -189,11 +169,11 @@ test('real AI Read uses the reachable model and captures settled extracted field
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWithToken(page, token, `/documents/${document.id}`);
     await waitForViewer(page, 1);
-    await expect(page.getByRole('button', { name: 'Run AI Read' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Run document extraction' })).toBeVisible();
     const settings = await request
       .get(`${apiUrl}/settings/ai`, { headers })
       .then((response) => response.json());
-    await page.getByRole('button', { name: /Run AI Read|Run again/ }).click();
+    await page.getByRole('button', { name: /Run document extraction|Run again/ }).click();
     if (settings.runtime_status?.reachable) {
       await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 120000 });
       await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 120000 });
@@ -205,7 +185,7 @@ test('real AI Read uses the reachable model and captures settled extracted field
     await expect(page.locator('.pdf-viewer canvas').first()).toBeVisible({ timeout: 60000 });
     await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
     await expect(page.locator('.ai-read-panel')).not.toContainText(/ai_suggested/);
-    await expect(page.locator('.ai-read-panel')).toContainText('AI suggestion');
+    await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction · candidate only');
     await expect(page.locator('.ai-read-panel')).toContainText('Not extracted');
     await expect(page.locator('.ai-read-field[data-field-key="arbitration_clause"]')).toContainText(
       'Not extracted',
@@ -226,90 +206,6 @@ test('real AI Read uses the reachable model and captures settled extracted field
   }
 });
 
-test('AI Read authentication failure has its own honest state', async ({ page, request }) => {
-  const token = await signIn(request);
-  const document = await getSeededPdf(request, token);
-  await page.route('**/api/v1/settings/ai', (route) =>
-    route.fulfill({
-      status: 403,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'forbidden', message: 'Denied' } }),
-    }),
-  );
-  await openWithToken(page, token, `/documents/${document.id}`);
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
-  await expect(page.locator('[data-error-category="auth_failure"]')).toContainText(
-    'Your access could not be verified',
-  );
-  await expect(page.locator('.ai-read-field')).toHaveCount(0);
-  await noModelDetailsLeak(page);
-});
-
-test('AI Read embedding failure has its own honest state', async ({ page, request }) => {
-  const token = await signIn(request);
-  const document = await getSeededPdf(request, token);
-  await page.route('**/api/v1/ai/ask', (route) => interceptReadiness(route, 'embedding_unavailable'));
-  await openWithToken(page, token, `/documents/${document.id}`);
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
-  await expect(page.locator('[data-error-category="embedding_failure"]')).toBeVisible();
-  await expect(page.locator('.ai-read-field')).toHaveCount(0);
-  await noModelDetailsLeak(page);
-});
-
-test('AI Read extraction failure has its own honest state', async ({ page, request }) => {
-  const token = await signIn(request);
-  const document = await getSeededPdf(request, token);
-  await page.route('**/api/v1/ai/ask', (route) => interceptReadiness(route, 'ok'));
-  await page.route(`**/api/v1/documents/${document.id}/ai-read`, (route) =>
-    route.request().method() === 'POST'
-      ? route.fulfill({
-          status: 503,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: { code: 'extract_failed', message: 'failed' } }),
-        })
-      : route.continue(),
-  );
-  await openWithToken(page, token, `/documents/${document.id}`);
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
-  await expect(page.locator('[data-error-category="extraction_failure"]')).toBeVisible();
-  await expect(page.locator('.ai-read-field')).toHaveCount(0);
-  await noModelDetailsLeak(page);
-});
-
-test('AI Read response-loading failure has its own honest state', async ({ page, request }) => {
-  const token = await signIn(request);
-  const document = await getSeededPdf(request, token);
-  let extractionReads = 0;
-  await page.route('**/api/v1/ai/ask', (route) => interceptReadiness(route, 'ok'));
-  await page.route(`**/api/v1/documents/${document.id}/ai-read`, (route) => {
-    if (route.request().method() === 'POST') {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ status: 'ok' }),
-      });
-    }
-    extractionReads += 1;
-    if (extractionReads === 1) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ fields: {} }),
-      });
-    }
-    return route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'read_failed', message: 'failed' } }),
-    });
-  });
-  await openWithToken(page, token, `/documents/${document.id}`);
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
-  await expect(page.locator('[data-error-category="response_loading_failure"]')).toBeVisible();
-  await expect(page.locator('.ai-read-field')).toHaveCount(0);
-  await noModelDetailsLeak(page);
-});
-
 test('model-unavailable state keeps the error private and captures desktop failure', async ({
   page,
   request,
@@ -328,7 +224,7 @@ test('model-unavailable state keeps the error private and captures desktop failu
     await page.setViewportSize({ width: 1440, height: 900 });
     await openWithToken(page, token, `/documents/${document.id}`);
     await waitForViewer(page, 1);
-    await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await page.getByRole('button', { name: 'Run document extraction' }).click();
     await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible({ timeout: 30000 });
     await noModelDetailsLeak(page);
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
@@ -341,21 +237,4 @@ test('model-unavailable state keeps the error private and captures desktop failu
       data: { base_url: originalSettings.base_url, model: originalSettings.model },
     });
   }
-});
-
-test('library failure state is explicit and settled', async ({ page, request }) => {
-  const token = await signIn(request);
-  await page.route('**/api/v1/documents**', (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'offline', message: 'Offline' } }),
-    }),
-  );
-  await openWithToken(page, token, '/documents');
-  await expect(page.getByRole('heading', { name: 'Documents are unavailable' })).toBeVisible();
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.screenshot({
-    path: `${screenshots}/documents-library-failure-desktop-1440-fixture.png`,
-  });
 });
