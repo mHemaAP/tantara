@@ -8,6 +8,7 @@ export type DocumentRecord = {
   status: string;
   jurisdiction?: string;
   case_id?: string;
+  collection_id?: string;
   pages?: number;
   chars?: number;
   size_bytes?: number;
@@ -51,7 +52,11 @@ export const documentsApi = {
     }>('/settings/ai'),
   askForReadiness: (question: string, caseId?: string) =>
     api.post<{ status: string; answer?: string }>('/ai/ask', { question, top_k: 5, case_id: caseId }),
-  upload(file: File, onProgress: (value: number) => void): Promise<{ document_id: string; status: string }> {
+  upload(
+    file: File,
+    onProgress: (value: number) => void,
+    collectionId?: string,
+  ): Promise<{ document_id: string; status: string }> {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
       request.open('POST', `${apiBase}/documents/upload`);
@@ -83,7 +88,27 @@ export const documentsApi = {
       const data = new FormData();
       data.append('file', file);
       data.append('title', file.name);
+      if (collectionId) data.append('collection_id', collectionId);
       request.send(data);
     });
   },
+};
+
+export type KnowledgeCollection = {
+  id: string;
+  name: string;
+  description: string;
+  document_count: number;
+};
+
+export const collectionsApi = {
+  list: () =>
+    api.get<{ items: KnowledgeCollection[]; total: number; page: number; page_size: number; pages: number }>(
+      '/collections?page=1&page_size=100',
+    ),
+  create: (body: { name: string; description?: string }) =>
+    api.post<KnowledgeCollection>('/collections', body),
+  update: (id: string, body: { name: string; description?: string }) =>
+    api.patch<KnowledgeCollection>(`/collections/${encodeURIComponent(id)}`, body),
+  remove: (id: string) => api.del(`/collections/${encodeURIComponent(id)}`),
 };
