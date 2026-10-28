@@ -3,7 +3,7 @@ import { api, apiBase, authToken, ApiError } from '@/lib/api/client';
 export type Row = Record<string, any>;
 export const draftsApi = {
   templates: () => api.get<{ items?: Row[] }>('/draft-templates'),
-  list: () => api.get<{ items?: Row[] }>('/drafts?page=1&page_size=50'),
+  list: () => api.get<{ items?: Row[] }>('/drafts?page=1&page_size=21'),
   cases: () => api.get<{ items?: Row[] }>('/cases?page=1&page_size=100'),
   institutions: () => api.get<{ items?: any[] } | any[]>('/meta/institutions'),
   documents: (caseId: string) => api.get<{ items?: Row[] }>(`/documents?case_id=${encodeURIComponent(caseId)}&page=1&page_size=100`),
@@ -27,8 +27,11 @@ export const draftsApi = {
     } finally { clearTimeout(timer); }
   },
   get: (id: string) => api.get<Row>(`/drafts/${id}`),
+  update: (id: string, body: Row) => api.patch<Row>(`/drafts/${id}`, body),
   save: (id: string, body: Row) => api.post<Row>(`/drafts/${id}/versions`, body),
+  updateVersion: (id: string, body: Row) => api.post<Row>(`/drafts/${id}/versions`, body),
   versions: (id: string) => api.get<{ items?: Row[] }>(`/drafts/${id}/versions`),
-  restore: (id: string, body: Row) => api.post<Row>(`/drafts/${id}/versions`, body),
+  restore: (id: string, versionId: string) => api.post<Row>(`/drafts/${id}/versions/${versionId}/restore`, {}),
+  restoreLegacy: (id: string, body: Row) => api.post<Row>(`/drafts/${id}/versions`, body),
   regenerateSection: (id: string, body: Row) => api.post<Row>(`/drafts/${id}/regenerate-section`, body),
 };
