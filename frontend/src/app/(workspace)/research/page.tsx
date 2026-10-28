@@ -281,11 +281,12 @@ export default function ResearchPage() {
   const textarea = useRef<HTMLTextAreaElement>(null);
 
   const refreshHistory = useCallback(async () => {
-    const [history, library, caseData, documentData] = await Promise.allSettled([
+    const [history, library, caseData, documentData, collectionData] = await Promise.allSettled([
       researchApi.sessions(),
       researchApi.saved(),
       researchApi.cases(),
       researchApi.documents(),
+      researchApi.collections(),
     ]);
     if (history.status === 'fulfilled') setSessions(history.value.items ?? []);
     if (library.status === 'fulfilled') {
@@ -296,11 +297,20 @@ export default function ResearchPage() {
     if (documentData.status === 'fulfilled') {
       const items = documentData.value.items ?? [];
       setDocuments(items);
-      const collectionIds = [
-        ...new Set(items.map((document) => document.collection_id).filter(Boolean) as string[]),
+      const jurisdictionNames = [
+        ...new Set(items.map((document) => document.jurisdiction).filter(Boolean) as string[]),
       ];
-      setCollections(collectionIds.map((id) => ({ id, name: id })));
-      setCollectionsUnavailable(collectionIds.length === 0);
+      setJurisdictions(jurisdictionNames);
+    }
+    if (collectionData.status === 'fulfilled') {
+      setCollections(collectionData.value.items ?? []);
+      setCollectionsUnavailable(false);
+    } else {
+      setCollections([]);
+      setCollectionsUnavailable(true);
+    }
+    if (documentData.status === 'fulfilled') {
+      const items = documentData.value.items ?? [];
       const jurisdictionNames = [
         ...new Set(items.map((document) => document.jurisdiction).filter(Boolean) as string[]),
       ];
@@ -452,7 +462,7 @@ export default function ResearchPage() {
       answer
         ? answer.status === 'model_unavailable'
           ? lexical
-          : answer.status === 'no_evidence' || answerHasInsufficientEvidence
+          : answerHasInsufficientEvidence
             ? EMPTY_SOURCES
             : sources
         : restoredSources,
@@ -476,7 +486,7 @@ export default function ResearchPage() {
   const hasModelProvenance = generationKind === 'model_generated' && typeof modelId === 'string';
   const answerIsInsufficient =
     answerHasInsufficientEvidence ||
-    answer?.status === 'no_evidence' ||
+    answerHasInsufficientEvidence ||
     ((answer?.status === 'ok' || answer?.status === 'answered') &&
       /evidence is insufficient/i.test(answer.answer ?? ''));
   const answerAlreadyInHistory =
@@ -495,7 +505,9 @@ export default function ResearchPage() {
       retryQuestion?.role === 'user' &&
       retryQuestion.content === failedQuestion.content &&
       retryAnswer?.role === 'assistant' &&
-      !['model_unavailable', 'no_evidence', 'error'].includes(retryAnswer.status ?? '')
+      !['model_unavailable', 'no_evidence', 'insufficient_evidence', 'error'].includes(
+        retryAnswer.status ?? '',
+      )
     ) {
       hiddenResolvedFailureIds.add(failed.id);
       hiddenResolvedFailureIds.add(retryQuestion.id);
@@ -582,7 +594,9 @@ export default function ResearchPage() {
         >
           <span>Collection</span>
           <select value={collection} onChange={(e) => setCollection(e.target.value)}>
-            <option value="">{collectionsUnavailable ? 'Collections unavailable' : 'All collections'}</option>
+            <option value="">
+              {collectionsUnavailable ? 'Could not load collections' : 'All collections'}
+            </option>
             {collections.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -832,19 +846,17 @@ export default function ResearchPage() {
                   ) : answerIsInsufficient ? (
                     <div className="state-callout no-evidence model-insufficient">
                       <strong>
-                        {answer.status === 'no_evidence'
+                        {answer.raw_status === 'no_evidence'
                           ? 'Insufficient evidence in your library'
                           : 'Evidence is insufficient'}
                       </strong>
-                      {!answerHasInsufficientEvidence && answer.answer && (
-                        <AnswerText text={answer.answer} citations={[]} />
-                      )}
+                      {answer.answer && <AnswerText text={answer.answer} citations={[]} />}
                       <p>
                         {answerHasInsufficientEvidence
                           ? 'No supporting excerpts were found. Upload a document, widen the scope, or rephrase the question.'
                           : 'Review the retrieved excerpts below; no conclusion was generated from this evidence.'}
                       </p>
-                      {answer.status === 'no_evidence' && (
+                      {answer.raw_status === 'no_evidence' && (
                         <Link href="/research/documents">Upload a document</Link>
                       )}
                     </div>
@@ -853,17 +865,6 @@ export default function ResearchPage() {
                       <CaseRecordAnswer answer={answer} />
                       <ConflictNotices conflicts={answer.conflicts ?? []} sources={sources} />
                     </>
-                  ) : answer.status === 'no_evidence' ? (
-                    <div className="state-callout no-evidence">
-                      <strong>Insufficient evidence in your library</strong>
-                      <p>
-                        No supporting documents were found for this question. Upload a document, widen the
-                        research scope, or rephrase your question.
-                      </p>
-                      <Link href="/research/documents">
-                        Upload a document <ArrowRight size={13} />
-                      </Link>
-                    </div>
                   ) : answer.status === 'embedding_unavailable' ? (
                     <div className="state-callout lexical-state">
                       <strong>Embeddings unavailable</strong>
@@ -1003,7 +1004,7 @@ export default function ResearchPage() {
               </div>
               <span className="source-count">{corpusCount}</span>
             </header>
-            {answer?.status === 'no_evidence' && (
+            {answerHasInsufficientEvidence && (
               <div className="source-note">No supporting documents found in this workspace.</div>
             )}
             {selectedSources.length ? (
@@ -1027,7 +1028,7 @@ export default function ResearchPage() {
                 )}
               </div>
             ) : (
-              answer?.status !== 'no_evidence' && (
+              !answerHasInsufficientEvidence && (
                 <div className="sources-empty">
                   <Search size={21} />
                   <strong>Sources appear here</strong>
