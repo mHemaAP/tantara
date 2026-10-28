@@ -234,12 +234,14 @@ test('strategy shows source excerpts honestly, saves edits, creates a task, and 
   await page.goto(`/cases/${seededCaseId}/strategy`);
   await expect(page.getByRole('heading', { name: 'AI Strategy Advisor' })).toBeVisible();
   await expect(page.getByLabel('Select case for analysis')).toHaveValue(seededCaseId);
+  await expect(page.getByText('Not analysed')).toBeVisible();
+  await capture(page, 'strategy-1440x900-template-empty-real.png');
   await page.getByRole('button', { name: 'Generate' }).click();
   await expect(page.getByText('Source excerpts assembled without a language model')).toBeVisible({ timeout: 30000 });
-  await expect(page.getByText('Model unavailable · source excerpts only')).toBeVisible();
+  await expect(page.getByText('Model unavailable · source excerpts assembled without a language model')).toBeVisible();
+  await page.getByRole('button', { name: 'Legal Arguments' }).click();
   await expect(page.locator('.strategy-citation').first()).toContainText('p.');
   await capture(page, 'strategy-1440x900-model-unavailable-real.png');
-  await capture(page, 'strategy-1440x900-template-source-excerpts-real.png');
 
   await page.setViewportSize({ width: 390, height: 844 });
   for (const label of ['Case Theory', 'Key Issues', 'Legal Arguments', 'Anticipated Counterarguments', 'Evidence Gaps', 'Strategy Plan']) {
@@ -258,7 +260,7 @@ test('strategy shows source excerpts honestly, saves edits, creates a task, and 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'AI Strategy Advisor' })).toBeVisible();
   await page.getByRole('button', { name: 'Legal Arguments' }).click();
-  await expect(page.getByLabel('Legal Arguments note 1')).toContainText('Lawyer review note.');
+  await expect(page.getByLabel('Legal Arguments note 1')).toHaveValue(/Lawyer review note\./);
   await capture(page, 'strategy-1440x900-notes-saved-real.png');
 
   await page.getByRole('button', { name: 'Create research task' }).click();
