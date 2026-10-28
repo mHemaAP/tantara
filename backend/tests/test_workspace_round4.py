@@ -125,10 +125,46 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
         future_expected = min(hearing.at for hearing in future_hearings if hearing.at.date() > today)
         owner_id = session.scalar(select(User.id).where(User.email == "advocate@tantara.local"))
         junior_id = session.scalar(select(User.id).where(User.email == "researcher@tantara.local"))
-        root_post_id = session.scalar(select(CommunityPost.id).where(CommunityPost.owner_id == owner_id))
+        staff_id = session.scalar(select(User.id).where(User.email == "staff@tantara.local"))
+        root_post_id = session.scalar(
+            select(CommunityPost.id).where(
+                CommunityPost.owner_id == owner_id,
+                CommunityPost.visibility == "private",
+            )
+        )
+        foreign_private_demo_ids = set(
+            session.scalars(
+                select(CommunityPost.id).where(
+                    CommunityPost.is_demo.is_(True),
+                    CommunityPost.visibility == "private",
+                    CommunityPost.owner_id != owner_id,
+                )
+            ).all()
+        )
         root_case_id = session.scalar(select(Case.id).where(Case.owner_id == owner_id))
         root_client_id = session.scalar(select(Client.id).where(Client.owner_id == owner_id))
         assert junior_id and junior_id != owner_id
+        assert staff_id and staff_id not in {owner_id, junior_id}
+        shared_demo_posts = session.scalars(
+            select(CommunityPost).where(
+                CommunityPost.is_demo.is_(True),
+                CommunityPost.visibility == "workspace",
+                CommunityPost.owner_id.in_([junior_id, staff_id]),
+            )
+        ).all()
+        assert len(shared_demo_posts) >= 4
+        assert all(post.owner_id in {junior_id, staff_id} for post in shared_demo_posts)
+        for post in shared_demo_posts:
+            assert (
+                len(
+                    set(
+                        session.scalars(
+                            select(CommunityReply.owner_id).where(CommunityReply.post_id == post.id)
+                        ).all()
+                    )
+                )
+                >= 2
+            )
         junior_counts = {
             model.__name__: session.scalar(
                 select(func.count())
@@ -142,6 +178,14 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
     from app.security import create_token
 
     headers = {"Authorization": f"Bearer {create_token(owner_id)}"}
+    advocate_feed = client.get("/api/v1/community/posts", headers=headers).json()
+    assert set(advocate_feed) == {"items", "total", "page", "page_size", "pages"}
+    assert {post["author_name"] for post in advocate_feed["items"]} >= {
+        "Aarav Mehta",
+        "Mira Shah",
+        "Dev Patel",
+    }
+    assert not foreign_private_demo_ids.intersection(post["id"] for post in advocate_feed["items"])
     client_list = client.get("/api/v1/clients", headers=headers).json()["items"]
     empty_client = next(row for row in client_list if row["name"] == "No Active Matters Ltd.")
     assert empty_client["case_count"] == 0
@@ -211,6 +255,9 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
     )
     assert junior_login.status_code == 200
     junior_headers = {"Authorization": f"Bearer {junior_login.json()['access_token']}"}
+    junior_feed = client.get("/api/v1/community/posts", headers=junior_headers).json()
+    assert {post["author_name"] for post in junior_feed["items"]} >= {"Aarav Mehta", "Dev Patel", "Mira Shah"}
+    assert not foreign_private_demo_ids.intersection(post["id"] for post in junior_feed["items"])
     junior_clients = client.get("/api/v1/clients", headers=junior_headers).json()["items"]
     assert [row["name"] for row in junior_clients] == ["Junior Demo Client"]
     assert junior_clients[0]["case_count"] == 1
