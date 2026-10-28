@@ -127,3 +127,77 @@ One file per commit; no push or merge was performed.
 - Defect regressions: `898fc59`
 - Screenshots, in the order listed above: `2be79f6`, `5ad025e`, `1d80ff6`, `c55c380`, `d86c74e`, `ac29790`, `7d41534`, `8f09820`, `7b230a3`, `8c6a50e`, `bb5602d`, `1760599`, `00a5a06`, `aae675b`, `93b91f4`, `653797f`.
 - This report is committed separately after the listed implementation and capture commits.
+# Round 5 — API-backed case, calendar, client and task evidence
+
+This section is the current Round 5 record and supersedes earlier historical statements below where they conflict. In particular, hearing dates come from the backend's `next_hearing_at` projection; there is no client-side hearing map. Screenshots listed here were regenerated against a freshly migrated/seeded backend at `127.0.0.1:8112` and the frontend at `localhost:3012`.
+
+## Sol L3d findings
+
+| Finding | Change and file | Test/capture assertion |
+|---|---|---|
+| Cases screenshots lacked real API proof and showed “Sample workspace data.” | Removed that placeholder from `src/features/cases/components/case-list.tsx`. `tests/capture-owned-routes.mjs` reads the sorted first page from `GET /api/v1/cases?page=1&page_size=20&sort=-updated_at`, verifies the first rendered desktop row or mobile card has the same title, and rejects the placeholder in captured copy. | Capture run fails unless the rendered first row matches the live API response. `cases-desktop_1440x900_loaded.png` and `cases-mobile_390x844_loaded.png` show the same top row as the API. |
+| Next hearing needed one proven value across list, detail and calendar. | Kept the backend-derived `next_hearing_at` as the only list/detail source. The capture harness checks the selected case projection against `GET /hearings`, then checks `GET /calendar` contains that exact hearing. | `case API projects the earliest future hearing and the list renders it` asserts the projection matches the earliest future hearing, the list and detail show the same date, and a selected calendar event shows that date and linked case. It selects a next-month future hearing so it can be shown in all three views. |
+| Raw calendar enum values and times leaked for all-day events. | `src/features/calendar/index.tsx` maps enum titles to human labels, renders all-day events without a `<time>` element, and formats selected-event dates consistently with the case list. | `calendar labels all-day events without a time or raw event enums` asserts the API-backed all-day row has no time element, its detail is marked All-day with no clock value, and the page contains none of `all_day_event`, `first_hearing`, or `hearing_completed`. |
+| Mobile calendar was long and repetitive without a selected-event detail. | Calendar Agenda groups events by date, shows at most seven eventful day groups per page, adds Previous/Next days controls when needed, and opens a selected event detail panel. The detail panel is fixed inside the mobile viewport. | `calendar mobile defaults to readable agenda view` reads `GET /calendar`, derives the number of event dates, asserts at most seven day groups, and checks that Next days changes the page when the API has more than seven dated groups. It checks no mobile overflow, no word-splitting, and opens event details. Capture `calendar-mobile_390x844_selected-event.png` shows selection. |
+| Tasks route needed the nine-item navigation and one active route. | No shell edit this round; the existing nine-item nav stays intact. | `case, calendar and client routes each expose one active navigation link` loops Cases, case detail, Clients, Tasks and Calendar and asserts exactly one `aria-current="page"` plus all nine nav links. |
+| Client retry copy ran into its action. | `src/features/clients/client-directory.tsx` separates the error message from a styled Retry button. | Capture harness fails the first two client requests, clicks Retry, then waits for a real `GET /api/v1/clients` row before saving `clients-desktop_1440x900_retry-success.png`. |
+| Tasks needed populated evidence and an equivalent mobile row action. | `src/features/tasks/index.tsx` resolves linked case names with a real `GET /api/v1/cases?page_size=100` request (the old generic linked-case fallback came from passing query syntax into the endpoint wrapper). Added a mobile-visible action menu for Edit and completion. | `mobile task actions remain available and open a labelled menu` asserts the task has real linked-case context and the mobile actions open. `tasks-desktop_1440x900_loaded.png` shows task groups, due dates, priorities, completion controls and case links; `tasks-mobile_390x844_action-menu.png` shows the mobile action menu. |
+| Repeated task titles needed context. | Same real case-title lookup in `src/features/tasks/index.tsx`; task titles remain API values and linked case names appear in a separate column. | The populated Tasks captures show repeated “Review pleadings and evidence” tasks paired with different API case titles; no task titles are fabricated. |
+
+## API contract coverage
+
+`tests/api-domain-contracts.spec.ts` exercises the seeded API directly:
+
+- `GET /calendar` returns an event array; malformed `from` dates return an error status.
+- `GET /clients` succeeds; a unique no-match query returns an empty `items` list; invalid `POST /clients` returns 422; valid creation succeeds; `GET /clients/{cid}/cases` returns an empty list for a newly created client.
+- `GET /tasks` succeeds; page 999999 returns empty `items`; invalid `POST /tasks` returns 422; valid creation and `GET /tasks/{rid}` succeed; `PATCH /tasks/{rid}` persists a priority change.
+- Anonymous reads for calendar, tasks, clients, client cases and task detail, plus anonymous client/task creation and task patch, return 401.
+- Cross-user access remains unproven. The test is explicitly skipped because `API-GOTCHAS.md` records that the current seed creates one user; it is ready to enable once the backend seed provisions a second user.
+
+## Round 5 captures
+
+All files below are exact viewport captures, use real seeded API data except the stated error injection, and have no loading skeleton or visible Next dev badge. The `-fixture` suffix is not used because these captures are not fixture-backed.
+
+| File | Viewport and state | API source |
+|---|---|---|
+| `docs/screenshots/cases-desktop_1440x900_loaded.png` | 1440×900, loaded cases table and live counts | `GET /api/v1/cases?page=1&page_size=20&sort=-updated_at` plus live status-count queries |
+| `docs/screenshots/cases-mobile_390x844_loaded.png` | 390×844, loaded case cards with title, status and hearing field | Same sorted `GET /api/v1/cases` list |
+| `docs/screenshots/case-detail-desktop_1440x900_loaded.png` | 1440×900, loaded TechBuild case overview and projected next hearing | `GET /api/v1/cases/{id}`, `GET /api/v1/cases/{id}/overview` |
+| `docs/screenshots/clients-desktop_1440x900_loaded.png` | 1440×900, loaded directory including zero case count | `GET /api/v1/clients` |
+| `docs/screenshots/clients-desktop_1440x900_retry-success.png` | 1440×900, transient failure followed by successful retry and real rows | First two client fetches intercepted as 503; Retry then real `GET /api/v1/clients` |
+| `docs/screenshots/tasks-desktop_1440x900_loaded.png` | 1440×900, populated groups, due dates, priorities, completion and case context | `GET /api/v1/tasks`, `GET /api/v1/cases?page_size=100` |
+| `docs/screenshots/tasks-mobile_390x844_action-menu.png` | 390×844, loaded task list with mobile action menu open | Same task and case list endpoints |
+| `docs/screenshots/calendar-desktop_1440x900_loaded.png` | 1440×900, loaded October month; all-day labels have no time | `GET /api/v1/calendar?from=…&to=…` |
+| `docs/screenshots/calendar-mobile_390x844_selected-event.png` | 390×844, date-grouped agenda with selected next-month hearing detail | `GET /api/v1/calendar?from=…&to=…`, case titles from `GET /api/v1/cases` |
+| `docs/screenshots/cases-desktop_1440x900_empty.png` | 1440×900, genuine no-match search | `GET /api/v1/cases?q=<unique-no-match>` |
+| `docs/screenshots/clients-desktop_1440x900_empty.png` | 1440×900, genuine no-match search | `GET /api/v1/clients?q=<unique-no-match>` |
+| `docs/screenshots/cases-desktop_1440x900_failure.png` | 1440×900, API failure state | Cases requests injected as 503; auth bootstrap remains available |
+| `docs/screenshots/clients-desktop_1440x900_failure.png` | 1440×900, API failure state | Client requests injected as 503; auth bootstrap remains available |
+| `docs/screenshots/tasks-desktop_1440x900_failure.png` | 1440×900, API failure state | Task requests injected as 503; auth bootstrap remains available |
+| `docs/screenshots/calendar-desktop_1440x900_failure.png` | 1440×900, API failure state | Calendar requests injected as 503; auth bootstrap remains available |
+
+Failure captures model an unreachable endpoint with browser-side 503 responses; they are not captures from a stopped backend. All loaded and empty captures use the actual freshly seeded backend.
+
+## Gates and remaining gaps
+
+- Round 4 baseline: 25 E2E tests passed.
+- Round 5 full `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8112 pnpm test:e2e`: **28 passed, 1 skipped** (29 total). The skipped check is cross-user authorization pending a second seeded user.
+- After strengthening the agenda pagination assertion, focused `calendar mobile defaults to readable agenda view`: **1 passed**.
+- `pnpm format`: passed.
+- `pnpm lint`: passed with no ESLint warnings or errors (Next emits its `next lint` deprecation notice).
+- `pnpm typecheck`: passed.
+- `pnpm build`: passed; Next generated all 17 app routes.
+- `pnpm screenshots`: passed; 9 loaded captures, 2 genuine empty states and 4 simulated failure states.
+
+Open items: cross-user authorization remains untested until a second user is seeded. Client edit/delete/status CRUD, team assignment, and the backend-unavailable Research/Activity resources remain as documented in the historical sections below. No backend files were edited. The nine-item shell navigation was unchanged this round.
+
+## Round 5 commits
+
+Implementation, tests, each screenshot, and this report are committed one file per commit. No push or merge was performed. The user-provided untracked `target-crops/` directory is not included.
+
+- Playwright config `c75bc0a`; Calendar UI `653878a`; case-list placeholder `e2337a5`; feature styles `c062665`; Clients UI `1bed1bd`; Tasks UI `17d39c3`.
+- Capture harness `825bb91`; route/mobile E2E `1d2eae7`; hearing/all-day regressions `9f32c20`; API contracts `6a9eb66`.
+- Loaded captures: Cases desktop `0233cf2`, Cases mobile `f79d5cd`, case detail `3a3f82c`, Clients loaded `09a5435`, Clients retry `70da8a3`, Tasks desktop `5c3b79a`, Tasks mobile action menu `107e684`, Calendar desktop `dccf0c4`, Calendar selected event mobile `5c97339`.
+- Empty captures: Cases `b1f947d`, Clients `f62db58`.
+- Failure captures: Cases `7a24232`, Clients `e75db51`, Tasks `5a72ab6`, Calendar `fa0f2ca`.
+- This report is committed separately after the above.
