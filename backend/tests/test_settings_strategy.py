@@ -74,6 +74,7 @@ def test_settings_preferences_password_backup_and_manifest(client, monkeypatch):
     audit = client.get("/api/v1/settings/security", headers=headers).json()
     assert set(audit) >= {"items", "total", "page", "page_size", "pages"}
     assert audit["items"]
+    assert all(item["at"].endswith("+00:00") for item in audit["items"])
 
     manifest = get_settings().data_dir / "corpus" / "manifest.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
