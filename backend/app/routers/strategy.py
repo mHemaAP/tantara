@@ -225,9 +225,7 @@ def generate_strategy(cid: str, user=Depends(current_user)):
             "chunk_id": hit["chunk_id"],
             "page_number": hit["page_number"],
             "snippet": hit["snippet"],
-            "score": hit.get("score"),
-            "retrieval_score": hit.get("retrieval_score", hit.get("retreival_score")),
-            "retreival_score": hit.get("retreival_score", hit.get("retrieval_score")),
+            "retrieval_score": hit.get("retrieval_score"),
         }
         for hit in hits
     ]
