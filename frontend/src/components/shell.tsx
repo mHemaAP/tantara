@@ -4,13 +4,36 @@ import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, Command, House, Menu, Search, Settings, X, ArrowRight } from 'lucide-react';
+import {
+  Bell,
+  CalendarDays,
+  ChevronDown,
+  CircleCheck,
+  Command,
+  FileText,
+  FolderOpen,
+  House,
+  Menu,
+  MessageCircle,
+  Search,
+  Settings,
+  Users,
+  X,
+  ArrowRight,
+} from 'lucide-react';
 import { api, clearToken } from '@/lib/api/client';
 import { toast } from 'sonner';
 import type { Activity } from '@/lib/api/types';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', Icon: House },
+  { href: '/cases', label: 'My Cases', Icon: FolderOpen },
+  { href: '/research', label: 'Research Desk', Icon: Search },
+  { href: '/documents', label: 'Drafts & Documents', Icon: FileText },
+  { href: '/calendar', label: 'Calendar', Icon: CalendarDays },
+  { href: '/tasks', label: 'Tasks', Icon: CircleCheck },
+  { href: '/clients', label: 'Clients', Icon: Users },
+  { href: '/community', label: 'Community (Arbitration)', Icon: MessageCircle },
   { href: '/settings/profile', label: 'Settings', Icon: Settings },
 ];
 type Hit = { title: string; href: string; kind: string };
