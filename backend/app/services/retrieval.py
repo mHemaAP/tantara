@@ -189,8 +189,6 @@ def fuse_rankings(
             "chunk_id": r.id,
             "page_number": r.page_number,
             "snippet": r.content[:900],
-            "score": score,
-            "retreival_score": score,
             "retrieval_score": score,
             "source_type": r.document_type,
             "jurisdiction": r.jurisdiction,
