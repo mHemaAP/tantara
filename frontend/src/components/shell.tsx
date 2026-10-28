@@ -4,13 +4,22 @@ import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, ChevronDown, Command, House, Menu, Search, Settings, X, ArrowRight } from 'lucide-react';
+import { Bell, BookOpen, BriefcaseBusiness, CalendarDays, CheckSquare, ChevronDown, Command, FileText, FolderOpen, House, Menu, Search, Settings, Users, X, ArrowRight, Archive, Scale } from 'lucide-react';
 import { api, clearToken } from '@/lib/api/client';
 import { toast } from 'sonner';
 import type { Activity } from '@/lib/api/types';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', Icon: House },
+  { href: '/cases', label: 'My Cases', Icon: FolderOpen },
+  { href: '/research', label: 'Research Desk', Icon: BookOpen },
+  { href: '/drafts', label: 'Drafts & Documents', Icon: FileText },
+  { href: '/calendar', label: 'Calendar', Icon: CalendarDays },
+  { href: '/tasks', label: 'Tasks', Icon: CheckSquare },
+  { href: '/clients', label: 'Clients', Icon: Users },
+  { href: '/community', label: 'Community (Arbitration)', Icon: BriefcaseBusiness },
+  { href: '/bundles', label: 'Bundles', Icon: Archive },
+  { href: '/strategy', label: 'Strategy', Icon: Scale },
   { href: '/settings/profile', label: 'Settings', Icon: Settings },
 ];
 type Hit = { title: string; href: string; kind: string };
@@ -156,7 +165,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
               key={href}
               href={href}
               aria-current={
-                path === href || (path.startsWith('/settings') && label === 'Settings') ? 'page' : undefined
+                path === href ||
+                (href !== '/dashboard' && href !== '/community' && path.startsWith(`${href}/`)) ||
+                (href === '/strategy' && path.startsWith('/cases/') && path.endsWith('/strategy')) ||
+                (path.startsWith('/settings') && label === 'Settings')
+                  ? 'page'
+                  : undefined
               }
               onClick={() => setOpen(false)}
             >
