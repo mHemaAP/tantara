@@ -29,6 +29,7 @@ export default defineConfig({
       testIgnore: /documents-round(4|5)-mobile\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
+        timezoneId: 'UTC',
         baseURL: webBase,
         viewport: { width: 1440, height: 900 },
       },
@@ -38,6 +39,7 @@ export default defineConfig({
       testMatch: /documents-round(4|5)-mobile\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
+        timezoneId: 'UTC',
         baseURL: webBase,
         viewport: { width: 390, height: 844 },
       },
