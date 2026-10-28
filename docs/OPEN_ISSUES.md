@@ -1,21 +1,27 @@
-# Open issues and validation limits
+# Open issues and verification notes
 
-- The external style-contract helper does not establish an authenticated session. Its latest transcript says:
+This ledger separates current product findings from older tooling observations. The fixed items from the earlier M3 inventory—dashboard placeholder copy, seeded task filler, framework error envelopes, seed refusal/census, tab relationships, authorization skip, and calendar hook warning—are not listed as open product issues.
 
-  ```text
-  form_without_method: null
-  auth_present: false | login_call: no-login-request-seen | url: http://127.0.0.1:3034/
-  INVALID: no authenticated session — unauthenticated route diagnostics are not UI findings and must not be reported as defects.
-  ```
+## Current product findings
 
-  The helper's following no-heading/font-none output is invalid evidence. Authenticated route captures and Playwright assertions passed separately.
+| Finding | Current evidence | Follow-up |
+|---|---|---|
+| Search ignores the `limit` query parameter. | `backend/app/routers/search.py:14-22` accepts `page` and `page_size` but no `limit`; FastAPI accepts an extra query argument without applying it. | M3 R9 / F17: define `limit` as an alias or reject it, then pin two values in an API test. |
+| Collections have no detail read route. | `backend/app/routers/collections.py:33-63` defines the list route; the remaining routes are PATCH and DELETE. There is no `GET /api/v1/collections/{id}`. | M3 R10 / F18: add an owner-scoped detail route or document that collections are list-only. |
+| OpenAPI emits a duplicate operation ID. | Building `app.openapi()` emitted `Duplicate Operation ID doc_file_api_v1_documents__did__file_get`; 131 operations contained 130 unique IDs in a fresh import. | M3 R11 / F19: assign unique operation IDs or remove the duplicate route registration. |
+| Retrieval still emits the misspelled score key. | `backend/app/services/retrieval.py:193` returns `retreival_score`; backend and frontend callers retain compatibility fallbacks for that spelling. | M3 R18 / F26: make `retrieval_score` canonical and remove the misspelled alias/fallbacks. |
+| Main search and ask APIs lack typed response schemas. | `backend/app/routers/search.py:12-14` has no `response_model`; `backend/app/main.py:325-326` likewise declares `/api/v1/ai/ask` without one, and `/query` delegates to the same untyped handler. | M3 R19 / F27: add response models and assert non-empty OpenAPI 200 schemas. |
+| Document extraction warnings can crash the viewer. | `frontend/src/app/(workspace)/documents/[id]/page.tsx:33` types warnings as `string[]`; lines 605-608 render each warning directly, while the API payload shape includes `{page, warning}` objects. | M3 R22 / F32: normalize both warning forms and test the real object payload in the viewer. |
+| Draft evidence links are rendered inside a contenteditable editor without link navigation handling. | `frontend/src/app/(workspace)/drafts/page.tsx:27-34` creates source anchors; the editor at lines 638-650 has input handling but no click delegation for those anchors. Prior browser probing found editor citation clicks did not navigate, while the Sources rail links did. | M3 R23 / F33: delegate citation clicks to the page-aware document route and retain an interaction test. |
+| Client detail omits fields and does not load the shared matter styles. | `frontend/src/app/(workspace)/clients/[id]/page.tsx:1-5` imports no case stylesheet; the page renders only name, email, linked cases, and notes, despite the API returning phone, address, and status. | M3 R24 / F34: load the shared stylesheet, show the returned fields, and cover an authenticated detail capture. |
+| Creating a case with blank optional dates still sends empty strings. | `frontend/src/features/cases/components/case-form.tsx:71-75` passes form values directly to `casesApi.create/update`; its optional date inputs include `notice_date`, `next_hearing_at`, `filed_at`, and `limitation_date`. | M3 R25 / F35: omit empty optional values and test default-state create plus field-level invalid-date feedback. |
+| Documents and Search still render a second navigation region that repeats workspace modules. | `frontend/src/features/documents/WorkspaceModuleNav.tsx:16-25` includes links for Dashboard, Cases, Search, Documents, Calendar, Tasks, Clients, Community, and Settings in addition to the global rail. Its `/search` entry is labelled “Research Desk,” while the rail has separate Search and Research Desk destinations. | M3 R45: remove the duplicate bar or make it a true Documents-family sub-navigation with non-overlapping destinations. |
+| Legacy screenshot files remain alongside current evidence. | `docs/screenshots/` still contains five 1440×1000 captures (`cases-desktop.png`, `case-detail-desktop.png`, `clients-desktop.png`, `calendar-desktop.png`, `tasks-desktop.png`) in addition to current 1440×900 / 390×844 screenshots. The README embeds only the current dimension-checked set. | M3 R32 / F43: label or move historical captures and keep the curated README links reproducible from the current seeded app. |
+| A blank Next Hearing cell is ambiguous. | `frontend/src/features/cases/components/case-list.tsx:213-218` renders `—` when `next_hearing_at` is null, without distinguishing “None scheduled” from a hearing that has already passed. | M3 R6: retain the upcoming-only API semantics and use a clear empty-state label. |
 
-- The verifier's `researcher strategy write -> 403` probe returned `405`. That request does not prove authorization behavior for the intended route. The full API/Playwright suite passed its covered authorization cases, but this particular script check remains unproven.
+## Tooling and validation notes
 
-- The full Playwright run has one intentional existing skip: cross-user client/task/calendar reads require a second seeded identity. Exact result: `1 skipped, 102 passed (9.7m)`; exit 0.
-
-- `pnpm lint` and `pnpm build` pass with the existing React hook dependency warning at `frontend/src/features/calendar/index.tsx:137` for `cursorParts.month` and `.year`.
-
-- The current exact `verify_integration.sh` run passes with exit 0. Its standalone `Terminated` line is emitted while stopping the background uvicorn child in relocation cleanup; the transcript then continues through frontend gates and Playwright. The fixture count label prints `<no value>` before a separate `count 0`; this is a display-only script defect. An earlier exact invocation, before `res()` gained a default, ended with `/home/kahitoz/projects/tantara-run/review-tools/verify_integration.sh: line 19: $2: unbound variable` (exit 1).
-
-- A supplemental temporary verifier copy was first run with its Playwright API origin set to port 8193. `drafts-captures.spec.ts` correctly rejected that topology (`Expected: "8010" Received: "8193"`). The wrapper only retained the final two lines and returned 0 despite that failed test. This attempt is not acceptance evidence; the later exact script run uses the required 8010/3010 Playwright topology and passed.
+- **Style-contract helper authentication:** the external helper run at `http://127.0.0.1:3034/` reported `auth_present: false` and no login request. Its no-heading/font-none output is not authenticated evidence. The helper still needs an authenticated setup; the authenticated Playwright and comparison captures are separate evidence.
+- **Verifier strategy-write probe:** an earlier verifier request returned HTTP 405 because it did not exercise the route/method that writes strategy data. That result does not prove or disprove strategy authorization. The current API domain contract test separately verifies that researcher and staff cannot create cases or bundles.
+- **Former authorization skip:** the skip has been replaced by the real cross-user authorization test in `frontend/tests/api-domain-contracts.spec.ts`. Focused result: `cross-user domain reads hide foreign records and read-only roles cannot create cases or bundles` passed. A temporary owner-filter removal caused the test to fail (`Expected: 404`, `Received: 200`); the filter was restored. The old `1 skipped` report is superseded.
+- **Calendar hook warning:** the missing `cursorParts.month/year` dependency was corrected in `frontend/src/features/calendar/index.tsx`. Current `pnpm lint` output reports “No ESLint warnings or errors.”
