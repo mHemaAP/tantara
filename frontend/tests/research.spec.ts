@@ -575,7 +575,11 @@ test.describe('Research Desk live API controls', () => {
     await page.getByLabel('Case filter').selectOption(emptyCase!.id);
     const response = await answerQuestion(page, 'What does the case file say about its hearing schedule?');
     expect(['no_evidence', 'insufficient_evidence']).toContain(response.status);
-    await expect(page.getByText('Insufficient evidence in your library')).toBeVisible();
+    await expect(page.locator('.state-callout.no-evidence strong')).toHaveText('No supporting excerpts');
+    await expect(page.locator('.status-chip[data-status="no_evidence"]')).toHaveText(
+      'No supporting excerpts',
+    );
+    await expect(page.getByText(/Research error/i)).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Upload a document' })).toBeVisible();
     await expect(page.locator('.state-callout.no-evidence .answer-text')).toContainText(
       'No indexed excerpt directly answers this question',
@@ -605,7 +609,11 @@ test.describe('Research Desk live API controls', () => {
     if (response.status === 'insufficient_evidence' || response.answer_basis === 'insufficient_evidence') {
       expect(response.citations ?? response.sources ?? []).toEqual([]);
       expect(response.total).toBe(0);
-      await expect(page.getByText('Evidence is insufficient', { exact: true })).toBeVisible();
+      await expect(page.locator('.state-callout.no-evidence strong')).toHaveText('No supporting excerpts');
+      await expect(page.locator('.status-chip[data-status="no_evidence"]')).toHaveText(
+        'No supporting excerpts',
+      );
+      await expect(page.getByText(/Research error/i)).toHaveCount(0);
       await expect(page.locator('.answer-citations')).toHaveCount(0);
       await expect(page.locator('.source-item')).toHaveCount(0);
       return;
@@ -615,6 +623,11 @@ test.describe('Research Desk live API controls', () => {
     if (response.answer_basis === 'insufficient_evidence' || response.insufficient_evidence) {
       expect(insufficiencyCitations).toEqual([]);
       expect(response.total).toBe(0);
+      await expect(page.locator('.state-callout.no-evidence strong')).toHaveText('No supporting excerpts');
+      await expect(page.locator('.status-chip[data-status="no_evidence"]')).toHaveText(
+        'No supporting excerpts',
+      );
+      await expect(page.getByText(/Research error/i)).toHaveCount(0);
       await expect(page.locator('.answer-citations')).toHaveCount(0);
       await expect(page.locator('.source-item')).toHaveCount(0);
     } else {
