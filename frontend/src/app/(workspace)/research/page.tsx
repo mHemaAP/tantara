@@ -469,7 +469,7 @@ export default function ResearchPage() {
   );
   const groupedSources = useMemo(() => groupSources(selectedSources), [selectedSources]);
   const distinctSourceCount = new Set(selectedSources.map((source) => source.document_id)).size;
-  const corpusCount = answer || latestAssistant ? String(distinctSourceCount) : '—';
+  const corpusCount = answer || latestAssistant ? distinctSourceCount : null;
   const answerTextForEvidence = answer?.answer ?? latestAssistant?.content;
   const supportedChunkIds = answer?.supports?.map((support) => support.chunk_id);
   const sourcesForAnswer = answer?.supports
@@ -973,7 +973,11 @@ export default function ResearchPage() {
                   <FileText size={16} /> Retrieved sources
                 </h2>
                 <p>
-                  {corpusCount} {distinctSourceCount === 1 ? 'document' : 'documents'} ·{' '}
+                  {corpusCount != null && (
+                    <>
+                      {corpusCount} {corpusCount === 1 ? 'document' : 'documents'} ·{' '}
+                    </>
+                  )}
                   {answer && ['ok', 'answered'].includes(answer.status)
                     ? answerIsInsufficient
                       ? 'Retrieved evidence · no conclusion generated'
@@ -985,7 +989,7 @@ export default function ResearchPage() {
                       : 'Available evidence'}
                 </p>
               </div>
-              <span className="source-count">{corpusCount}</span>
+              {corpusCount != null && <span className="source-count">{corpusCount}</span>}
             </header>
             {answerHasInsufficientEvidence && (
               <div className="source-note">No supporting documents found in this workspace.</div>
