@@ -1,4 +1,6 @@
 .research-page {
+  width: 100%;
+  min-width: 0;
   max-width: 1600px;
   margin: 0 auto;
   padding: 26px 28px 40px;
@@ -91,6 +93,14 @@
   grid-template-columns: minmax(215px, 0.85fr) minmax(420px, 1.9fr) minmax(270px, 1.08fr);
   gap: 14px;
   align-items: start;
+}
+.research-grid > *,
+.research-center,
+.research-left,
+.research-right,
+.conversation-card,
+.sources-card {
+  min-width: 0;
 }
 .research-left,
 .research-right {
@@ -370,12 +380,12 @@
   letter-spacing: 0;
   text-transform: none;
 }
-.status-chip.no_evidence {
+.status-chip[data-status='no_evidence'] {
   color: #9a6b0b;
   background: #fff5dc;
 }
-.status-chip.model_unavailable,
-.status-chip.error {
+.status-chip[data-status='model_unavailable'],
+.status-chip[data-status='error'] {
   color: #a33546;
   background: #fff0f1;
 }
@@ -419,6 +429,62 @@
   font-weight: 700;
   text-decoration: none;
   vertical-align: baseline;
+}
+.answer-sentence {
+  overflow-wrap: anywhere;
+}
+.answer-citations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #e8eaf2;
+}
+.answer-citations > span {
+  width: 100%;
+  color: #788198;
+  font-size: 10px;
+  font-weight: 650;
+}
+.page-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #dfe3f7;
+  border-radius: 999px;
+  background: #f7f7ff;
+  color: #3730a3;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.page-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.source-excerpt {
+  border-top: 1px solid #edf0f5;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.source-excerpt > p {
+  margin: 0;
+  color: #4c5871;
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.source-relevance {
+  display: grid;
+  gap: 4px;
+  margin-top: 9px;
+  color: #8b94a7;
+  font-size: 9px;
 }
 .answer-citation:hover {
   background: #e2e4ff;
@@ -728,6 +794,9 @@
 }
 @media (max-width: 720px) {
   .research-page {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
     padding: 20px 12px 24px;
   }
   .research-heading {
@@ -779,6 +848,13 @@
     flex-direction: column;
     gap: 11px;
     align-items: stretch;
+  }
+  .research-grid > *,
+  .research-center,
+  .research-left,
+  .research-right {
+    width: 100%;
+    min-width: 0;
   }
   .research-left {
     grid-template-columns: 1fr;
