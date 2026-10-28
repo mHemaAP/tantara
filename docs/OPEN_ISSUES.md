@@ -12,7 +12,7 @@
 
 - The verifier's `researcher strategy write -> 403` probe returned `405`. That request does not prove authorization behavior for the intended route. The full API/Playwright suite passed its covered authorization cases, but this particular script check remains unproven.
 
-- The full Playwright run has one intentional existing skip: cross-user client/task/calendar reads require a second seeded identity. Exact result: `1 skipped, 102 passed (10.1m)`; exit 0.
+- The full Playwright run has one intentional existing skip: cross-user client/task/calendar reads require a second seeded identity. Exact result: `1 skipped, 102 passed (9.7m)`; exit 0.
 
 - `pnpm lint` and `pnpm build` pass with the existing React hook dependency warning at `frontend/src/features/calendar/index.tsx:137` for `cursorParts.month` and `.year`.
 
