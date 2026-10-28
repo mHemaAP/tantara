@@ -2,6 +2,13 @@ import { test, expect } from '@playwright/test';
 import { taskGroup } from '../src/features/tasks/grouping';
 import { matterStatusClass } from '../src/features/cases/status';
 import { displayClientStatus } from '../src/features/clients/status';
+import {
+  WORKSPACE_TIME_ZONE,
+  calendarDay,
+  workspaceDateKey,
+  workspaceDateTimeInput,
+  workspaceDateTimeIso,
+} from '../src/lib/datetime';
 import { test as browserTest, expect as browserExpect } from '@playwright/test';
 const base = `${process.env.TANTARA_API_ORIGIN || 'http://127.0.0.1:8010'}/api/v1`;
 async function apiReady() {
@@ -21,6 +28,16 @@ test('tasks partition into exclusive workspace-timezone groups including undated
   expect(group('open', '2026-11-02T10:00:00+05:30')).toBe('Later');
   expect(group('open', null)).toBe('No due date');
   expect(group('done', null)).toBe('Done');
+});
+
+test('workspace datetime editing preserves zoned wall time and civil calendar days', () => {
+  expect(WORKSPACE_TIME_ZONE).toBe('Asia/Kolkata');
+  expect(workspaceDateTimeInput('2026-10-27T04:30:00Z')).toBe('2026-10-27T10:00');
+  expect(workspaceDateTimeIso('2026-10-27T10:00')).toBe('2026-10-27T10:00:00+05:30');
+  expect(workspaceDateKey('2026-10-27')).toBe('2026-10-27');
+  const civil = calendarDay(2026, 9, 27);
+  expect(civil.getUTCDate()).toBe(27);
+  expect(workspaceDateKey('2026-10-26T20:00:00Z')).toBe('2026-10-27');
 });
 
 test('case status classes use semantic colors only for known statuses', () => {
@@ -53,6 +70,98 @@ browserTest('activity feed does not masquerade as an unread signal', async ({ pa
   await page.getByRole('button', { name: 'Recent activity' }).click();
   browserExpect(await page.locator('.activity-dot').count()).toBe(0);
 });
+
+browserTest('task wall time stays in the workspace zone inside a UTC browser', async ({ page, request }) => {
+  const login = await request.post(`${base}/auth/login`, {
+    data: { email: 'advocate@tantara.local', password: 'tantara-local' },
+  });
+  browserExpect(login.ok()).toBeTruthy();
+  const token = (await login.json()).access_token as string;
+  const headers = { Authorization: `Bearer ${token}` };
+  const task = await request.post(`${base}/tasks`, {
+    headers,
+    data: { title: 'Workspace wall time check', due_at: '2027-02-03T10:00:00+05:30' },
+  });
+  browserExpect(task.ok()).toBeTruthy();
+  const deadline = await request.post(`${base}/tasks`, {
+    headers,
+    data: { title: 'Workspace midnight deadline check', due_at: '2027-02-03T00:00:00+05:30' },
+  });
+  browserExpect(deadline.ok()).toBeTruthy();
+  try {
+    await page.addInitScript((value) => {
+      localStorage.setItem('tantara_token', value);
+      document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+    }, token);
+    await page.goto('/tasks');
+    const row = page.locator('.task-row').filter({ hasText: 'Workspace wall time check' });
+    await browserExpect(row).toBeVisible();
+    await browserExpect(row.locator('.task-due')).toContainText('10:00');
+    await browserExpect(row.locator('.task-due')).not.toContainText('05:30');
+    const deadlineRow = page.locator('.task-row').filter({ hasText: 'Workspace midnight deadline check' });
+    await browserExpect(deadlineRow.locator('.task-due')).toContainText('Deadline');
+    await browserExpect(deadlineRow.locator('.task-due')).not.toContainText('12:00 am');
+    browserExpect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe('UTC');
+    browserExpect(await page.evaluate(() => localStorage.getItem('tantara_token'))).toBeTruthy();
+    browserExpect(await page.evaluate(() => document.documentElement.scrollWidth <= 1440)).toBeTruthy();
+    await page.screenshot({ path: '../docs/screenshots/tasks-1440x900.png', fullPage: false });
+  } finally {
+    await request.delete(`${base}/tasks/${(await task.json()).id}`, { headers });
+    await request.delete(`${base}/tasks/${(await deadline.json()).id}`, { headers });
+  }
+});
+
+browserTest(
+  'calendar presents midnight deadlines and event records as all day without times',
+  async ({ page, request }) => {
+    const login = await request.post(`${base}/auth/login`, {
+      data: { email: 'advocate@tantara.local', password: 'tantara-local' },
+    });
+    browserExpect(login.ok()).toBeTruthy();
+    const token = (await login.json()).access_token as string;
+    const headers = { Authorization: `Bearer ${token}` };
+    const day = await page.evaluate(() => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const number = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+      const target = new Date(Date.UTC(number('year'), number('month') - 1, number('day') + 2));
+      return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, '0')}-${String(target.getUTCDate()).padStart(2, '0')}`;
+    });
+    const created = await request.post(`${base}/cases`, {
+      headers,
+      data: {
+        title: 'UTC calendar all-day proof',
+        filed_at: `${day}T00:00:00+05:30`,
+        notice_date: `${day}T00:00:00+05:30`,
+      },
+    });
+    browserExpect(created.ok()).toBeTruthy();
+    const caseId = (await created.json()).id as string;
+    try {
+      await page.addInitScript((value) => {
+        localStorage.setItem('tantara_token', value);
+        document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+      }, token);
+      await page.goto('/calendar');
+      const event = page.getByRole('button', { name: 'View All day', exact: true }).first();
+      const deadline = page.getByRole('button', { name: 'View Deadline', exact: true }).first();
+      await browserExpect(event).toBeVisible();
+      await browserExpect(deadline).toBeVisible();
+      await browserExpect(event.locator('time')).toHaveCount(0);
+      await browserExpect(deadline.locator('time')).toHaveCount(0);
+      browserExpect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe('UTC');
+      browserExpect(await page.evaluate(() => localStorage.getItem('tantara_token'))).toBeTruthy();
+      browserExpect(await page.evaluate(() => document.documentElement.scrollWidth <= 1440)).toBeTruthy();
+      await page.screenshot({ path: '../docs/screenshots/calendar-1440x900.png', fullPage: false });
+    } finally {
+      await request.delete(`${base}/cases/${caseId}`, { headers });
+    }
+  },
+);
 
 browserTest('shell renders the identity returned by the signed-in account', async ({ page, request }) => {
   const login = await request.post(`${base}/auth/login`, {
