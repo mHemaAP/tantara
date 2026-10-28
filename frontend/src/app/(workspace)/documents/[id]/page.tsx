@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, api, authToken } from '@/lib/api/client';
 import { RefreshCw, FileText, Download, Sparkles, Pencil, Check } from 'lucide-react';
@@ -146,6 +146,7 @@ function formatMetadataDate(value?: string) {
 
 export default function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const doc = useQuery({ queryKey: ['documents', id], queryFn: () => api.get<Doc>(`/documents/${id}`) });
   const text = useQuery({
     queryKey: ['documents', id, 'text'],
@@ -565,7 +566,7 @@ export default function DocumentDetailPage() {
             !chunkHits.data.items.some((hit) => hit.document_id === id) && (
               <p className="muted">No matching chunks in this document.</p>
             )}
-          <details className="document-page-text-list">
+          <details className="document-page-text-list" open={searchParams.has('page')}>
             <summary>Extracted text by page</summary>
             <div className="document-pages">
               {pageItems.map((p) => (
