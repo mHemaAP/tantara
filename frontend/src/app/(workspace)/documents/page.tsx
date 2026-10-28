@@ -123,7 +123,7 @@ export default function DocumentsPage() {
   const maximumUploadMb = 25;
   const caseTitles = new Map((cases.data?.items ?? []).map((item) => [item.id, item.title]));
   return (
-    <main className="documents-page">
+    <div className="documents-page">
       <header className="documents-heading">
         <div>
           <p className="documents-eyebrow">Workspace</p>
@@ -397,7 +397,7 @@ export default function DocumentsPage() {
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }
 
