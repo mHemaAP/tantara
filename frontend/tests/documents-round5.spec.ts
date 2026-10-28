@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1`;
 const screenshots = '../docs/screenshots';
 
 async function signIn(request: APIRequestContext) {
@@ -208,7 +208,7 @@ test('upload control reports completion and opens the uploaded PDF with a source
   await expect(uploadedLink).toBeVisible({ timeout: 30000 });
   const uploadedHref = await uploadedLink.getAttribute('href');
   expect(uploadedHref).toBeTruthy();
-  const uploadedUrl = new URL(uploadedHref!, 'http://127.0.0.1:3012');
+  const uploadedUrl = new URL(uploadedHref!, process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3010');
   const uploadedId = uploadedUrl.pathname.split('/').at(-1)!;
   const headers = { Authorization: `Bearer ${token}` };
   await expect
