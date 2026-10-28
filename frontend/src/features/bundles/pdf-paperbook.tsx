@@ -126,7 +126,7 @@ export function PdfPaperbook({ file, initialPage = 1 }: Props) {
           <button
             key={index + 1}
             aria-label={`Show PDF page ${index + 1}`}
-            aria-current={pageNumber === index + 1 ? 'true' : undefined}
+            aria-current={pageNumber === index + 1 ? 'page' : undefined}
             onClick={() => setPageNumber(index + 1)}
           >
             {index + 1}
