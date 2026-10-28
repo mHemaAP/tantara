@@ -3,6 +3,7 @@ import { collectionsApi } from '@/features/documents/api';
 
 export type ResearchSource = {
   citation_ref?: string;
+  citation_number?: number;
   document_id: string;
   document_title: string;
   chunk_id: string;
