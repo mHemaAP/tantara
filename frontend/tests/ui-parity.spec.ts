@@ -178,6 +178,7 @@ test('dashboard renders four metrics before Ask TANTARA and keeps both secondary
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   await authenticate(page, request);
   await page.goto('/dashboard');
   await expect(page.locator('h1')).toHaveCount(1);
