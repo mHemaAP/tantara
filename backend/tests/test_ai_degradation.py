@@ -190,7 +190,9 @@ def test_reachable_local_http_model_keeps_success_contract(client):
     class LocalModel(BaseHTTPRequestHandler):
         def do_POST(self):
             self.rfile.read(int(self.headers.get("content-length", "0")))
-            body = json.dumps({"choices": [{"message": {"content": "The seat is Mumbai."}}]}).encode()
+            body = json.dumps(
+                {"choices": [{"message": {"content": "The seat is Mumbai [1]."}}]}
+            ).encode()
             self.send_response(200)
             self.send_header("content-type", "application/json")
             self.send_header("content-length", str(len(body)))
@@ -219,9 +221,12 @@ def test_reachable_local_http_model_keeps_success_contract(client):
         ).json()
         assert result["status"] == "ok"
         assert result["model"] == {"provider": "local", "model": "local-fixture-model"}
+        assert result["answer"] == "The seat is Mumbai [1]."
+        assert result["answer_kind"] == "model_synthesis"
         assert "Mumbai" in result["answer"] and "[1]" in result["answer"]
         assert result["answer_basis"] == "cited_excerpts"
         citation = result["citations"][0]
+        assert citation["citation_number"] == 1
         assert citation["document_id"] == document_id
         assert "retreival_score" not in citation
         assert citation["retrieval_score"] > 0
