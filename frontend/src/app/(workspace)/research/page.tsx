@@ -245,10 +245,7 @@ async function hydrateSession(session: ResearchSession): Promise<ResearchSession
     messages: session.messages?.map((message) => ({
       ...message,
       raw_status: message.raw_status ?? message.status,
-      status:
-        message.status === 'insufficient_evidence' || message.status === 'no_evidence'
-          ? 'no_evidence'
-          : message.status,
+      status: message.status === 'insufficient_evidence' ? 'no_evidence' : message.status,
       citations: message.citations?.map((citation) => {
         const document = documents.get(citation.document_id);
         return {
@@ -458,10 +455,7 @@ export default function ResearchPage() {
   const activeMessages = selected?.messages ?? [];
   const latestAssistant = [...activeMessages].reverse().find((message) => message.role === 'assistant');
   const restoredSources = latestAssistant?.citations ?? EMPTY_SOURCES;
-  const answerHasInsufficientEvidence =
-    answer?.status === 'no_evidence' ||
-    answer?.answer_basis === 'insufficient_evidence' ||
-    answer?.insufficient_evidence === true;
+  const answerHasInsufficientEvidence = answer?.status === 'no_evidence';
   const selectedSources = useMemo(
     () =>
       answer
