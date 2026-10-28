@@ -165,8 +165,10 @@ export default function DocumentDetailPage() {
   });
   const download = async () => {
     try {
-      const base = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8010').replace(/\/$/, '');
-      const r = await fetch(`${base}/api/v1/documents/${id}/file`, {
+      const base = process.env.NEXT_PUBLIC_API_BASE_URL
+        ? `${process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/$/, '')}/api/v1`
+        : '/api/v1';
+      const r = await fetch(`${base}/documents/${id}/file`, {
         headers: authToken() ? { Authorization: `Bearer ${authToken()}` } : {},
       });
       if (!r.ok) throw new Error('Document download unavailable');
@@ -203,37 +205,15 @@ export default function DocumentDetailPage() {
     setReading(true);
     try {
       try {
-        await documentsApi.aiStatus();
-      } catch (error) {
-        setAiOutcome(classifyAiFailure(error, 'response_loading_failure'));
-        return;
-      }
-      let readiness;
-      try {
-        readiness = await documentsApi.askForReadiness(
-          `Summarize the source document ${doc.data?.title ?? ''} and identify its arbitration terms.`,
-          doc.data?.case_id,
-        );
-      } catch (error) {
-        setAiOutcome(classifyAiFailure(error, 'model_unavailable'));
-        return;
-      }
-      if (readiness.status === 'model_unavailable') {
-        setAiOutcome('model_unavailable');
-        return;
-      }
-      if (readiness.status === 'embedding_unavailable') {
-        setAiOutcome('embedding_failure');
-        return;
-      }
-      if (readiness.status === 'no_evidence') {
-        setAiOutcome('no_evidence');
-        return;
-      }
-      try {
         await documentsApi.aiRead(id);
       } catch (error) {
         setAiOutcome(classifyAiFailure(error, 'extraction_failure'));
+        return;
+      }
+      const hasEvidence = Boolean(text.data?.text?.trim() || pageItems?.some((page) => page.text?.trim()));
+      if (!hasEvidence) {
+        await extraction.refetch();
+        setAiOutcome('no_evidence');
         return;
       }
       const loadedExtraction = await extraction.refetch();
@@ -392,9 +372,10 @@ export default function DocumentDetailPage() {
                   <Sparkles size={17} /> Document extraction
                 </h2>
                 <p>Local text extraction · candidate only · review before relying on it.</p>
-                {aiSettings.data?.model && (
+                {(aiSettings.data?.runtime_status?.model || aiSettings.data?.model) && (
                   <small className="ai-configured-model">
-                    Configured model (not used for these fields): {aiSettings.data.model}
+                    Configured model (not used for these fields):{' '}
+                    {aiSettings.data.runtime_status?.model || aiSettings.data.model}
                   </small>
                 )}
               </div>
