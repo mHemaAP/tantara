@@ -312,7 +312,7 @@ def generate_strategy(cid: str, user=Depends(current_user)):
                         "support": [first_source],
                     }
                 ]
-                generated["assertion_citations"].append(
+                assertion_citations.append(
                     {"field": "legal_arguments", "index": 0, "citations": [first_source]}
                 )
                 validation_warnings.append(
