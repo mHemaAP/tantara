@@ -29,7 +29,7 @@ def _case_and_document(client, headers):
         headers=headers,
         json={"title": "Workflow case", "claimant": "Claimant Ltd", "respondent": "Respondent Ltd"},
     )
-    assert case.status_code == 200
+    assert case.status_code == 201
     uploaded = client.post(
         "/api/v1/documents/upload",
         headers=headers,
