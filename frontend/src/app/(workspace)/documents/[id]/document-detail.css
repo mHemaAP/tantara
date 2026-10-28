@@ -339,6 +339,15 @@
   cursor: pointer;
 }
 
+.document-page-citation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #4338ca;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 .document-page p {
   overflow-wrap: anywhere;
 }
