@@ -1,65 +1,55 @@
-"use client";
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
-import { ArrowRight, Plus, RefreshCw, Search } from "lucide-react";
-import { casesApi, Matter } from "../api";
-import { matterStatusClass, matterStatusLabel } from "../status";
-import "../styles.css";
+'use client';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Plus, RefreshCw, Search } from 'lucide-react';
+import { casesApi, Matter } from '../api';
+import { matterStatusClass, matterStatusLabel } from '../status';
+import '../styles.css';
 const tabs = [
-  ["all", "All Cases"],
-  ["active", "Active"],
-  ["pending", "Pending"],
-  ["closed", "Closed"],
+  ['all', 'All Cases'],
+  ['active', 'Active'],
+  ['pending', 'Pending'],
+  ['closed', 'Closed'],
 ] as const;
 export function CaseList({
-  initialStatus = "all",
+  initialStatus = 'all',
   compact = false,
 }: {
   initialStatus?: string;
   compact?: boolean;
 }) {
   const router = useRouter();
-  const [preview, setPreview] = useState(false);
-  useEffect(
-    () => setPreview(localStorage.getItem("tantara_preview") === "true"),
-    [],
-  );
   const [status, setStatus] = useState(initialStatus),
-    [q, setQ] = useState(""),
+    [q, setQ] = useState(''),
     [page, setPage] = useState(1),
-    [sort, setSort] = useState("updated_at"),
-    [direction, setDirection] = useState<"asc" | "desc">("desc"),
+    [sort, setSort] = useState('updated_at'),
+    [direction, setDirection] = useState<'asc' | 'desc'>('desc'),
     [menu, setMenu] = useState<string | null>(null);
   useEffect(() => {
-    const value = new URLSearchParams(window.location.search).get("status");
-    if (value && ["active", "pending", "closed", "archived"].includes(value))
-      setStatus(value);
+    const value = new URLSearchParams(window.location.search).get('status');
+    if (value && ['active', 'pending', 'closed', 'archived'].includes(value)) setStatus(value);
   }, []);
   const query = useMemo(
     () =>
-      `?page=${page}&page_size=${compact ? 5 : 20}${q ? `&q=${encodeURIComponent(q)}` : ""}${status !== "all" ? `&status=${status}` : ""}&sort=${direction === "desc" ? `-${sort}` : sort}`,
+      `?page=${page}&page_size=${compact ? 5 : 20}${q ? `&q=${encodeURIComponent(q)}` : ''}${status !== 'all' ? `&status=${status}` : ''}&sort=${direction === 'desc' ? `-${sort}` : sort}`,
     [page, q, status, compact, sort, direction],
   );
   const data = useQuery({
-    queryKey: ["cases", query],
+    queryKey: ['cases', query],
     queryFn: () => casesApi.list(query),
   });
   const rows = data.data?.items ?? [];
   const countQuery = useQuery({
-    queryKey: ["cases", "counts"],
+    queryKey: ['cases', 'counts'],
     queryFn: async () => {
       const [all, active, pending, closed] = await Promise.all(
-        ["", ...["active", "pending", "closed"]].map((status) =>
-          casesApi.list(
-            `?page=1&page_size=1${status ? `&status=${status}` : ""}`,
-          ),
+        ['', ...['active', 'pending', 'closed']].map((status) =>
+          casesApi.list(`?page=1&page_size=1${status ? `&status=${status}` : ''}`),
         ),
       );
-      const archived = await casesApi.list(
-        "?page=1&page_size=1&status=archived",
-      );
+      const archived = await casesApi.list('?page=1&page_size=1&status=archived');
       return {
         all: all.total,
         active: active.total,
@@ -74,47 +64,38 @@ export function CaseList({
     setStatus(s);
     setPage(1);
     router.replace(
-      s === "all"
-        ? "/cases"
-        : s === "closed"
-          ? "/cases?status=closed"
-          : `/cases/${s === "active" ? "active" : s === "pending" ? "pending" : "archived"}`,
+      s === 'all'
+        ? '/cases'
+        : s === 'closed'
+          ? '/cases?status=closed'
+          : `/cases/${s === 'active' ? 'active' : s === 'pending' ? 'pending' : 'archived'}`,
     );
   };
   const action = async (kind: string, c: Matter) => {
     setMenu(null);
-    if (
-      (preview || localStorage.getItem("tantara_preview") === "true") &&
-      ["Archive", "Delete"].includes(kind)
-    )
-      return;
-    if (kind === "Open") {
+    if (kind === 'Open') {
       router.push(`/cases/${c.id}`);
       return;
     }
-    if (kind === "Edit") {
+    if (kind === 'Edit') {
       router.push(`/cases/${c.id}/edit`);
       return;
     }
     if (!window.confirm(`${kind} “${c.title}”?`)) return;
     try {
-      if (kind === "Delete") await casesApi.remove(c.id);
-      else await casesApi.update(c.id, { status: "archived" });
+      if (kind === 'Delete') await casesApi.remove(c.id);
+      else await casesApi.update(c.id, { status: 'archived' });
       await data.refetch();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Unable to update case");
+      window.alert(e instanceof Error ? e.message : 'Unable to update case');
     }
   };
   return (
-    <section className="matter-wrap">
+    <section className={`matter-wrap${compact ? ' compact' : ''}`}>
       <div className="matter-head">
         <div>
-          <h1 className="matter-title">
-            {compact ? "Case Management" : "Cases"}
-          </h1>
-          {!compact && (
-            <p className="subheading">Manage your arbitration matters</p>
-          )}
+          <h1 className="matter-title">{compact ? 'Case Management' : 'Cases'}</h1>
+          {!compact && <p className="subheading">Manage your arbitration matters</p>}
         </div>
         <Link className="matter-action" href="/cases/new">
           <Plus size={16} /> New Case
@@ -122,27 +103,22 @@ export function CaseList({
       </div>
       <div className="matter-card">
         <nav className="matter-tabs" aria-label="Case status">
-          {[
-            ...tabs,
-            ...(initialStatus === "archived"
-              ? [["archived", "Archived"] as const]
-              : []),
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              className={status === key ? "active" : ""}
-              aria-pressed={status === key}
-              onClick={() => choose(key)}
-            >
-              {label} ({counts?.[key] ?? "—"})
-            </button>
-          ))}
+          {[...tabs, ...(initialStatus === 'archived' ? [['archived', 'Archived'] as const] : [])].map(
+            ([key, label]) => (
+              <button
+                key={key}
+                className={status === key ? 'active' : ''}
+                aria-pressed={status === key}
+                onClick={() => choose(key)}
+              >
+                {label} ({counts?.[key] ?? '—'})
+              </button>
+            ),
+          )}
         </nav>
         {!compact && (
           <div className="matter-tools">
-            <label
-              style={{ display: "flex", alignItems: "center", gap: 7, flex: 1 }}
-            >
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1 }}>
               <Search size={15} />
               <input
                 aria-label="Search cases"
@@ -154,11 +130,7 @@ export function CaseList({
                 }}
               />
             </label>
-            <select
-              aria-label="Sort cases"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-            >
+            <select aria-label="Sort cases" value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="updated_at">Recently updated</option>
               <option value="title">Case title</option>
               <option value="next_hearing_at">Next hearing</option>
@@ -167,12 +139,7 @@ export function CaseList({
         )}
         {data.isLoading ? (
           <div aria-label="Loading cases">
-            <div
-              className="matter-table-scroll"
-              role="region"
-              aria-label="Cases table"
-              tabIndex={0}
-            >
+            <div className="matter-table-scroll" role="region" aria-label="Cases table" tabIndex={0}>
               <table className="matter-table">
                 <thead>
                   <tr>
@@ -191,66 +158,41 @@ export function CaseList({
           </div>
         ) : data.isError ? (
           <div className="matter-error">
-            <p>
-              Cases could not be loaded. Check the workspace API connection.
-            </p>
-            <button
-              className="matter-action"
-              onClick={() => void data.refetch()}
-            >
+            <p>Cases could not be loaded. Check the workspace API connection.</p>
+            <button className="matter-action" onClick={() => void data.refetch()}>
               <RefreshCw size={14} /> Retry
             </button>
           </div>
         ) : rows.length === 0 ? (
-          <div className="matter-empty">
-            {q ? "No matching cases" : "No matters yet"}
-          </div>
+          <div className="matter-empty">{q ? 'No matching cases' : 'No matters yet'}</div>
         ) : (
-          <div
-            className="matter-table-scroll"
-            role="region"
-            aria-label="Cases table"
-            tabIndex={0}
-          >
+          <div className="matter-table-scroll" role="region" aria-label="Cases table" tabIndex={0}>
             <table className="matter-table">
               <thead>
                 <tr>
-                  {(
-                    ["title", "forum", "next_hearing_at", "status"] as const
-                  ).map((key) => (
+                  {(['title', 'forum', 'next_hearing_at', 'status'] as const).map((key) => (
                     <th
                       key={key}
-                      aria-sort={
-                        sort === key
-                          ? direction === "asc"
-                            ? "ascending"
-                            : "descending"
-                          : "none"
-                      }
+                      aria-sort={sort === key ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
                     >
                       <button
                         type="button"
                         onClick={() => {
-                          if (sort === key)
-                            setDirection(direction === "asc" ? "desc" : "asc");
+                          if (sort === key) setDirection(direction === 'asc' ? 'desc' : 'asc');
                           else {
                             setSort(key);
-                            setDirection("asc");
+                            setDirection('asc');
                           }
                         }}
                       >
-                        {key === "title"
-                          ? "Case Title"
-                          : key === "forum"
-                            ? "Tribunal / Institution"
-                            : key === "next_hearing_at"
-                              ? "Next Hearing"
-                              : "Status"}
-                        {sort === key
-                          ? direction === "asc"
-                            ? " ↑"
-                            : " ↓"
-                          : ""}
+                        {key === 'title'
+                          ? 'Case Title'
+                          : key === 'forum'
+                            ? 'Tribunal / Institution'
+                            : key === 'next_hearing_at'
+                              ? 'Next Hearing'
+                              : 'Status'}
+                        {sort === key ? (direction === 'asc' ? ' ↑' : ' ↓') : ''}
                       </button>
                     </th>
                   ))}
@@ -263,27 +205,22 @@ export function CaseList({
                     <td>
                       <Link href={`/cases/${c.id}`}>{c.title}</Link>
                     </td>
-                    <td>{c.forum || c.institution || "—"}</td>
+                    <td>{c.forum || c.institution || '—'}</td>
                     <td>
                       {c.next_hearing_at
-                        ? new Date(c.next_hearing_at).toLocaleDateString(
-                            "en-IN",
-                            {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            },
-                          )
-                        : "—"}
+                        ? new Date(c.next_hearing_at).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : '—'}
                     </td>
                     <td>
-                      <span
-                        className={`status-pill ${matterStatusClass(c.status)}`}
-                      >
+                      <span className={`status-pill ${matterStatusClass(c.status)}`}>
                         {matterStatusLabel(c.status)}
                       </span>
                     </td>
-                    <td style={{ position: "relative" }}>
+                    <td style={{ position: 'relative' }}>
                       <button
                         className="matter-more"
                         aria-label={`Actions for ${c.title}`}
@@ -295,36 +232,28 @@ export function CaseList({
                       {menu === c.id && (
                         <div
                           style={{
-                            position: "absolute",
+                            position: 'absolute',
                             right: 8,
                             zIndex: 3,
-                            background: "#fff",
-                            border: "1px solid #e5eaf2",
+                            background: '#fff',
+                            border: '1px solid #e5eaf2',
                             borderRadius: 8,
-                            boxShadow: "0 8px 24px #0002",
+                            boxShadow: '0 8px 24px #0002',
                             minWidth: 120,
                           }}
                         >
-                          {["Open", "Edit", "Archive", "Delete"].map((a) => (
+                          {['Open', 'Edit', 'Archive', 'Delete'].map((a) => (
                             <button
                               key={a}
                               onClick={() => void action(a, c)}
-                              disabled={
-                                preview && ["Archive", "Delete"].includes(a)
-                              }
-                              title={
-                                preview && ["Archive", "Delete"].includes(a)
-                                  ? "Changes are disabled in read-only preview"
-                                  : undefined
-                              }
                               style={{
-                                display: "block",
-                                width: "100%",
-                                textAlign: "left",
-                                padding: "8px 12px",
+                                display: 'block',
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '8px 12px',
                                 border: 0,
-                                background: "white",
-                                cursor: "pointer",
+                                background: 'white',
+                                cursor: 'pointer',
                               }}
                             >
                               {a}
@@ -344,16 +273,16 @@ export function CaseList({
             {rows.map((c) => (
               <article className="matter-mobile-case" key={c.id}>
                 <Link href={`/cases/${c.id}`}>{c.title}</Link>
-                <span>{c.forum || c.institution || "—"}</span>
+                <span>{c.forum || c.institution || '—'}</span>
                 <span>
-                  Next hearing:{" "}
+                  Next hearing:{' '}
                   {c.next_hearing_at
-                    ? new Date(c.next_hearing_at).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
+                    ? new Date(c.next_hearing_at).toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
                       })
-                    : "—"}
+                    : '—'}
                 </span>
                 <span className={`status-pill ${matterStatusClass(c.status)}`}>
                   {matterStatusLabel(c.status)}
@@ -366,18 +295,15 @@ export function CaseList({
           <span>
             {data.data
               ? `${data.data.total === 0 ? 0 : (data.data.page - 1) * data.data.page_size + 1}–${Math.min(data.data.page * data.data.page_size, data.data.total)} of ${data.data.total}`
-              : " "}
+              : ' '}
           </span>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {!compact && (
               <>
                 <button disabled={page <= 1} onClick={() => setPage(page - 1)}>
                   Previous
                 </button>
-                <button
-                  disabled={!data.data || page >= data.data.pages}
-                  onClick={() => setPage(page + 1)}
-                >
+                <button disabled={!data.data || page >= data.data.pages} onClick={() => setPage(page + 1)}>
                   Next
                 </button>
               </>
