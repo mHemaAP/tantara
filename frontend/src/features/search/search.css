@@ -112,13 +112,21 @@
 }
 @media (max-width: 600px) {
   .search-query {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     padding: 9px;
   }
+  .search-query > svg {
+    display: none;
+  }
   .search-query input {
+    grid-column: 1 / -1;
+    width: 100%;
     font-size: 12px;
   }
   .search-query .documents-button {
+    grid-column: 2;
     padding: 0 10px;
   }
   .search-hit-foot {
@@ -153,6 +161,8 @@
 }
 @media (max-width: 600px) {
   .search-collection-filter {
+    grid-column: 1;
     width: 100%;
+    min-width: 0;
   }
 }
