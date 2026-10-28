@@ -219,7 +219,7 @@ test('page-range 400 is shown and duplicate documents are unavailable for select
   await capture(page, 'bundle-1440x900-duplicate-guard-real.png');
   await page.getByLabel('Source page end for Scanned Arbitration Agreement').fill('99');
   await page.getByRole('button', { name: 'Save contents and refresh page ranges' }).click();
-  await expect(page.getByRole('alert')).toContainText('Bundle item page range is outside the source document');
+  await expect(page.locator('.bundle-notice[role="alert"]')).toContainText('Bundle item page range is outside the source document');
   await capture(page, 'bundle-1440x900-range-error-real.png');
 });
 
