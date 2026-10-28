@@ -203,14 +203,8 @@ test('viewer metadata uses separated definition rows and an accessible copy conf
 });
 
 test('page-aware chunks find SIAC Rules and open highlighted PDF page 2', async ({ page, request }) => {
-  const token = await signIn(request);
-  const headers = { Authorization: `Bearer ${token}` };
-  const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
-  const document = documents.items.find(
-    (item: { filename: string }) => item.filename === 'arbitration-text-layer.pdf',
-  );
-  expect(document).toBeTruthy();
-  await openWithToken(page, token, `/documents/${document.id}`);
+  const { documentId, token } = await uploadFixture(request, 'arbitration-text-layer.pdf');
+  await openWithToken(page, token, `/documents/${documentId}`);
   await page.getByLabel('Search this document').fill('SIAC Rules');
   await page.getByRole('button', { name: 'Find chunks' }).click();
   const pageTwoHit = page.locator('.citation-chunk').filter({ hasText: 'Page 2' });
