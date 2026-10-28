@@ -95,15 +95,16 @@ def _http_error_code(status_code: int) -> str:
         401: "unauthorized",
         403: "forbidden",
         404: "not_found",
+        405: "method_not_allowed",
         409: "duplicate",
         413: "too_large",
         422: "validation_error",
         429: "rate_limited",
         503: "model_unavailable",
-    }.get(status_code, "request_error")
+    }.get(status_code, "http_error")
 
 
-def _http_error_response(status_code: int, detail) -> JSONResponse:
+def _http_error_response(status_code: int, detail, headers=None) -> JSONResponse:
     code = _http_error_code(status_code)
     if isinstance(detail, dict):
         message = detail.get("message", "Request failed")
@@ -111,10 +112,13 @@ def _http_error_response(status_code: int, detail) -> JSONResponse:
     else:
         message = str(detail)
         extra = {}
+    allow = next((value for key, value in (headers or {}).items() if key.lower() == "allow"), None)
+    if status_code == 405 and allow:
+        extra["allowed_methods"] = allow
     error = {"code": code, "message": message}
     if extra:
         error["details"] = extra
-    return JSONResponse(status_code=status_code, content={"error": error})
+    return JSONResponse(status_code=status_code, content={"error": error}, headers=headers)
 
 
 @app.exception_handler(HTTPException)
@@ -124,7 +128,7 @@ async def http_error(request, exc):
 
 @app.exception_handler(StarletteHTTPException)
 async def starlette_http_error(request, exc):
-    return _http_error_response(exc.status_code, exc.detail)
+    return _http_error_response(exc.status_code, exc.detail, exc.headers)
 
 
 @app.exception_handler(Exception)
