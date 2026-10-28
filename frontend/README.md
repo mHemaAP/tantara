@@ -64,7 +64,7 @@ Navigation only exposes routes present in this phase. Cases, Research, Drafts, C
 ## Complete in this phase
 
 - Responsive shell, accessible active navigation, command search (`Ctrl-K` / `⌘K`), account menu, login, guest preview, API client, query defaults, offline/error handling, dashboard, eight Settings paths, original SVG legal illustrations, screenshots, and Playwright smoke harness.
-- All dashboard metrics are read from `/dashboard/summary`; workspace data lists and settings are read from their API endpoints. When the backend is offline, the E2E/screenshot harness can use clearly isolated contract fixtures in `tests/api-fixtures.mjs`.
+- All dashboard metrics are read from `/dashboard/summary`; workspace data lists and settings are read from their API endpoints. E2E and screenshot checks use the running backend; no API fixtures are installed in the browser.
 
 ## Pending integration
 
