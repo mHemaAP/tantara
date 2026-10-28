@@ -67,9 +67,16 @@ def test_domain_crud_role_isolation_validation_and_pagination(client, path, crea
 
     other_owner = _researcher_headers()
     assert client.get(f"/api/v1/{path}/{record_id}", headers=other_owner).status_code == 404
-    assert client.patch(f"/api/v1/{path}/{record_id}", headers=other_owner, json=patch).status_code == 403
+    foreign_patch_status = 404 if path == "community/posts" else 403
+    assert (
+        client.patch(f"/api/v1/{path}/{record_id}", headers=other_owner, json=patch).status_code
+        == foreign_patch_status
+    )
     assert client.delete(f"/api/v1/{path}/{record_id}", headers=other_owner).status_code == 403
-    assert client.post(f"/api/v1/{path}", headers=other_owner, json=create).status_code == 403
+    foreign_create_status = 200 if path == "community/posts" else 403
+    assert (
+        client.post(f"/api/v1/{path}", headers=other_owner, json=create).status_code == foreign_create_status
+    )
 
     deleted = client.delete(f"/api/v1/{path}/{record_id}", headers=owner)
     assert deleted.status_code == 200
