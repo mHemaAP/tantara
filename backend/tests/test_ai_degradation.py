@@ -52,7 +52,7 @@ def test_dead_user_configured_model_returns_explicit_unavailable_result(client):
     assert result["answer"] == (
         "The search could not be completed because the configured language model is unavailable."
     )
-    assert result["citations"] == []
+    assert result["citations"] == result["supports"] == []
     assert "found" not in result["answer"]
 
 
@@ -91,7 +91,7 @@ def test_dead_model_is_honest_on_all_generation_and_assistance_surfaces(client, 
         "/api/v1/ai/ask", headers=headers, json={"question": "Which city appears in marker ZXQ-771?"}
     ).json()
     assert ask["status"] == "model_unavailable" and ask["model"] is None
-    assert ask["answer_kind"] == "model_unavailable" and ask["citations"] == []
+    assert ask["answer_kind"] == "model_unavailable" and ask["citations"] == ask["supports"] == []
     assert "evidence is available" not in ask["answer"].lower()
     assert "dead-local-model" not in ask["answer"]
 
@@ -104,7 +104,7 @@ def test_dead_model_is_honest_on_all_generation_and_assistance_surfaces(client, 
     assert session_answer["status"] == "model_unavailable" and session_answer["model"] is None
     assert session_answer["answer_kind"] == "model_unavailable"
     assert "dead-local-model" not in session_answer["answer"]
-    assert session_answer["citations"] == []
+    assert session_answer["citations"] == session_answer["supports"] == []
 
     read = client.post(f"/api/v1/documents/{document_id}/ai-read", headers=headers).json()
     assert read["status"] == "local_extraction" and read["model"] is None
@@ -150,7 +150,7 @@ def test_no_evidence_embedding_unavailable_and_model_unavailable_are_distinct(cl
     no_evidence = client.post(
         "/api/v1/ai/ask", headers=headers, json={"question": "qzxvflibbertigibbet"}
     ).json()
-    assert no_evidence["status"] == "no_evidence"
+    assert no_evidence["status"] == "insufficient_evidence"
     assert no_evidence["model"] is None and no_evidence["citations"] == []
     case = client.post("/api/v1/cases", headers=headers, json={"title": "No evidence draft case"}).json()
     draft = client.post(
@@ -215,7 +215,8 @@ def test_reachable_local_http_model_keeps_success_contract(client):
         ).json()
         assert result["status"] == "ok"
         assert result["model"] == {"provider": "local", "model": "local-fixture-model"}
-        assert result["answer"] == "The seat is Mumbai."
+        assert "Mumbai" in result["answer"] and "[1]" in result["answer"]
+        assert result["answer_basis"] == "cited_excerpts"
         citation = result["citations"][0]
         assert citation["document_id"] == document_id
         assert citation["score"] == citation["retrieval_score"] == citation["retreival_score"]
@@ -257,4 +258,6 @@ def test_ai_citation_payload_keeps_both_score_spellings(client, monkeypatch):
     assert response.json()["model"]["model"] == "MiniCPM5-2B"
     citation = response.json()["citations"][0]
     assert citation["document_id"] == document_id
+    assert response.json()["supports"][0]["quote"] in citation["excerpt"]
+    assert response.json()["answer_basis"] == "cited_excerpts"
     assert citation["score"] == citation["retrieval_score"] == citation["retreival_score"]
