@@ -22,6 +22,24 @@ def test_reciprocal_rank_fusion_prefers_consensus_and_real_rows():
     assert hits[0]["page_number"] == 1
 
 
+def test_fusion_deduplicates_each_candidate_pool_at_its_earliest_rank():
+    rows = {
+        cid: SimpleNamespace(
+            id=cid,
+            document_id="doc",
+            content=cid,
+            page_number=i,
+            title="Evidence",
+            document_type="Award",
+            jurisdiction="India",
+        )
+        for i, cid in enumerate(("both", "fts", "faiss"), 1)
+    }
+    hits = fuse_rankings(rows, ["both", "both", "fts"], ["both", "faiss", "both"], top_k=3)
+    assert [hit["chunk_id"] for hit in hits] == ["both", "fts", "faiss"]
+    assert len({hit["chunk_id"] for hit in hits}) == len(hits)
+
+
 def test_fusion_does_not_fabricate_scores_for_unretrieved_rows():
     rows = {
         "unknown": SimpleNamespace(
@@ -80,6 +98,15 @@ def test_retrieval_applies_case_owner_and_metadata_filters(client):
         document_types=["Award"],
     )
     assert status == "ok" and any(hit["document_id"] == did for hit in single)
+    unscoped, unscoped_status = retrieval_service.search_with_status(
+        "Distinct retrieval marker", owner_id, top_k=100, jurisdiction="India", document_types=["Award"]
+    )
+    scoped_chunk_ids = [hit["chunk_id"] for hit in single]
+    unscoped_chunk_ids = [hit["chunk_id"] for hit in unscoped]
+    assert unscoped_status == "ok" and any(hit["document_id"] == did for hit in unscoped)
+    assert len(scoped_chunk_ids) == len(set(scoped_chunk_ids))
+    assert len(unscoped_chunk_ids) == len(set(unscoped_chunk_ids))
+    assert set(scoped_chunk_ids) <= set(unscoped_chunk_ids)
     page_beyond = client.get(
         "/api/v1/search/documents",
         headers=headers,
