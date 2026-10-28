@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { documentPageUrl } from '../src/features/research/document-url';
 import { normalizeResearchAnswer, type ResearchSource } from '../src/features/research/api';
+import { normalizeStrategyData } from '../src/features/strategy/api';
 import {
   citationAccessibleLabel,
   answerStatusLabel,
@@ -79,8 +80,14 @@ async function capture(page: Page, name: string, focusSelector?: string) {
   await expect(page.locator('body')).not.toBeEmpty();
   await expect(page.locator('[aria-busy="true"], .skeleton, [data-loading="true"]')).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem('tantara_token'))).toBeTruthy();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   await page.screenshot({
-    path: `docs/screenshots/${name}.png`,
+    path:
+      name === 'research-desktop-no-evidence'
+        ? '../docs/screenshots/research-no-evidence-1440.png'
+        : name === 'research-desktop-scope-selected'
+          ? '../docs/screenshots/research-collection-selected-1440.png'
+        : `docs/screenshots/${name}.png`,
     fullPage: (await page.evaluate(() => window.innerWidth)) > 500,
   });
 }
@@ -192,8 +199,7 @@ test('citation formatter, source grouping, and human status labels stay readable
   expect(answerStatusLabel('ok')).toBe('Response returned · provenance unavailable');
   expect(answerStatusLabel('ok', 'model_generated')).toBe('Model response · review sources');
   expect(answerStatusLabel('model_unavailable')).toBe('Evidence only — model unavailable');
-  expect(answerStatusLabel('no_evidence')).toBe('Insufficient evidence');
-  expect(answerStatusLabel('insufficient_evidence')).toBe('Insufficient evidence');
+  expect(answerStatusLabel('no_evidence')).toBe('No supporting excerpts');
 });
 
 test.describe('Research Desk live API controls', () => {
@@ -568,24 +574,15 @@ test.describe('Research Desk live API controls', () => {
     await page.getByLabel('Case filter').selectOption(emptyCase!.id);
     const response = await answerQuestion(page, 'What does the case file say about its hearing schedule?');
     expect(['no_evidence', 'insufficient_evidence']).toContain(response.status);
-    await expect(
-      page.getByText(
-        response.status === 'no_evidence'
-          ? 'Insufficient evidence in your library'
-          : 'Evidence is insufficient',
-      ),
-    ).toBeVisible();
-    if (response.status === 'no_evidence')
-      await expect(page.getByRole('link', { name: 'Upload a document' })).toBeVisible();
+    await expect(page.getByText('Insufficient evidence in your library')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Upload a document' })).toBeVisible();
     await expect(page.locator('.state-callout.no-evidence .answer-text')).toContainText(
       'No indexed excerpt directly answers this question',
     );
     await expect(page.locator('.state-callout.no-evidence .answer-citation')).toHaveCount(0);
     await page.setViewportSize({ width: 1440, height: 900 });
     await capture(page, 'research-desktop-no-evidence');
-    if (response.status === 'no_evidence')
-      await page.getByRole('link', { name: 'Upload a document' }).click();
-    else await page.goto('/research/documents');
+    await page.getByRole('link', { name: 'Upload a document' }).click();
     await expect(page).toHaveURL(/\/research\/documents$/);
     await expect(page.getByRole('heading', { name: 'Research library' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Upload a document' })).toBeVisible();
@@ -733,7 +730,27 @@ test('research answer normalization preserves the source status and canonicalize
       status: raw_status,
       answer: 'No indexed excerpt directly answers this question.',
     });
-    expect(normalized.status).toBe('insufficient_evidence');
+    expect(normalized.status).toBe('no_evidence');
     expect(normalized.raw_status).toBe(raw_status);
   }
+});
+
+test('strategy API normalization preserves raw status and canonicalizes no-evidence values', () => {
+  const normalized = normalizeStrategyData({
+    status: 'insufficient_evidence',
+    case_theory: '',
+    key_issues: [],
+    legal_arguments: [],
+    counterarguments: [],
+    evidence_gaps: [],
+    strategy_plan: '',
+    updated_at: null,
+    model: null,
+    citations: [],
+    assertion_citations: [],
+    manually_edited: false,
+    generation_note: '',
+  });
+  expect(normalized.status).toBe('no_evidence');
+  expect(normalized.raw_status).toBe('insufficient_evidence');
 });
