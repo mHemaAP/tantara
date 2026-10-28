@@ -1,6 +1,10 @@
 import time
 import uuid
 
+from app.db import SessionLocal
+from app.models import KnowledgeCollection, User
+from app.security import hash_password
+
 
 def _login(client, email="advocate@tantara.local", password="tantara-local"):
     response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
@@ -26,6 +30,41 @@ def test_collection_pagination_ownership_membership_and_filtered_retrieval(clien
     assert listing.json()["page_size"] == 2
     assert listing.json()["pages"] == 2
     assert len(listing.json()["items"]) == 2
+
+    detail = client.get(f"/api/v1/collections/{collections[0]['id']}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["name"] == "Agreements & Contracts"
+    assert detail.json()["document_count"] == 0
+    assert client.get(f"/api/v1/collections/{uuid.uuid4()}", headers=headers).status_code == 404
+
+    researcher_id = str(uuid.uuid4())
+    foreign_collection_id = str(uuid.uuid4())
+    with SessionLocal() as session:
+        session.add(
+            User(
+                id=researcher_id,
+                name="Collection Researcher",
+                email="collections-researcher@example.test",
+                password_hash=hash_password("researcher-test-password"),
+                role="researcher",
+            )
+        )
+        session.flush()
+        session.add(
+            KnowledgeCollection(
+                id=foreign_collection_id,
+                owner_id=researcher_id,
+                name="Researcher Library",
+                description="Private to researcher",
+            )
+        )
+        session.commit()
+    researcher_headers = _login(client, "collections-researcher@example.test", "researcher-test-password")
+    assert (
+        client.get(f"/api/v1/collections/{foreign_collection_id}", headers=researcher_headers).status_code
+        == 200
+    )
+    assert client.get(f"/api/v1/collections/{foreign_collection_id}", headers=headers).status_code == 404
 
     unknown = client.get(
         "/api/v1/search",
