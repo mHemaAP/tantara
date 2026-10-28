@@ -831,7 +831,13 @@ a {
   }
   .dashboard-columns,
   .dashboard-main {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+  .dashboard-aside,
+  .matters-slot {
+    min-width: 0;
+    max-width: 100%;
   }
   .main {
     padding-left: 12px;
