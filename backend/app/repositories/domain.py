@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app import models
+from app.timezone import to_utc_iso, to_workspace_iso, to_workspace_naive
 
 ENTITY_MODELS = {
     "clients": models.Client,
@@ -29,7 +30,16 @@ def fields_for(cls):
 def serialize(row):
     if row is None:
         return None
-    return {k: getattr(row, k) for k in fields_for(type(row))}
+    return {
+        k: (
+            to_utc_iso(value)
+            if isinstance((value := getattr(row, k)), datetime) and k in {"created_at", "updated_at"}
+            else to_workspace_iso(value)
+            if isinstance(value, datetime)
+            else value
+        )
+        for k in fields_for(type(row))
+    }
 
 
 def get_owned(session: Session, cls, record_id: str, owner_id: str):
@@ -89,8 +99,10 @@ def _coerce(cls, key, value):
     if value is None:
         return None
     typ = cls.__table__.columns[key].type
-    if typ.__class__.__name__ == "DateTime" and isinstance(value, str):
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+    if typ.__class__.__name__ == "DateTime":
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else value
+        if isinstance(parsed, datetime):
+            return to_workspace_naive(parsed)
     if typ.__class__.__name__ == "Date" and isinstance(value, str):
         return date.fromisoformat(value[:10])
     if typ.__class__.__name__ in {"Numeric", "Float"}:
