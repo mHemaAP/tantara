@@ -1,4 +1,4 @@
-import { api } from '@/lib/api/client';
+import { api, apiBase, authToken } from '@/lib/api/client';
 
 export type ResearchSource = {
   citation_ref?: string;
@@ -20,6 +20,8 @@ export type ResearchAnswer = {
   follow_ups?: string[];
   disclaimer?: string;
   model?: Record<string, unknown> | null;
+  answer_kind?: string;
+  generation_kind?: string;
   answer_basis?: 'cited_excerpts' | 'case_record' | 'insufficient_evidence' | string;
   supports?: Array<{
     chunk_id: string;
@@ -67,7 +69,16 @@ export const researchApi = {
     api.get<{ items: Array<{ id: string; title: string; jurisdiction?: string }> }>('/cases?page_size=100'),
   documents: () =>
     api.get<{
-      items: Array<{ id: string; case_id?: string; jurisdiction?: string; collection_id?: string }>;
+      items: Array<{
+        id: string;
+        title?: string;
+        filename?: string;
+        status?: string;
+        page_count?: number;
+        case_id?: string;
+        jurisdiction?: string;
+        collection_id?: string;
+      }>;
     }>('/documents?page_size=100'),
   document: (id: string) =>
     api.get<{ id: string; title?: string; filename?: string }>(`/documents/${encodeURIComponent(id)}`),
@@ -103,4 +114,20 @@ export const researchApi = {
       }>;
     }>(`/search/documents?query=${encodeURIComponent(question)}&page_size=8`, signal),
   save: (id: string) => api.post('/ai/saved', { item_type: 'message', item_id: id }),
+  upload: (file: File, title: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    const authorization = authToken();
+    return fetch(`${apiBase.replace(/\/api\/v1$/, '')}/ingest/file`, {
+      method: 'POST',
+      headers: authorization ? { Authorization: `Bearer ${authorization}` } : {},
+      body: form,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('The document could not be uploaded. Check its type and try again.');
+      return (await response.json()) as { document_id?: string; id?: string; status?: string };
+    });
+  },
+  ingestJob: (id: string) =>
+    api.get<{ status?: string; document_id?: string }>(`/documents/${encodeURIComponent(id)}/job`),
 };
