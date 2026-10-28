@@ -40,13 +40,14 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
   const [taskTitle, setTaskTitle] = useState('');
   const [error, setError] = useState('');
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const requestedCaseId = routeCaseId || params.get('case_id') || '';
 
   useEffect(() => {
     strategyApi.cases().then((result) => {
       setCases(result.items);
-      if (!selectedCaseId && result.items[0]) setSelectedCaseId(result.items[0].id);
+      if (!requestedCaseId && result.items[0]) setSelectedCaseId(result.items[0].id);
     }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Cases are unavailable.'));
-  }, []);
+  }, [requestedCaseId]);
 
   const loadCase = useCallback(async (id: string) => {
     if (!id) return;
