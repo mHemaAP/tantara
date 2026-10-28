@@ -23,9 +23,9 @@ from app.repositories.domain import get_owned, serialize
 from app.repositories.domain import update as repo_update
 from app.routers.domain import owned
 from app.security import current_user
-from app.storage_paths import stored_path
 from app.services.audit import record
-from app.services.vector_store import store
+from app.services.vector_store import INDEX_LOCK, store
+from app.storage_paths import stored_path
 
 router = APIRouter(prefix="/api/v1", tags=["documents"])
 
@@ -35,7 +35,6 @@ class Payload(BaseModel):
 
 
 pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tantara-ingest")
-INDEX_LOCK = __import__("threading").RLock()
 
 
 def _job_update(job_id, **values):
@@ -87,40 +86,40 @@ def process_job(doc_id, job_id, owner_id, data, filename):
             ],
         )
         indexed = []
-        with session_scope() as s:
-            doc = s.get(Document, doc_id)
-            doc.text_content = all_text
-            doc.page_count = len(pages)
-            doc.warnings = warnings
-            doc.status = "ready"
-            for p in pages:
-                s.add(
-                    DocumentPage(
+        with INDEX_LOCK:
+            with session_scope() as s:
+                doc = s.get(Document, doc_id)
+                doc.text_content = all_text
+                doc.page_count = len(pages)
+                doc.warnings = warnings
+                doc.status = "ready"
+                for p in pages:
+                    s.add(
+                        DocumentPage(
+                            id=str(uuid.uuid4()),
+                            owner_id=owner_id,
+                            document_id=doc_id,
+                            page_number=p["page_number"],
+                            text=p["text"],
+                            ocr_confidence=p.get("ocr_confidence"),
+                            warnings=p.get("warnings", []),
+                            is_demo=doc.is_demo,
+                        )
+                    )
+                for ix, (ch, vec) in enumerate(zip(chunks, vectors, strict=True)):
+                    row = DocumentChunk(
                         id=str(uuid.uuid4()),
-                        owner_id=owner_id,
                         document_id=doc_id,
-                        page_number=p["page_number"],
-                        text=p["text"],
-                        ocr_confidence=p.get("ocr_confidence"),
-                        warnings=p.get("warnings", []),
+                        chunk_index=ix,
+                        content=ch["content"],
+                        page_number=ch["page_number"],
+                        start_char=ch["start_char"],
+                        end_char=ch["end_char"],
+                        embedding_blob=__import__("numpy").asarray(vec, dtype="float32").tobytes(),
                         is_demo=doc.is_demo,
                     )
-                )
-            for ix, (ch, vec) in enumerate(zip(chunks, vectors, strict=True)):
-                row = DocumentChunk(
-                    id=str(uuid.uuid4()),
-                    document_id=doc_id,
-                    chunk_index=ix,
-                    content=ch["content"],
-                    page_number=ch["page_number"],
-                    start_char=ch["start_char"],
-                    end_char=ch["end_char"],
-                    embedding_blob=__import__("numpy").asarray(vec, dtype="float32").tobytes(),
-                    is_demo=doc.is_demo,
-                )
-                s.add(row)
-                indexed.append((row.id, vec))
-        with INDEX_LOCK:
+                    s.add(row)
+                    indexed.append((row.id, vec))
             store().add(indexed)
         _job_update(
             job_id,
@@ -353,13 +352,13 @@ def patch_document(did: str, payload: Payload, user=Depends(current_user)):
 def delete_document(did: str, user=Depends(current_user)):
     if user.get("role") == "researcher":
         raise HTTPException(403, "This role is read-only")
-    with session_scope() as s:
-        d = owned(s, Document, did, user)
-        path = stored_path("uploads", d.stored_path)
-        chunk_ids = list(s.scalars(select(DocumentChunk.id).where(DocumentChunk.document_id == did)))
-        s.delete(d)
-        record(s, user["id"], "delete", "document", did)
     with INDEX_LOCK:
+        with session_scope() as s:
+            d = owned(s, Document, did, user)
+            path = stored_path("uploads", d.stored_path)
+            chunk_ids = list(s.scalars(select(DocumentChunk.id).where(DocumentChunk.document_id == did)))
+            s.delete(d)
+            record(s, user["id"], "delete", "document", did)
         store().remove(chunk_ids)
     if path:
         path.unlink(missing_ok=True)
