@@ -70,7 +70,8 @@ def test_workflow_c_grounded_answer_saved_citation_and_delete(client):
     page_text = " ".join(pages[citation["page_number"] - 1]["text"].split())
     assert citation["page_number"] == 1
     assert " ".join(citation["excerpt"].split()) in page_text
-    assert citation["score"] == citation["retrieval_score"] == citation["retreival_score"]
+    assert "retreival_score" not in citation
+    assert citation["retrieval_score"] > 0
     saved = client.post(
         "/api/v1/ai/saved",
         headers=headers,
