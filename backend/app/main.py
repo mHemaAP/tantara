@@ -562,7 +562,7 @@ async def legacy_ingest(
     source_label: str | None = Form(None),
     user=Depends(current_user),
 ):
-    return await document_upload(file, title, document_type, jurisdiction, None, user)
+    return await document_upload(file, title, document_type, jurisdiction, None, None, user)
 
 
 @app.post("/query")
