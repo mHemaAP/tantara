@@ -25,6 +25,7 @@ from app.repositories.domain import (
 from app.schemas import CREATE_SCHEMAS, PATCH_SCHEMAS
 from app.security import current_user
 from app.services.audit import record
+from app.services.draft_versions import snapshot_draft
 
 router = APIRouter(prefix="/api/v1")
 
@@ -242,6 +243,12 @@ def register_crud(path, cls):
                 owned(s, Case, values["case_ref"], user)
         with session_scope() as s:
             row = owned(s, cls, rid, user)
+            if cls is Draft and "content_markdown" in values:
+                incoming = values["content_markdown"]
+                if incoming is None:
+                    values.pop("content_markdown")
+                elif incoming != row.content_markdown:
+                    snapshot_draft(s, row, row.content_markdown, "Edited in editor")
             repo_update(s, row, values)
             record(s, user["id"], "update", cls.__tablename__, rid)
             result = serialize(row)
