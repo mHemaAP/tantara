@@ -21,6 +21,7 @@ from app.models import (
     BundleSection,
     Case,
     CaseEvent,
+    CaseEventType,
     CaseParticipant,
     Citation,
     Client,
@@ -34,9 +35,9 @@ from app.models import (
     DraftVersion,
     ExtractionField,
     FilingBundle,
-    KnowledgeCollection,
     Hearing,
     IngestionJob,
+    KnowledgeCollection,
     Note,
     ResearchMessage,
     ResearchSession,
@@ -494,7 +495,12 @@ def main():
             seed_community_workspace()
             with session_scope() as db:
                 collections = ensure_demo_collections(db, owner)
-                agreement_names = {"agreement.pdf", "contract.pdf", "near-duplicate-agreement-a.pdf", "near-duplicate-agreement-b.pdf"}
+                agreement_names = {
+                    "agreement.pdf",
+                    "contract.pdf",
+                    "near-duplicate-agreement-a.pdf",
+                    "near-duplicate-agreement-b.pdf",
+                }
                 authority_names = {"award.pdf"}
                 for document in db.scalars(
                     select(Document).where(Document.owner_id == owner, Document.is_demo.is_(True))
@@ -575,6 +581,25 @@ def main():
             ("Pioneer Mining vs. Terra Materials", "ICC"),
             ("Crown Hotels vs. Summit Hospitality", "Ad hoc"),
         ]
+        task_titles = (
+            "Review arbitration agreement and Section 7 clause",
+            "Prepare procedural hearing brief",
+            "Verify claimant supporting invoices",
+            "Compile witness and expert evidence",
+            "Review respondent statement of defence",
+            "Prepare rejoinder submissions",
+            "Confirm tribunal appointment documents",
+            "Check limitation and notice chronology",
+            "Draft document production requests",
+            "Review damages calculations",
+            "Prepare hearing bundle index",
+            "Confirm filing deadlines and service",
+        )
+        unscheduled_task_titles = {
+            0: "Collect missing evidence exhibits",
+            4: "Confirm expert witness availability",
+            8: "Reconcile witness statements",
+        }
         cases = []
         for i, (title, forum) in enumerate(pairs):
             claimant, respondent = title.split(" vs. ", 1)
@@ -627,8 +652,8 @@ def main():
                     id=str(uuid.uuid4()),
                     owner_id=owner,
                     case_id=cid,
-                    title="Review pleadings and evidence",
-                    notes="Demo task.",
+                    title=task_titles[i],
+                    notes=f"Complete this review for {title}.",
                     due_at=due,
                     priority=("high" if i % 3 == 0 else "medium"),
                     status="todo",
@@ -684,11 +709,11 @@ def main():
                         )
                     )
             for event_type, offset, detail in (
-                ("filed", -30 + i % 15, "Statement of claim filed"),
-                ("first_hearing", -5 + i % 10, "Procedural hearing"),
-                ("document_uploaded", -2 + i % 7, "Evidence bundle uploaded"),
-                ("deadline_set", 12 + i % 20, "Reply submissions deadline"),
-                ("all_day_event", i % 10, "All-day case preparation block"),
+                (CaseEventType.FILED, -30 + i % 15, "Statement of claim filed"),
+                (CaseEventType.FIRST_HEARING, -5 + i % 10, "Procedural hearing"),
+                (CaseEventType.DOCUMENT_UPLOADED, -2 + i % 7, "Evidence bundle uploaded"),
+                (CaseEventType.DEADLINE_SET, 12 + i % 20, "Reply submissions deadline"),
+                (CaseEventType.ALL_DAY, i % 10, "All-day case preparation block"),
             ):
                 db.add(
                     CaseEvent(
@@ -709,8 +734,8 @@ def main():
                         id=str(uuid.uuid4()),
                         owner_id=owner,
                         case_id=cid,
-                        title="Unscheduled evidence review",
-                        notes="Open task without a due date.",
+                        title=unscheduled_task_titles[i],
+                        notes=f"Open task without a due date for {title}.",
                         due_at=None,
                         priority="medium",
                         status="todo",
@@ -888,7 +913,12 @@ def main():
         db.flush()
         case_id = cases[0].id
         collections = ensure_demo_collections(db, owner)
-        agreement_names = {"agreement.pdf", "contract.pdf", "near-duplicate-agreement-a.pdf", "near-duplicate-agreement-b.pdf"}
+        agreement_names = {
+            "agreement.pdf",
+            "contract.pdf",
+            "near-duplicate-agreement-a.pdf",
+            "near-duplicate-agreement-b.pdf",
+        }
         authority_names = {"award.pdf"}
         bundle_id = bundle.id
         docs = []
