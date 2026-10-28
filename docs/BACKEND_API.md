@@ -46,6 +46,7 @@ The bundled `tantara_admin_password` default is `tantara-local` for local develo
 ## Community and settings
 
 - CRUD `/community/posts`; `GET|POST /community/posts/{id}/replies`; `DELETE /community/posts/{id}/replies/{reply_id}`; `POST /community/posts/{id}/save`
+- Community posts have additive `visibility: "private"|"workspace"`; omitted visibility defaults to `private`. Authors can change visibility. Feeds and detail reads include the caller's posts plus workspace posts, with `author: {display_name, role}`, `author_name`, and `author_role`. A foreign private post is indistinguishable from a missing post (`404`). Any signed-in role may post/reply. A reply can be deleted by its author or an admin; other readers receive `403`. Saves are scoped to the saving user. No engagement counts are exposed.
 - `GET|PATCH /settings/profile`, `/settings/workspace`, `/settings/appearance`, `/settings/ai`
 - `GET /settings/embeddings`, `/settings/database`, `/settings/database/stats`, `POST /settings/database/backup`, `GET /settings/security`, `POST /settings/password`
 - `GET|POST /settings/data/import` (optional corpus runner)
