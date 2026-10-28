@@ -6,7 +6,7 @@ This ledger includes only findings that remain open or explicitly deferred. Earl
 
 | Finding | Current evidence | Follow-up |
 |---|---|---|
-| Five older desktop screenshots remain alongside the curated 1440×900 evidence. | `file docs/screenshots/{cases-desktop,case-detail-desktop,clients-desktop,calendar-desktop,tasks-desktop}.png` reports 1440×1000 for each. They are retained as historical captures; current screenshot links use the newer viewport files. | R32: decide whether to label these as historical or move them to an archive location. Do not remove target design assets. |
+| A duplicate frontend screenshot corpus still contains five 1440×1000 captures. | After removing the five root historical desktop captures and nine obsolete failure images, `frontend/docs/screenshots/` retains 96 files. Five are still 1440×1000: `calendar-empty.png`, `cases-desktop.png`, `cases-empty.png`, `clients-desktop.png`, and `clients-empty.png`. Of the remaining corpus, 67 filenames have no same-basename counterpart in `docs/screenshots/`. Root `README.md` has 28 image links and all resolve. | R32: defer broader cleanup until README/spec references can be preserved safely under root `docs/screenshots/`; no wholesale deletion or regeneration in this pass. |
 
 ## Deferred
 
