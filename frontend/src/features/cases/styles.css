@@ -832,6 +832,8 @@
   .matter-tabs {
     gap: 3px;
     padding: 8px;
+    flex-wrap: wrap;
+    overflow: visible;
   }
   .matter-tabs button {
     padding: 7px 9px;
