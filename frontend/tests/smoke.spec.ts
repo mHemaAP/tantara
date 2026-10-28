@@ -14,7 +14,7 @@ const routes = (caseId: string, documentId: string) => [
   '/settings/appearance',
   '/settings/security',
 ];
-const apiOrigin = process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010';
+const apiOrigin = process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010';
 test.beforeEach(async ({ page, request }) => {
   if (test.info().title === 'login form validates and submits with Enter') return;
   const response = await request.post(`${apiOrigin}/api/v1/auth/login`, {
@@ -70,7 +70,9 @@ test('login form validates and submits with Enter', async ({ page }) => {
   await expect(page.getByText('Enter a valid email address')).toBeVisible();
   await email.fill('advocate@tantara.local');
   await page.getByRole('textbox', { name: 'Password' }).fill('tantara-local');
+  const loginResponse = page.waitForResponse((response) => response.url().endsWith('/api/v1/auth/login'));
   await page.getByRole('button', { name: 'Continue as Advocate' }).click();
+  expect((await loginResponse).status()).toBe(200);
   await expect(page).toHaveURL(/dashboard/);
 });
 test('settings profile form is editable and navigation marks current route', async ({ page }) => {
