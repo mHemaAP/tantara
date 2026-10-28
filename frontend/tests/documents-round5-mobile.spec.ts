@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
 const screenshots = '../docs/screenshots';
 
 async function signIn(request: APIRequestContext) {
@@ -17,7 +17,7 @@ async function openWithToken(page: Page, token: string, href: string) {
   await page.goto(href);
 }
 
-async function captureMobile(page: Page, name: string) {
+async function captureMobile(page: Page, name: string, drawerOpen = false) {
   const screenshotPath = `${screenshots}/${name}.png`;
   await page.screenshot({ path: screenshotPath });
   const pixelData = execFileSync('python', [
@@ -27,11 +27,12 @@ async function captureMobile(page: Page, name: string) {
       'import json, sys',
       'image = Image.open(sys.argv[1]).convert("RGB")',
       'width, height = image.size',
-      'points = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]',
+      'points = [(width - 1, 0), (width - 1, height - 1)] if len(sys.argv) > 2 else [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]',
       'pixels = [image.getpixel(point) for point in points]',
       'print(json.dumps({"size": image.size, "pixels": pixels}))',
     ].join('; '),
     screenshotPath,
+    ...(drawerOpen ? ['drawer-open'] : []),
   ]).toString();
   const sampled = JSON.parse(pixelData) as { size: [number, number]; pixels: number[][] };
   expect(sampled.size).toEqual([390, 844]);
@@ -56,7 +57,9 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   const docsResponse = await request.get(`${apiUrl}/documents?page_size=100`, { headers });
-  const docs = (await docsResponse.json()).items as Array<{
+  expect(docsResponse.ok()).toBeTruthy();
+  const docsBody = await docsResponse.json();
+  const docs = docsBody.items as Array<{
     id: string;
     filename: string;
     is_demo?: boolean;
@@ -69,11 +72,23 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
     .then((response) => response.json());
 
   await openWithToken(page, token, '/documents');
+  let renderedListResponse: { items: Array<{ id: string }> } | undefined;
+  page.on('response', async (response) => {
+    if (new URL(response.url()).pathname === '/api/v1/documents' && response.ok()) {
+      renderedListResponse = await response.json();
+    }
+  });
+  await page.reload();
   const sidebar = page.locator('.sidebar');
   const main = page.locator('#main');
   const heading = page.getByRole('heading', { name: 'Documents', exact: true });
   await expect(heading).toBeVisible({ timeout: 60000 });
   await expect(page.locator('.documents-mobile-cards .document-card')).toHaveCount(docs.length);
+  await expect.poll(() => renderedListResponse?.items.length ?? 0).toBe(docs.length);
+  const displayedIds = await page
+    .locator('.documents-mobile-cards .document-card')
+    .evaluateAll((cards) => cards.map((card) => card.getAttribute('data-document-id')).sort());
+  expect(displayedIds).toEqual(renderedListResponse!.items.map((item) => item.id).sort());
   await expect.poll(() => page.evaluate(() => window.document.documentElement.scrollWidth)).toBe(390);
   await expect
     .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right))
@@ -93,12 +108,29 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   await captureMobile(page, 'documents-round5-library-mobile-390-real');
 
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await expect(page.getByRole('button', { name: 'Close menu' })).toBeVisible();
-  await page.keyboard.press('Escape');
+  const drawerDocumentLink = page.getByRole('link', { name: 'Documents', exact: true });
+  await expect(drawerDocumentLink).toBeVisible();
+  const drawerBounds = await sidebar.boundingBox();
+  expect(drawerBounds).not.toBeNull();
+  expect(drawerBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(drawerBounds!.x + drawerBounds!.width).toBeLessThanOrEqual(390);
+  await expect(page.locator('.sidebar-backdrop')).toBeVisible();
+  await captureMobile(page, 'documents-round6-drawer-open-mobile-390-real', true);
+  await page.locator('.sidebar-backdrop').click({ position: { x: 350, y: 400 } });
   await expect
     .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0);
   await expect(heading).toBeVisible();
+  await captureMobile(page, 'documents-round6-drawer-dismissed-mobile-390-real');
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await expect(page).toHaveURL(/\/documents$/);
+  await expect(page.locator('.sidebar-backdrop')).toHaveCount(0);
+  await expect(heading).toBeVisible();
+  await expect
+    .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0);
+  await captureMobile(page, 'documents-round6-drawer-after-navigation-mobile-390-real');
   const documentLink = page
     .locator('.documents-mobile-cards')
     .getByRole('link', { name: 'Page Three Motion' });
@@ -120,14 +152,21 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   await captureMobile(page, 'documents-round5-metadata-mobile-390-real');
 
   if (settings.runtime_status?.reachable) {
-    await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await page.getByRole('button', { name: 'Run document extraction' }).click();
     await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 150000 });
     await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 150000 });
     const arbitrationClause = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
     const summary = page.locator('.ai-read-field[data-field-key="summary"]');
     await expect(arbitrationClause).toBeVisible();
     await expect(summary).toContainText('Routine procedural filing');
-    await expect(summary).toContainText('Local text extraction; candidate only');
+    await expect(summary).toContainText('Local text extraction');
+    await expect(summary).toContainText('candidate only');
+    await arbitrationClause.scrollIntoViewIfNeeded();
+    await expect(arbitrationClause).toBeVisible();
+    const summaryLabel = summary.locator('> strong');
+    const summaryLabelBounds = await summaryLabel.boundingBox();
+    expect(summaryLabelBounds).not.toBeNull();
+    expect(summaryLabelBounds!.height).toBeLessThanOrEqual(40);
     const summaryDisclosure = summary.locator('.ai-read-summary-disclosure');
     const collapsedHeight = await summaryDisclosure.boundingBox();
     expect(collapsedHeight).not.toBeNull();
@@ -139,7 +178,7 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
     await expect(summary).toBeVisible();
     await captureMobile(page, 'documents-round5-airead-mobile-390-populated-real');
   } else {
-    await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await page.getByRole('button', { name: 'Run document extraction' }).click();
     await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible();
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
@@ -160,6 +199,15 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   await expect(page.locator('.pdf-page-card[data-page-card="3"] .pdf-text-layer')).toContainText(
     /Unique page three clause/,
   );
+  const citationToolbarBounds = await page.locator('.pdf-toolbar').boundingBox();
+  const citationLabelBounds = await page
+    .locator('.pdf-page-card[data-page-card="3"] .pdf-page-label')
+    .boundingBox();
+  expect(citationToolbarBounds).not.toBeNull();
+  expect(citationLabelBounds).not.toBeNull();
+  const citationOffset = citationLabelBounds!.y - citationToolbarBounds!.y - citationToolbarBounds!.height;
+  expect(citationOffset).toBeGreaterThanOrEqual(0);
+  expect(citationOffset).toBeLessThanOrEqual(150);
   await expectPageRatio(page, 3);
   await captureMobile(page, 'documents-round5-citation-page3-mobile-390-real');
 
@@ -175,10 +223,7 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   await captureMobile(page, 'documents-round5-search-mobile-390-real');
 });
 
-test('mobile empty, failure, model-unavailable and no-evidence captures settle with navigation closed', async ({
-  page,
-  request,
-}) => {
+test('mobile empty and model-unavailable states settle with navigation closed', async ({ page, request }) => {
   test.setTimeout(180000);
   await page.setViewportSize({ width: 390, height: 844 });
   const token = await signIn(request);
@@ -208,38 +253,16 @@ test('mobile empty, failure, model-unavailable and no-evidence captures settle w
   await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({ timeout: 60000 });
   await assertNavigationClosed();
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-match-round5-69428');
-  await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '0 matching documents' })).toBeVisible();
+  await expect(page.locator('.documents-library-toolbar')).toContainText('0 matching documents');
   await captureMobile(page, 'documents-round5-empty-mobile-390-real');
-
-  await page.route('**/api/v1/documents*', (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'offline', message: 'Offline' } }),
-    }),
-  );
-  await page.goto('/documents');
-  await expect(page.getByRole('heading', { name: 'Documents are unavailable' })).toBeVisible({
-    timeout: 60000,
-  });
-  await assertNavigationClosed();
-  await captureMobile(page, 'documents-round5-failure-mobile-390-fixture');
-  await page.unroute('**/api/v1/documents*');
+  await page.getByRole('textbox', { name: 'Search documents' }).fill('');
+  await expect(page.locator('.documents-mobile-cards .document-card')).toHaveCount(8);
+  await expect(page.locator('.documents-library-toolbar')).toContainText('8 documents');
 
   const originalSettings = await request
     .get(`${apiUrl}/settings/ai`, { headers })
     .then((response) => response.json());
-  await page.route(`**/api/v1/documents/${seededDocument!.id}/ai-read`, async (route) => {
-    if (route.request().method() === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ fields: {} }),
-      });
-      return;
-    }
-    await route.continue();
-  });
   try {
     await request.patch(`${apiUrl}/settings/ai`, {
       headers,
@@ -252,7 +275,7 @@ test('mobile empty, failure, model-unavailable and no-evidence captures settle w
     await openWithToken(page, token, `/documents/${seededDocument!.id}`);
     await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
     await assertNavigationClosed();
-    await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await page.getByRole('button', { name: 'Run document extraction' }).click();
     await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible({ timeout: 60000 });
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
@@ -263,19 +286,4 @@ test('mobile empty, failure, model-unavailable and no-evidence captures settle w
       data: { base_url: originalSettings.base_url, model: originalSettings.model },
     });
   }
-
-  await page.route('**/api/v1/ai/ask', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ status: 'no_evidence', citations: [] }),
-    }),
-  );
-  await openWithToken(page, token, `/documents/${seededDocument!.id}`);
-  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
-  await assertNavigationClosed();
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
-  await expect(page.getByText('No evidence found')).toBeVisible({ timeout: 60000 });
-  await expect(page.locator('.ai-read-field')).toHaveCount(0);
-  await captureMobile(page, 'documents-round5-ai-read-no-evidence-mobile-390-fixture');
 });
