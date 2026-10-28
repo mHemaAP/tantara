@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
 const apiOrigin = process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010';
@@ -15,6 +17,7 @@ test('case form omits blank optional fields and displays server date validation 
   page,
   request,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   let createdCaseId = '';
@@ -98,6 +101,12 @@ test('case form omits blank optional fields and displays server date validation 
       dateIssue!.msg,
     );
     await expect(page).toHaveURL('/cases/new');
+    await expect(page.getByRole('button', { name: 'Account menu' })).toContainText('advocate@tantara.local');
+    expect(await page.evaluate(() => localStorage.getItem('tantara_token'))).toBe(token);
+    expect(await page.evaluate(() => window.innerWidth)).toBe(1440);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
+    await mkdir(path.resolve(process.cwd(), '../docs/screenshots'), { recursive: true });
+    await page.screenshot({ path: '../docs/screenshots/case-form-validation-1440.png' });
   } finally {
     if (createdCaseId) await request.delete(`${apiV1}/cases/${createdCaseId}`, { headers });
   }
