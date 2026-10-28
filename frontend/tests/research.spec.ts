@@ -56,10 +56,12 @@ async function capture(page: Page, name: string, focusSelector?: string) {
         expect(alignedBox).toBeTruthy();
         expect(alignedHeading).toBeTruthy();
         if (alignedHeading) expect(alignedHeading.y).toBeGreaterThanOrEqual(header.y + header.height);
-        if (alignedBox)
+        if (alignedBox) {
+          // Fractional scroll offsets can leave the box up to half a CSS pixel past the fold.
           expect(alignedBox.y + alignedBox.height).toBeLessThanOrEqual(
-            await page.evaluate(() => window.innerHeight),
+            (await page.evaluate(() => window.innerHeight)) + 0.5,
           );
+        }
       }
     }
   } else await page.evaluate(() => window.scrollTo(0, 0));
