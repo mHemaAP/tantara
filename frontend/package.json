@@ -6,13 +6,12 @@
     "dev": "next dev -H 127.0.0.1 -p 3010",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3010",
-    "lint": "next lint",
+    "lint": "next lint && pnpm format:check && ! grep -R -F 'page.route(' tests",
     "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" tests",
     "gen:api": "node scripts/gen-api.mjs",
-    "screenshots": "node scripts/shoot.mjs",
     "test:e2e": "playwright test",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" tests/research.spec.ts"
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
