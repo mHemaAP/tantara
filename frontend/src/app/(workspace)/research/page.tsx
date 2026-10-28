@@ -244,6 +244,11 @@ async function hydrateSession(session: ResearchSession): Promise<ResearchSession
     ...session,
     messages: session.messages?.map((message) => ({
       ...message,
+      raw_status: message.raw_status ?? message.status,
+      status:
+        message.status === 'insufficient_evidence' || message.status === 'no_evidence'
+          ? 'no_evidence'
+          : message.status,
       citations: message.citations?.map((citation) => {
         const document = documents.get(citation.document_id);
         return {
@@ -454,7 +459,7 @@ export default function ResearchPage() {
   const latestAssistant = [...activeMessages].reverse().find((message) => message.role === 'assistant');
   const restoredSources = latestAssistant?.citations ?? EMPTY_SOURCES;
   const answerHasInsufficientEvidence =
-    answer?.status === 'insufficient_evidence' ||
+    answer?.status === 'no_evidence' ||
     answer?.answer_basis === 'insufficient_evidence' ||
     answer?.insufficient_evidence === true;
   const selectedSources = useMemo(
@@ -505,9 +510,7 @@ export default function ResearchPage() {
       retryQuestion?.role === 'user' &&
       retryQuestion.content === failedQuestion.content &&
       retryAnswer?.role === 'assistant' &&
-      !['model_unavailable', 'no_evidence', 'insufficient_evidence', 'error'].includes(
-        retryAnswer.status ?? '',
-      )
+      !['model_unavailable', 'no_evidence', 'error'].includes(retryAnswer.status ?? '')
     ) {
       hiddenResolvedFailureIds.add(failed.id);
       hiddenResolvedFailureIds.add(retryQuestion.id);
@@ -746,6 +749,7 @@ export default function ResearchPage() {
                         ) : m.role === 'assistant' && messageStatus === 'no_evidence' ? (
                           <div className="state-callout no-evidence">
                             <strong>Insufficient evidence in your library</strong>
+                            {messageContent && <AnswerText text={messageContent} citations={[]} />}
                             <p>
                               No supporting documents were found. Upload a document, widen the research scope,
                               or rephrase your question.
@@ -756,17 +760,6 @@ export default function ResearchPage() {
                           <div className="state-callout lexical-state">
                             <strong>Embeddings unavailable</strong>
                             <p>Only lexical results were available; no grounded answer is shown.</p>
-                          </div>
-                        ) : m.role === 'assistant' &&
-                          (messageStatus === 'insufficient_evidence' ||
-                            /evidence is insufficient/i.test(messageContent)) ? (
-                          <div className="state-callout no-evidence model-insufficient">
-                            <strong>Evidence is insufficient</strong>
-                            {messageContent && <AnswerText text={messageContent} citations={[]} />}
-                            <p>
-                              Review the retrieved excerpts below; no conclusion was generated from this
-                              evidence.
-                            </p>
                           </div>
                         ) : m.role === 'assistant' ? (
                           <AnswerText
@@ -782,13 +775,9 @@ export default function ResearchPage() {
                           </small>
                         )}
                         {m.role === 'assistant' &&
-                          ![
-                            'model_unavailable',
-                            'no_evidence',
-                            'insufficient_evidence',
-                            'embedding_unavailable',
-                            'error',
-                          ].includes(m.status ?? '') && (
+                          !['model_unavailable', 'no_evidence', 'embedding_unavailable', 'error'].includes(
+                            m.status ?? '',
+                          ) && (
                             <div className="turn-actions">
                               <button onClick={() => void copyAnswer(m.id, m.content)}>
                                 <Copy size={13} /> {copiedTurnId === m.id ? 'Copied' : 'Copy'}
@@ -856,7 +845,7 @@ export default function ResearchPage() {
                           ? 'No supporting excerpts were found. Upload a document, widen the scope, or rephrase the question.'
                           : 'Review the retrieved excerpts below; no conclusion was generated from this evidence.'}
                       </p>
-                      {answer.raw_status === 'no_evidence' && (
+                      {answer.status === 'no_evidence' && (
                         <Link href="/research/documents">Upload a document</Link>
                       )}
                     </div>
