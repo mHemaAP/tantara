@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ArrowRight, BookOpen, FileText, BriefcaseBusiness, Users } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -15,7 +14,6 @@ const schema = z.object({
 });
 type Form = z.infer<typeof schema>;
 export default function Home() {
-  const router = useRouter();
   const [show, setShow] = useState(false),
     [busy, setBusy] = useState(false);
   const {
@@ -32,7 +30,7 @@ export default function Home() {
       const r = await endpoints.login(values);
       persistToken(r.access_token);
       toast.success('Welcome to TANTARA');
-      router.push('/dashboard');
+      window.location.assign('/dashboard');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Unable to sign in');
     } finally {
