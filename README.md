@@ -2,30 +2,62 @@
 
 TANTARA is a local-first workspace for arbitration matters. It combines case and client management, document ingestion, cited legal research, drafting, filing bundles, calendar, tasks, and community tools in one authenticated application.
 
-## Architecture and data flow
+## Architecture
 
-The browser uses the Next.js workspace. API requests go through its same-origin `/api/v1` rewrite to FastAPI. SQLAlchemy stores owner-scoped records in SQLite; uploaded files and generated paperbooks live under the configured workspace data directory. Ingestion extracts text and page metadata, then updates both the full-text index and the vector index. Research filters evidence by owner and selected collections before ranking it. Answers retain source citations; an unavailable generation model is reported as unavailable rather than presented as a grounded answer.
+The browser uses the Next.js workspace. API requests go through its same-origin `/api/v1` rewrite to FastAPI. SQLAlchemy stores owner-scoped records in SQLite; uploaded files and generated paperbooks live under the configured workspace data directory.
+
+```mermaid
+flowchart TB
+  User[Advocate or researcher] --> Browser[Browser workspace<br/>Next.js]
+  Browser -->|same-origin /api/v1| Rewrite[Next.js API rewrite]
+  Rewrite --> API[FastAPI routers]
+  API --> Domain[SQLAlchemy domain services]
+  Domain --> DB[(SQLite workspace database)]
+  API --> Storage[(Workspace data directory<br/>uploads and generated bundles)]
+```
+
+## Document ingestion data flow
+
+Uploads are stored under the workspace data directory. Ingestion extracts text and page metadata, using OCR where a document has no usable text layer. Page-aware chunks feed both lexical and semantic indexes.
 
 ```mermaid
 flowchart LR
-  Browser[Browser workspace<br/>Next.js] -->|same-origin /api/v1| Rewrite[Next.js API rewrite]
-  Rewrite --> API[FastAPI routers]
-  API --> ORM[SQLAlchemy domain services]
-  ORM --> DB[(SQLite workspace database)]
-  API --> Files[(Workspace data directory<br/>uploads and generated bundles)]
-  Files --> Extract[Ingestion<br/>text extraction and OCR]
-  Extract --> Chunk[Page-aware chunking]
+  Upload[PDF, DOCX, text] --> Store[(Workspace file storage)]
+  Store --> Extract[Text extraction]
+  Extract --> OCR[OCR when needed]
+  Extract --> Pages[Page text and metadata]
+  OCR --> Pages
+  Pages --> Chunk[Page-aware chunking]
+  Chunk --> FTS[(FTS5 full-text index)]
   Chunk --> Embed[Configured embeddings]
-  Chunk --> SearchIndex[(FTS5 full-text index)]
-  Embed --> VectorIndex[(FAISS vector index)]
-  Browser -->|search or ask| API
-  API --> Scope[Owner and collection filters]
-  Scope --> Retrieve[Hybrid retrieval and fusion]
-  SearchIndex --> Retrieve
-  VectorIndex --> Retrieve
-  Retrieve --> Sources[Cited source passages and pages]
-  Sources --> Model[Configured answer model]
-  Model -->|cited answer or unavailable state| Browser
+  Embed --> FAISS[(FAISS vector index)]
+```
+
+## Search and query lifecycle
+
+Search and answer requests are scoped by the authenticated owner and any selected collections before hybrid ranking. Answers retain source citations. If the configured generation model is unavailable, the application reports that state rather than presenting a grounded answer.
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant Web as Next.js workspace
+  participant API as FastAPI
+  participant Scope as Owner and collection filters
+  participant FTS as FTS5
+  participant FAISS as FAISS
+  participant Fuse as Hybrid ranking and fusion
+  participant Model as Configured answer model
+  User->>Web: Search or ask a question
+  Web->>API: GET search or POST ask
+  API->>Scope: Authenticate and validate requested collections
+  Scope->>FTS: Lexical retrieval
+  Scope->>FAISS: Semantic retrieval
+  FTS-->>Fuse: Ranked text matches
+  FAISS-->>Fuse: Ranked vector matches
+  Fuse-->>API: Cited passages and page numbers
+  API->>Model: Generate answer from retrieved evidence
+  Model-->>Web: Cited answer or unavailable state
+  Web-->>User: Render answer and source links
 ```
 
 ## Repository layout
