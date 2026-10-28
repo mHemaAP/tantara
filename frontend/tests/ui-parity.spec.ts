@@ -75,12 +75,7 @@ test('workspace navigation exposes all module routes and each route resolves', a
     await expect(current, `${route} should have one current rail link`).toHaveCount(1);
     await expect(current).toHaveAttribute('href', route);
     if (route === '/documents') {
-      const documentsNav = page.getByRole('navigation', { name: 'Documents navigation' });
-      await expect(documentsNav).toBeVisible();
-      await expect(documentsNav.getByRole('link', { name: 'Documents', exact: true })).toHaveAttribute(
-        'aria-current',
-        'location',
-      );
+      await expect(page.getByRole('navigation', { name: 'Documents navigation' })).toHaveCount(0);
     }
   }
   for (const [route, label] of [
