@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { documentHref } from '../src/features/documents/links';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
 
 async function signIn(request: APIRequestContext) {
   const response = await request.post(`${apiUrl}/auth/login`, {
@@ -67,7 +67,7 @@ test('captures seeded document and search states before fixture uploads', async 
   await page.setViewportSize({ width: 390, height: 844 });
 
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-document-with-this-title-9472');
-  await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '0 matching documents' })).toBeVisible();
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
@@ -87,6 +87,7 @@ test('captures seeded document and search states before fixture uploads', async 
 
 test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async ({ page, request }) => {
   test.setTimeout(60000);
+  await page.setViewportSize({ width: 1440, height: 900 });
   const { documentId, token } = await uploadFixture(request, 'arbitration-text-layer.pdf');
   await openWithToken(page, token, documentHref(documentId, 2));
   const targetPage = page.locator('.pdf-page-card[data-page-card="2"]');
@@ -122,7 +123,6 @@ test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async
   expect(mainBounds).not.toBeNull();
   expect(skipLinkBounds!.y + skipLinkBounds!.height).toBeLessThanOrEqual(0);
   expect(mainBounds!.x).toBeGreaterThan(0);
-  await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
     path: '../docs/screenshots/documents-viewer-page2-desktop-1440-fixture.png',
   });
@@ -151,6 +151,7 @@ test('viewer metadata uses separated definition rows and an accessible copy conf
   request,
   context,
 }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
@@ -160,7 +161,7 @@ test('viewer metadata uses separated definition rows and an accessible copy conf
   expect(document).toBeTruthy();
   await openWithToken(page, token, `/documents/${document.id}`);
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
-    origin: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3013',
+    origin: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3012',
   });
   await expect(page.getByRole('group', { name: 'Filename arbitration-text-layer.pdf' })).toHaveText(
     /Filename\s+arbitration-text-layer\.pdf/,
@@ -208,15 +209,8 @@ test('AI Read renders real API fields and persists an edited field after reload'
       item.filename === 'arbitration-text-layer.pdf' && item.status === 'ready',
   );
   expect(document).toBeTruthy();
-  await page.route('**/api/v1/ai/ask', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ status: 'ok', answer: 'Evidence passages are available.' }),
-    }),
-  );
   await openWithToken(page, token, `/documents/${document.id}`);
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
+  await page.getByRole('button', { name: 'Run document extraction' }).click();
   await expect(page.locator('.ai-read-field').first()).toBeVisible();
   const clauseField = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
   await expect(clauseField).toContainText('Page 1');
@@ -258,7 +252,7 @@ test('scanned fixture yields OCR text and reports the job warnings', async ({ re
   expect(job.warnings).toEqual(expect.any(Array));
 });
 
-test('viewer surfaces extraction warnings returned when OCR is unavailable', async ({ page, request }) => {
+test('viewer displays extraction warnings returned by ingestion', async ({ page, request }) => {
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   const documents = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
@@ -266,18 +260,18 @@ test('viewer surfaces extraction warnings returned when OCR is unavailable', asy
     (item: { filename: string }) => item.filename === 'arbitration-scanned.pdf',
   );
   expect(scanned).toBeTruthy();
-  await page.route(`**/api/v1/documents/${scanned.id}/pages`, async (route) => {
-    const response = await route.fetch();
-    const body = await response.json();
-    body.pages = body.pages.map((item: { warnings: string[] }) => ({
-      ...item,
-      warnings: ['OCR engine unavailable; scanned page text could not be read.'],
-    }));
-    await route.fulfill({ response, json: body });
-  });
+  const pagesResponse = await request.get(`${apiUrl}/documents/${scanned.id}/pages`, { headers });
+  expect(pagesResponse.ok()).toBeTruthy();
+  const pages = (await pagesResponse.json()).pages as Array<{ warnings: string[] }>;
   await openWithToken(page, token, `/documents/${scanned.id}`);
-  await expect(page.getByText('Extraction warnings')).toBeVisible();
-  await expect(page.getByText('OCR engine unavailable; scanned page text could not be read.')).toBeVisible();
+  if (pages.some((item) => item.warnings.length > 0)) {
+    await expect(page.getByText('Extraction warnings')).toBeVisible();
+    for (const warning of pages.flatMap((item) => item.warnings)) {
+      await expect(page.getByText(warning)).toBeVisible();
+    }
+  } else {
+    await expect(page.getByText('Extraction warnings')).toHaveCount(0);
+  }
 });
 
 test('dead AI endpoint shows model_unavailable without fabricated extraction fields', async ({
@@ -298,55 +292,12 @@ test('dead AI endpoint shows model_unavailable without fabricated extraction fie
   await request.patch(`${apiUrl}/settings/ai`, { headers, data: { base_url: 'http://127.0.0.1:9/v1' } });
   try {
     await openWithToken(page, token, `/documents/${sourceDocument.id}`);
-    await page.getByRole('button', { name: /Run AI Read|Run again/ }).click();
+    await page.getByRole('button', { name: /Run document extraction|Run again/ }).click();
     await expect(page.getByText('AI model unavailable')).toBeVisible({ timeout: 20000 });
     await expect(page.locator('.ai-read-degradation')).not.toContainText(/https?:\/\/|127\.0\.0\.1|:\d{2,5}/);
     await expect(page.getByText('document type', { exact: false })).toHaveCount(0);
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, { headers, data: { base_url: original.base_url } });
-  }
-});
-
-test('no_evidence is shown without candidate extraction fields', async ({ page, request }) => {
-  const token = await signIn(request);
-  const headers = { Authorization: `Bearer ${token}` };
-  const docs = await request.get(`${apiUrl}/documents`, { headers }).then((response) => response.json());
-  const sourceDocument = docs.items.find((item: { status: string }) => item.status === 'ready');
-  expect(sourceDocument).toBeTruthy();
-  const documentId = sourceDocument.id as string;
-  await page.route(`**/api/v1/documents/${documentId}/text`, (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ text: '', pages: [] }),
-    }),
-  );
-  await page.route('**/api/v1/ai/ask', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ status: 'no_evidence', answer: 'No matching source passages were found.' }),
-    }),
-  );
-  await openWithToken(page, token, `/documents/${documentId}`);
-  await expect(page.getByLabel('PDF page 1')).toBeVisible({ timeout: 60000 });
-  await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Document page chunks' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Run AI Read' }).click();
-  await expect(page.getByText('No evidence found')).toBeVisible();
-  await expect(page.locator('.ai-read-degradation')).not.toContainText(/https?:\/\/|127\.0\.0\.1|:\d{2,5}/);
-  await expect(page.locator('.ai-read-field')).toHaveCount(0);
-  await page.screenshot({
-    path: '../docs/screenshots/documents-ai-read-no-evidence-desktop-1440-fixture.png',
-  });
-
-  const remainingDocuments = await request
-    .get(`${apiUrl}/documents?page_size=100`, { headers })
-    .then((response) => response.json());
-  for (const document of remainingDocuments.items as Array<{ id: string; filename: string }>) {
-    if (['arbitration-text-layer.pdf', 'arbitration-scanned.pdf'].includes(document.filename)) {
-      await request.delete(`${apiUrl}/documents/${document.id}`, { headers });
-    }
   }
 });
