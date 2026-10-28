@@ -1,4 +1,4 @@
-import { api, apiBase, authToken, isReadOnlyPreview } from '@/lib/api/client';
+import { api, apiBase, authToken } from '@/lib/api/client';
 
 export type CommunityPost = {
   id: string;
@@ -51,13 +51,6 @@ async function createPost(input: {
   visibility: 'private' | 'workspace';
   case_ref?: string;
 }) {
-  if (isReadOnlyPreview()) {
-    throw new CommunityValidationError(
-      'Changes are disabled in read-only preview.',
-      403,
-      'read_only_preview',
-    );
-  }
   const token = authToken();
   const response = await fetch(`${apiBase}/community/posts`, {
     method: 'POST',
