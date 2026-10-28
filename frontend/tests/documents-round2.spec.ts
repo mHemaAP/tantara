@@ -3,6 +3,16 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 import { documentHref } from '../src/features/documents/links';
 
 const apiUrl = `${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1`;
+const uploadedDocuments: Array<{ id: string; token: string }> = [];
+
+test.afterEach(async ({ request }) => {
+  for (const { id, token } of uploadedDocuments.splice(0)) {
+    const response = await request.delete(`${apiUrl}/documents/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(response.ok()).toBeTruthy();
+  }
+});
 
 async function signIn(request: APIRequestContext) {
   const response = await request.post(`${apiUrl}/auth/login`, {
@@ -27,6 +37,7 @@ async function uploadFixture(request: APIRequestContext, fixtureName: string) {
   });
   expect(response.status()).toBe(202);
   const uploaded = await response.json();
+  uploadedDocuments.push({ id: uploaded.document_id as string, token });
   await expect
     .poll(
       async () => {
