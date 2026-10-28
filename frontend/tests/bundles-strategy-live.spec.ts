@@ -10,7 +10,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 test.describe.configure({ mode: 'serial' });
-const apiUrl = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1`;
 const apiHost = apiUrl.replace(/\/api\/v1\/?$/, '');
 const endpoint = (route: string) =>
   `${apiHost}${route.startsWith('/api/v1') ? route : `/api/v1${route.startsWith('/') ? route : `/${route}`}`}`;
@@ -327,7 +327,7 @@ test('strategy reflects reachable model output honestly and citation links targe
   const citation = page.locator('.strategy-citation').first();
   await expect(citation).toBeVisible();
   const href = await citation.getAttribute('href');
-  const target = new URL(href!, 'http://127.0.0.1:3015');
+  const target = new URL(href!, process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3010');
   const documentId = target.pathname.split('/').pop()!;
   const pageNumber = Number(target.searchParams.get('page'));
   const sourceDoc = await apiGet<{ title: string }>(`/documents/${documentId}`);
@@ -420,7 +420,7 @@ test('builder saves a chosen range, maps source pages to bundle pages, and gener
   await capture(page, 'bundle-1440x900-download-complete-real.png');
   const parsedPages = JSON.parse(
     execFileSync(
-      process.env.TANTARA_PYTHON ?? '/home/kahitoz/projects/tantara-wt/be/backend/.venv/bin/python',
+      process.env.TANTARA_PYTHON ?? path.resolve(__dirname, '../../backend/.venv/bin/python'),
       [
         '-c',
         "import json,sys; from io import BytesIO; from pypdf import PdfReader; pdf=PdfReader(BytesIO(sys.stdin.buffer.read())); print(json.dumps({'count':len(pdf.pages),'page5':pdf.pages[4].extract_text() or ''}))",
@@ -542,7 +542,7 @@ test('strategy shows source excerpts honestly, saves edits, creates a task, and 
 
   const citation = page.locator('.strategy-citation').first();
   const citationHref = await citation.getAttribute('href');
-  const citationUrl = new URL(citationHref!, 'http://127.0.0.1:3015');
+  const citationUrl = new URL(citationHref!, process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3010');
   const citedDocId = citationUrl.pathname.split('/').pop()!;
   const citedPage = Number(citationUrl.searchParams.get('page'));
   expect(citedPage).toBeGreaterThan(0);
