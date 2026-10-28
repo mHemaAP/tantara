@@ -45,3 +45,55 @@ Each changed file is committed separately.
 - Implementation and tests: `ca726a2` Research page; `4989fb7` Research CSS; `975b76c` shell navigation; `529136a` API types; `99fa2b6` presentation helpers; `168bfd5` Research tests; `cb93b94` Playwright assigned-URL configuration.
 - Captures: `4f6f666` desktop answer; `064e07f` desktop empty; `5ebb44c` desktop insufficiency; `df22c50` desktop model unavailable; `f5cb4c8` desktop no evidence; `afa3f6b` mobile answer; `d1245d1` mobile empty; `db47805` mobile insufficiency; `c061a40` mobile model unavailable; `4b79258` mobile no evidence; `32318ad` Ask; `73e84d2` citation viewer; `e0ebf12` history entry; `2e64625` history refresh; `2b5127c` library; `f89d14a` new after history; `754fb84` new state; `12b9afe` retry recovered; `64190e6` saved answer opened; `e40fe00` saved answer; `d56e39d` scope; `c4a2e4d` suggested question; `685c298` restored session.
 - This report is committed separately after the implementation and capture commits.
+
+## L5d — citations, source provenance, and library controls
+
+### Changes
+
+- Citation links now display the document title and page in both visible text and their accessible name, preserve the chunk id only in `data-chunk-id`, and use native same-origin anchors to reliably open `/documents/{id}?page=N&chunk=...`. Tap targets are at least 40px tall.
+- Retrieved sources are grouped by document, with page links and one best-ranked excerpt per page. Identical excerpts inside a document are shown once; remaining pages identify where the same excerpt recurs. Relevance is shown to three decimals with rank and “relative to this query” wording.
+- The source rail separates answer-linked material from other retrievals. If the API gives no support mapping or inline citation references, it labels the retrieval “Other retrieved material” and explains that the API did not identify supporting excerpts. It does not claim those hits support the answer.
+- The current backend returns `answer_kind: "model_generated"` and `model: { provider: "local", model: "MiniCPM5-2B" }`, but no `generation_kind`. The UI uses the returned `answer_kind` as the machine provenance attribute, shows the model id, and labels the turn “Model response · review sources.” Responses without a model trace do not receive model attribution or the AI-generated disclaimer.
+- New research tests confirm that previous turns, the history selection, and retrieved sources clear. Mobile capture helpers scroll focused states below the sticky header and assert their headings are in frame. The insufficient-evidence capture assertion now focuses the state card; that updated capture could not be regenerated because another worktree occupied 3014 at the end of the round (details below).
+- The no-evidence action now opens the Research library. The library offers PDF, DOCX, TXT, and Markdown upload through the measured `POST /ingest/file` form contract (`file` and required `title`), polls `/api/v1/documents/{id}/job`, and refreshes the actual document list. A test PDF fixture is confined to `frontend/tests/fixtures/`.
+- Added interaction evidence for mobile source expansion, citation arrival, copy feedback, PDF download, and the upload destination. The PDF test asserts a real browser download event with a `.pdf` filename; the upload test verifies the indexed document reaches `ready` and removes it afterward.
+
+### Verification and runtime provenance
+
+The isolated backend was v1.1.0 at `127.0.0.1:8114`, using `TANTARA_DATA_DIR=/tmp/tantara-l5d.tPndYi` and `DATABASE_URL=sqlite:////tmp/tantara-l5d.tPndYi/tantara.db`. Demo seeding produced 7 clients, 12 cases, and 8 indexed PDFs. The frontend used `127.0.0.1:3014`. Both processes were stopped after verification; neither port was left bound by this worktree.
+
+Before the grounded-answer tests, `/api/v1/settings/ai` reported model `MiniCPM5-2B`, configured endpoint `http://192.168.0.101:8080/v1`, and `runtime_status.reachable: true`. The live ask response had `status: "ok"`, `answer_kind: "model_generated"`, that model id, citations, and the disclaimer. Grounded-answer and insufficiency checks ran with this endpoint reachable. The unavailable test intentionally changed the backend setting to `http://127.0.0.1:1/v1`, asserted `model_unavailable` with no answer text, then restored the original endpoint before Retry; Retry returned a grounded response. The UI never displays either endpoint.
+
+Commands and results:
+
+- `pnpm format:check` — passed.
+- `pnpm lint` — passed; Next.js emitted only its existing `next lint` deprecation notice.
+- `pnpm exec tsc --noEmit` — passed.
+- `pnpm build` — passed; `/research` built at 10.3 kB and `/research/documents` at 3.09 kB.
+- `TANTARA_WEB_URL=http://127.0.0.1:3014 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8114 pnpm exec playwright test tests/research.spec.ts --workers=1` — **9 passed**. The suite uses real API calls and no `page.route` interception.
+- Focused upload verification — **1 passed**, including successful API upload, ingestion to `ready`, and cleanup.
+- An initial `pnpm test:e2e -- tests/research.spec.ts` wrapper invocation selected the full 17-test tree; it was interrupted during Research test 5 before any unrelated smoke tests ran. The explicit lane-file command above is the completed result.
+
+### Captures
+
+All files are in `frontend/docs/screenshots/`; desktop captures use 1440px width and mobile captures use 390×844. The final successful lane run refreshed the desktop answer/citations, empty, history, scope, insufficient-evidence, no-evidence, unavailable, and retry captures; mobile answer/citations, empty, insufficient-evidence, no-evidence, and unavailable captures; and added:
+
+- `research-mobile-source-group-expanded.png`
+- `research-mobile-citation-arrival.png`
+- `research-mobile-copy-feedback.png`
+- `research-desktop-pdf-downloaded.png`
+- `research-desktop-upload-destination.png`
+- `research-desktop-upload-complete.png`
+
+The current `research-mobile-insufficient-evidence.png` remains from the earlier, clipped capture. I updated its Playwright capture to scroll the complete state card into view. After 3014 became free I tried the focused recapture, but the live ask returned `status: "error"` and “No indexed excerpt directly answers this question” instead of a genuine insufficiency response; I did not capture that as an insufficiency state. A prior complete lane run passed 9/9 before this capture-only assertion change; this later focused attempt failed before capture. This specific mobile PNG is stale evidence and needs replacement on a run where the configured model returns the genuine insufficiency state.
+
+### Remaining integration gaps
+
+- **Citation arrival/highlighting remains unproven.** Clicking a page-3 citation reliably reaches the document route with `page=3` and the chunk id, and the citation test checks the URL and document title. The viewer still renders the extracted pages as continuous text from page 1: `/api/v1/documents/{id}/pages` returns `{ "pages": [...] }`, while the Documents viewer consumes an array or `{ "items": [...] }`. It creates no selected `#page-N` article and does not highlight the chunk. The mobile arrival capture shows this limitation. I left the Documents lane route untouched; its owner must parse the `pages` envelope, select/scroll to the requested page, and highlight the `chunk` excerpt before the requested page-3 arrival assertion can pass.
+- **Answer-to-excerpt trace is absent in this backend response.** This v1.1.0 `/api/v1/ai/ask` response does not include `supports`, `answer_basis`, or inline `[n]` markers. The UI therefore does not invent sentence-level citation markers and places returned excerpts under “Other retrieved material” with an explicit reason. Backend support metadata is needed before excerpts can be honestly promoted to “Sources for this answer.”
+- **Library page styling remains an integration item.** `research/documents/page.tsx` imports the Research feature stylesheet, but after the shared `globals.css` shrink, legacy semantic classes used by the merged shell/library environment are absent and the library heading/list appear unstyled. I did not restore core CSS or edit another lane. Carry this into the integration review at `briefs/L10-integration.md`.
+- That `briefs/L10-integration.md` path is not present in this `fe4` checkout, so I could not inspect its styling table directly.
+
+### Push and commits
+
+The mandatory pre-work push published the previously committed round-3 branch head `4cf644338b15959bbea6adfab97458ec493660af` to `origin/luna/frontend-research` before any L5d feature edits. L5d implementation files and each PNG were committed separately. Implementation commits: `4ff44e6`, `d63b86f`, `a9c19c6`, `8cefb9f`, `9c48f55`, `fb3a684`, `d7bc941`, `d09b295`. The 29 individual capture commits form the contiguous range `5430526` through `f7762ff`. The report commit follows separately. The final focused insufficiency attempt described above occurred after the successful complete lane run and is recorded separately from its 9/9 result.
