@@ -94,7 +94,7 @@ def test_no_evidence_is_honest_and_validation_has_error_envelope(client):
     response = client.post(
         "/api/v1/ai/ask", headers=headers, json={"question": "What does the evidence establish?"}
     )
-    assert response.status_code == 200 and response.json()["status"] == "no_evidence"
+    assert response.status_code == 200 and response.json()["status"] == "insufficient_evidence"
     assert response.json()["citations"] == []
     invalid = client.post("/api/v1/ai/ask", headers=headers, json={"question": "?"})
     assert invalid.status_code == 422 and "error" in invalid.json()
