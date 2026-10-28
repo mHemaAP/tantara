@@ -1,44 +1,47 @@
-# Research Desk round 2 report
+# Research Desk round 3 report
 
-## Changes and evidence
+## Changes
 
-- **Shared shell overlap:** removed feature rules that affected global page positioning, corrected mobile Research ordering, and retained feature-only layout selectors. Playwright checks the fixed header and sidebar at the viewport origin after scrolling/navigation at 1440 and 390 widths. Captures: `frontend/docs/screenshots/research-desktop-empty.png`, `research-mobile-empty.png`.
-- **Private endpoint leakage:** unavailable-model copy now says the model is unreachable and offers retry/evidence-only mode. The E2E assertion rejects URLs, loopback addresses, and port-like numbers in the callout. Captures: `research-desktop-model-unavailable.png`, `research-mobile-model-unavailable.png`.
-- **Citation destination:** sources link through `documentPageUrl` and include document, page, and chunk. The test clicks the highest-page source and verifies destination URL and title. It then checks the viewer page control and page element. **The integrated Documents viewer fails those last assertions:** the title loads, but there is no `Page number` input and no visible cited-page confirmation. The Research lane cannot edit the Documents feature. The exact unmet contract is that `/documents/{id}?page=N&chunk=...` must select/scroll to page N and highlight the chunk. No end-to-end page arrival is claimed.
-- **Claim/evidence linkage and insufficiency:** answer sentences show returned `citation_ref` links; raw retrieval ranks are rounded to two decimals. Insufficiency is taken from an actual reachable-model answer and keeps sources visible without generating a conclusion. Captures: `research-desktop-answer-citations.png`, `research-desktop-insufficient-evidence.png`, `research-mobile-answer-citations.png`, `research-mobile-insufficient-evidence.png`.
-- **Mobile task order:** composer is ordered before history and sources on mobile; collection label can wrap. The layout test checks composer position within 844px and the full collection label width. Mobile state captures are listed above.
-- **Totals and provenance:** distinct document IDs determine source counts; before a response the value is `—`. Dates use `DD Mon YYYY`; relevance is two decimals. Test-generated sessions and saved rows are deleted after each test. New research now creates a real session before asking, enabling history restoration after reload. Collection metadata is genuinely unavailable: `GET /api/v1/meta/collections` returns HTTP 404 `Metadata not found`; the selector displays that state. The case/jurisdiction selectors load from live endpoints.
-- **Control interactions:** E2E exercises new research, case/jurisdiction scope selection, refresh, initial suggested question, Ask, history click, saved answer, Browse library, and retry after a forced model failure. The retry test restores the prior configured endpoint and observes a real generated answer. Relevant captures include `research-new-state.png`, `research-scope-selected.png`, `research-history-refreshed.png`, `research-suggested-question.png`, `research-history-entry.png`, `research-saved-search.png`, `research-retry-recovered.png`.
+- Citation references render as human links such as **Page 3 [1]**. Chunk IDs stay in `data-chunk-id`; answer prose is cleaned of raw UUID references. Citation links carry the document, page, and chunk query parameters.
+- Source hits are grouped by document, page links are shown once per page, and identical excerpts appear once per document. The API document title is rendered after whitespace/escaped-newline cleanup. Relevance is shown to two decimals with rank and “relative to this query” framing. Human status labels are exposed alongside machine `data-status` values.
+- The answer uses one answer-level source set rather than attaching every citation to every sentence. Case-record fields are labelled “from the case record”; conflicts can show the case value and the cited excerpt/page; `insufficient_evidence` suppresses answer citations and sources. These additive L9j paths are implemented conditionally but were not returned by the current backend (see gaps).
+- Opening a history or saved answer restores the full session and hydrates document titles and citations. The active session ID persists through reload. Scope filtering associates sessions with jurisdictions through their linked live document records because this backend’s session records do not carry jurisdiction.
+- The mobile shell exposes all nine destinations behind the off-canvas navigation button. Research content and the header controls remain inside the 390px viewport. Screenshot capture waits for the sidebar transition to finish before taking mobile evidence.
+- Unavailable-model copy contains no endpoint, host, port, or exception. It offers Retry and shows lexical results as documents only. Retry resolves the failed turn in the visible conversation.
 
-## Model provenance and backend gaps
+## Verification
 
-The configured endpoint for the successful generation run was `http://192.168.0.101:8080/v1` with model `MiniCPM5-2B`, as provided for this round. A live ask returned a grounded answer (314-token probe from the round setup; the L5b tests also got generated answers, including the genuine governing-law insufficiency response). The unavailable-state test temporarily patched `/settings/ai` to `http://127.0.0.1:1/v1`, observed `model_unavailable` with no answer text, then restored the previous setting and successfully retried. Backend `/ai/status` reports `status:"ok"` and a model name even when the model cannot be reached; this is not proof of model reachability. The UI does not display or use those fields as proof and adds no reachability probe.
+The isolated backend was v1.1.0 on `127.0.0.1:8117`, started with both `TANTARA_DATA_DIR=/tmp/tantara-r3-data.FMTHoR` and `DATABASE_URL=sqlite:////tmp/tantara-r3-data.FMTHoR/tantara.db`; Alembic reached head and `scripts/seed.py --demo` reported “Demo workspace already seeded; researcher workspace reconciled.” The frontend used `127.0.0.1:3014`; our processes were stopped after verification.
 
-## Commands and results
+The normal generation configuration was `MiniCPM5-2B` at `http://192.168.0.101:8080/v1`; `/settings/ai.runtime_status.reachable` reported `true` before the runs. The grounded-answer and genuine insufficiency tests completed with that model reachable. The unavailable test temporarily pointed settings at a dead local endpoint, asserted `model_unavailable`, no rendered answer, no model attribution, and evidence-only retrieval, then restored the prior model and verified Retry generated a grounded response. The `/ai/status` `ok` field was not treated as reachability proof.
 
-- Isolated backend: `127.0.0.1:8114`, v1.1.0; temporary `TANTARA_DATA_DIR` plus matching `DATABASE_URL`; migrations and demo seed completed. Frontend used `127.0.0.1:3013`.
-- `pnpm format`: passed.
-- `pnpm lint`: passed, no ESLint warnings/errors.
-- `pnpm typecheck`: passed.
-- `pnpm build`: passed; `/research` built at 7.55 kB.
-- `TANTARA_WEB_URL=http://127.0.0.1:3013 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8114 pnpm test:e2e`: 10 passed, 6 failed (16 total). Research success/no-evidence/insufficiency/model-unavailable and shell/mobile tests passed. One Research control run exposed persistence and capture-flow issues that were corrected afterward; the final citation test still correctly fails at the Documents viewer page-input assertion described above. Four existing `smoke.spec.ts` checks also fail against this private v1.1.0 backend: routes expect unavailable `/cases/case-1`, profile/settings controls differ, and dashboard test hardcodes the prohibited integration port 8010. Those tests were not weakened or changed.
+Commands and outcomes:
 
-## Screenshots
+- `pnpm format` — passed.
+- `pnpm lint` — passed with no ESLint warnings or errors.
+- `pnpm typecheck` — passed.
+- `pnpm build` — passed; `/research` built at 9.29 kB.
+- `TANTARA_WEB_URL=http://127.0.0.1:3014 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8117 pnpm test:e2e` — 13 passed, 4 failed (17 total). All 8 Research tests passed, covering formatter/grouping/status units, mobile shell bounds and navigation, scoped history, history/saved restoration, citations, no-evidence, genuine insufficiency, model-unavailable, and retry. The 4 failures are in the unrelated existing `smoke.spec.ts`: route traversal is interrupted by navigation at `/cases/case-1`; the settings smoke expects a Profile nav entry and a “Test connection” control not present in this tree; the dashboard smoke hardcodes port 8010. These tests were left unchanged.
+- `TANTARA_WEB_URL=http://127.0.0.1:3014 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8117 pnpm exec playwright test tests/research.spec.ts --grep 'new research' --workers=1` — 1 passed after the scoped-history fix.
 
-Required state captures are under `frontend/docs/screenshots/`:
+After the last valid full run, a final assertion was added for the mobile menu button’s viewport bounds. A focused rerun could not be completed: port 3014 had been taken by the `fe5` worktree and `/research` returned 404. That foreign process was not stopped or used. The earlier mobile run covered the navigation button and nine destinations; the new explicit button-bounds assertion is the only unverified test edit.
 
-- Desktop: `research-desktop-answer-citations.png`, `research-desktop-insufficient-evidence.png`, `research-desktop-model-unavailable.png`, `research-desktop-empty.png`.
-- Mobile: `research-mobile-answer-citations.png`, `research-mobile-insufficient-evidence.png`, `research-mobile-model-unavailable.png`, `research-mobile-empty.png`.
-- Additional control captures: `research-new-state.png`, `research-scope-selected.png`, `research-history-refreshed.png`, `research-suggested-question.png`, `research-history-entry.png`, `research-saved-search.png`, `research-retry-recovered.png`.
+## Captures
 
-All captures were taken after waiting for network idle and checking that no loading/skeleton markers remained; `devIndicators: false` is set.
+Authenticated captures use real seeded API data, have no loading skeletons or Next.js dev badge, and are under `frontend/docs/screenshots/`.
 
-## Commits
+- Desktop (1440px wide): `research-desktop-answer-citations.png`, `research-desktop-insufficient-evidence.png`, `research-desktop-model-unavailable.png`, `research-desktop-no-evidence.png`, `research-desktop-scope-selected.png`, `research-desktop-history-refreshed.png`, and `research-desktop-empty.png`.
+- Mobile (390×844): `research-mobile-answer-citations.png`, `research-mobile-insufficient-evidence.png`, `research-mobile-model-unavailable.png`, `research-mobile-no-evidence.png`, and `research-mobile-empty.png` (composer visible in the initial view).
+- Additional interaction captures cover the citation destination, refreshed/restored history, saved answer, scope, library, suggestion, Ask, and Retry states.
 
-One file per commit; no push or merge.
+The citation click reaches `/documents/{id}?page=N&chunk=...` and the viewer title matches the cited document. **The page-scroll/highlight handoff remains blocked by the Documents viewer:** this v1.1.0 `/api/v1/documents/{id}/pages` response is `{ "pages": [...] }`, while the current viewer only consumes a bare array or `{ "items": [...] }`. It consequently renders no `#page-N` element and has no “Page number” input. The Research lane did not change the Documents feature, and no claim is made that the cited page or chunk highlight was visible in the viewer capture.
 
-- `4a9f846` Research behavior and session persistence.
-- `48e5901` Research feature CSS and mobile order.
-- `00a3aee` Research E2E coverage and capture helper.
-- Screenshot commits: `392c907`, `5f5a9e1`, `790488b`, `6d1ce02`, `404c043`, `e9e5bab`, `6cdf32d`, `2e23321`, `0e47f8e`, `1377500`, `614c87c`, `b4c5313`, `b0b81ef`, `0477fd1`, `1ed8577`, `5326961`, `07bc5e1`, `3d1d866`.
-- This report: see its commit in the final round summary.
+The current v1.1.0 `/api/v1/ai/ask` response includes status, answer, citations with page/excerpt/title and score aliases, model, and disclaimer, but does not return the additive `supports`, `answer_basis`, `context_fields`, `conflicts`, or `insufficient_evidence` fields. The conditional UI behavior for those fields therefore needs a backend-enabled integration run.
+
+## Changed files and commits
+
+Each changed file is committed separately.
+
+- Implementation and tests: `ca726a2` Research page; `4989fb7` Research CSS; `975b76c` shell navigation; `529136a` API types; `99fa2b6` presentation helpers; `168bfd5` Research tests; `cb93b94` Playwright assigned-URL configuration.
+- Captures: `4f6f666` desktop answer; `064e07f` desktop empty; `5ebb44c` desktop insufficiency; `df22c50` desktop model unavailable; `f5cb4c8` desktop no evidence; `afa3f6b` mobile answer; `d1245d1` mobile empty; `db47805` mobile insufficiency; `c061a40` mobile model unavailable; `4b79258` mobile no evidence; `32318ad` Ask; `73e84d2` citation viewer; `e0ebf12` history entry; `2e64625` history refresh; `2b5127c` library; `f89d14a` new after history; `754fb84` new state; `12b9afe` retry recovered; `64190e6` saved answer opened; `e40fe00` saved answer; `d56e39d` scope; `c4a2e4d` suggested question; `685c298` restored session.
+- This report is committed separately after the implementation and capture commits.
