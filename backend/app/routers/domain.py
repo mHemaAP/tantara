@@ -24,6 +24,7 @@ from app.repositories.domain import (
 )
 from app.schemas import CREATE_SCHEMAS, PATCH_SCHEMAS
 from app.security import current_user
+from app.storage_paths import stored_path
 from app.services.audit import record
 from app.services.draft_versions import snapshot_draft
 
@@ -222,8 +223,28 @@ def register_crud(path, cls):
             for key in ("owner_id", "output_path", "stored_path", "text_content", "embedding_blob"):
                 out.pop(key, None)
             if cls is FilingBundle:
-                out["downloadable"] = bool(row.output_path and Path(row.output_path).is_file())
+                try:
+                    output = stored_path("bundles", row.output_path) if row.output_path else None
+                except ValueError:
+                    output = None
+                out["downloadable"] = bool(output and output.is_file())
                 out["download_url"] = f"/api/v1/bundles/{rid}/download" if out["downloadable"] else None
+                from app.routers.bundles import _items
+
+                items = _items(s, row, user)
+                sections = s.scalars(
+                    select(BundleSection)
+                    .where(BundleSection.bundle_id == row.id, BundleSection.owner_id == user["id"])
+                    .order_by(BundleSection.order)
+                ).all()
+                out["items"] = items
+                out["sections"] = [{"title": section.title, "order": section.order} for section in sections]
+                settings = row.settings or {}
+                front_matter_pages = sum(
+                    settings.get(key, True)
+                    for key in ("cover_page", "index", "synopsis", "list_of_dates")
+                )
+                out["page_count"] = front_matter_pages + sum(item["pages"] for item in items)
             return out
 
     def patch(rid: str, payload: Payload, user=Depends(current_user)):
