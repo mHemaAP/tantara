@@ -571,9 +571,9 @@ export default function DocumentDetailPage() {
               {pageItems.map((p) => (
                 <article className="card document-page" id={`page-${p.page_number}`} key={p.page_number}>
                   <div className="page-heading">
-                    <span>
+                    <a className="document-page-citation" href={`?page=${p.page_number}`}>
                       <FileText size={15} /> Page {p.page_number}
-                    </span>
+                    </a>
                     {p.ocr_confidence != null && (
                       <small className="muted">OCR confidence {Math.round(p.ocr_confidence * 100)}%</small>
                     )}
