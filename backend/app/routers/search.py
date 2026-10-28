@@ -2,15 +2,16 @@
 
 from fastapi import APIRouter, Depends, Query
 
-from app.security import current_user
 from app.routers.collections import validate_collection_ids
+from app.schemas import SearchResponse
+from app.security import current_user
 from app.services.retrieval import retrieval_service
 
 router = APIRouter(prefix="/api/v1/search", tags=["search"])
 
 
-@router.get("")
-@router.get("/documents")
+@router.get("", response_model=SearchResponse)
+@router.get("/documents", response_model=SearchResponse)
 def search_documents(
     query: str,
     page: int = Query(1, ge=1),
