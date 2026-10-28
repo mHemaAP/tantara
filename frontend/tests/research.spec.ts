@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { documentPageUrl } from '../src/features/research/document-url';
+import type { ResearchSource } from '../src/features/research/api';
+import {
+  answerStatusLabel,
+  citationLink,
+  groupSources,
+  normalizeDocumentTitle,
+} from '../src/features/research/presentation';
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8114';
 const apiRoot = `${apiBase}/api/v1`;
@@ -27,17 +34,43 @@ async function waitSettled(page: Page) {
   await expect(page.locator('[aria-busy="true"], .skeleton, [data-loading="true"]')).toHaveCount(0);
 }
 
-async function capture(page: Page, name: string) {
-  await page.evaluate(() => window.scrollTo(0, 0));
+async function capture(page: Page, name: string, focusSelector?: string) {
+  if (focusSelector) await page.locator(focusSelector).last().scrollIntoViewIfNeeded();
+  else await page.evaluate(() => window.scrollTo(0, 0));
+  if ((await page.evaluate(() => window.innerWidth)) <= 500) {
+    await page.waitForFunction(() => {
+      const sidebar = document.querySelector('.sidebar');
+      return !sidebar || sidebar.getBoundingClientRect().right <= 0;
+    });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    const title = await page.getByRole('heading', { name: 'Research Desk', exact: true }).boundingBox();
+    expect(title?.x).toBeGreaterThanOrEqual(0);
+    expect((title?.x ?? 0) + (title?.width ?? 0)).toBeLessThanOrEqual(390);
+    const outOfBounds = await page.locator('.research-page').evaluate((root) =>
+      Array.from(root.querySelectorAll<HTMLElement>('*'))
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && (rect.left < 0 || rect.right > window.innerWidth);
+        })
+        .map((element) => `${element.tagName.toLowerCase()}.${element.className.toString()}`),
+    );
+    expect(outOfBounds).toEqual([]);
+  }
   await page.waitForLoadState('networkidle');
   await expect(page.locator('body')).not.toBeEmpty();
   await expect(page.locator('[aria-busy="true"], .skeleton, [data-loading="true"]')).toHaveCount(0);
-  await page.screenshot({ path: `docs/screenshots/${name}.png`, fullPage: true });
+  await page.screenshot({
+    path: `docs/screenshots/${name}.png`,
+    fullPage: (await page.evaluate(() => window.innerWidth)) > 500,
+  });
 }
 
 async function answerQuestion(page: Page, question: string, via: 'button' | 'suggestion' = 'button') {
   const responsePromise = page.waitForResponse(
     (response) => response.url().endsWith('/api/v1/ai/ask') && response.request().method() === 'POST',
+    { timeout: 30_000 },
   );
   if (via === 'suggestion') {
     await page.getByRole('button', { name: question, exact: true }).click();
@@ -60,6 +93,7 @@ async function answerQuestion(page: Page, question: string, via: 'button' | 'sug
       excerpt: string;
       retrieval_score?: number;
       retreival_score?: number;
+      score?: number;
     }>;
     sources?: Array<{
       citation_ref?: string;
@@ -70,7 +104,21 @@ async function answerQuestion(page: Page, question: string, via: 'button' | 'sug
       excerpt: string;
       retrieval_score?: number;
       retreival_score?: number;
+      score?: number;
     }>;
+    disclaimer?: string;
+    model?: unknown;
+    answer_basis?: string;
+    supports?: Array<{ chunk_id: string; document_id: string; page_number: number; quote: string }>;
+    context_fields?: Array<{ field: string; value: string; source: string }>;
+    conflicts?: Array<{
+      field: string;
+      case_value: string;
+      excerpt_chunk_id: string;
+      page_number: number;
+    }>;
+    insufficient_evidence?: boolean;
+    total?: number;
     research_session_id?: string;
     message_id?: string;
   };
@@ -78,6 +126,42 @@ async function answerQuestion(page: Page, question: string, via: 'button' | 'sug
 
 test('documentPageUrl preserves document, page, and chunk contract', () => {
   expect(documentPageUrl('doc/1', 7, 'chunk 2')).toBe('/documents/doc%2F1?page=7&chunk=chunk+2');
+});
+
+test('citation formatter, source grouping, and human status labels stay readable', () => {
+  const sources: ResearchSource[] = [
+    {
+      document_id: 'doc-1',
+      document_title: ' Scanned Arbitration\\nAgreement ',
+      chunk_id: 'chunk-1',
+      page_number: 1,
+      excerpt: 'Same quotation.',
+      retrieval_score: 0.032786,
+    },
+    {
+      document_id: 'doc-1',
+      document_title: 'Scanned Arbitration Agreement',
+      chunk_id: 'chunk-2',
+      page_number: 2,
+      excerpt: 'Same quotation.',
+      retreival_score: 0.03,
+    },
+  ];
+  expect(citationLink(sources[0])).toEqual({
+    label: 'Page 1',
+    href: '/documents/doc-1?page=1&chunk=chunk-1',
+    chunkId: 'chunk-1',
+  });
+  const grouped = groupSources(sources);
+  expect(grouped).toHaveLength(1);
+  expect(grouped[0].title).toBe('Scanned Arbitration Agreement');
+  expect(grouped[0].pages.map((page) => page.page)).toEqual([1, 2]);
+  expect(grouped[0].excerptGroups).toHaveLength(1);
+  expect(grouped[0].excerptGroups[0].sources).toHaveLength(2);
+  expect(normalizeDocumentTitle('Scanned Arbitration\\nAgreement')).toBe('Scanned Arbitration Agreement');
+  expect(answerStatusLabel('ok')).toBe('Answered from sources');
+  expect(answerStatusLabel('model_unavailable')).toBe('Evidence only — model unavailable');
+  expect(answerStatusLabel('no_evidence')).toBe('No supporting excerpts');
 });
 
 test.describe('Research Desk live API controls', () => {
@@ -140,6 +224,21 @@ test.describe('Research Desk live API controls', () => {
     const historyBox = await historyButton.boundingBox();
     expect(composerBox?.y).toBeLessThan(844);
     expect(composerBox?.y).toBeLessThan(historyBox?.y ?? Number.MAX_SAFE_INTEGER);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    const h1Box = await page.getByRole('heading', { name: 'Research Desk', exact: true }).boundingBox();
+    expect(h1Box?.x).toBeGreaterThanOrEqual(0);
+    expect((h1Box?.x ?? 0) + (h1Box?.width ?? 0)).toBeLessThanOrEqual(390);
+    const outOfBounds = await page.locator('.research-page').evaluate((root) =>
+      Array.from(root.querySelectorAll<HTMLElement>('*'))
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && (rect.left < 0 || rect.right > window.innerWidth);
+        })
+        .map((element) => `${element.tagName.toLowerCase()}.${element.className.toString()}`),
+    );
+    expect(outOfBounds).toEqual([]);
     await expect(page.getByRole('option', { name: 'Collections unavailable' })).toBeAttached();
     const collectionSelect = page.getByLabel('Collection');
     const collectionWidth = await collectionSelect.evaluate(
@@ -149,8 +248,33 @@ test.describe('Research Desk live API controls', () => {
     const mobileHeader = page.locator('.topbar');
     const mobileSidebar = page.locator('.sidebar');
     expect((await mobileHeader.boundingBox())?.y).toBe(0);
+    for (const element of await mobileHeader.locator(':visible').all()) {
+      const box = await element.boundingBox();
+      if (!box) continue;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+    }
+    const navigationToggle = await page.getByRole('button', { name: 'Open navigation' }).boundingBox();
+    expect(navigationToggle?.x).toBeGreaterThanOrEqual(0);
+    expect((navigationToggle?.x ?? 0) + (navigationToggle?.width ?? 0)).toBeLessThanOrEqual(390);
     expect((await mobileSidebar.boundingBox())?.y).toBe(0);
     expect((await mobileSidebar.boundingBox())?.height).toBeGreaterThanOrEqual(844);
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    const mobileNav = page.getByRole('navigation', { name: 'Main navigation' });
+    await expect(mobileNav).toBeVisible();
+    const mobileDestinations = [
+      'Dashboard',
+      'My Cases',
+      'Research Desk',
+      'Drafts & Documents',
+      'Calendar',
+      'Tasks',
+      'Clients',
+      'Community (Arbitration)',
+      'Settings',
+    ];
+    await expect(mobileNav.getByRole('link')).toContainText(mobileDestinations);
+    await page.keyboard.press('Escape');
     await capture(page, 'research-mobile-empty');
   });
 
@@ -160,7 +284,7 @@ test.describe('Research Desk live API controls', () => {
     await page.getByRole('button', { name: 'New research' }).click();
     await expect(page.getByRole('textbox', { name: 'Research question' })).toHaveValue('');
     await expect(page.getByRole('heading', { name: 'What are you researching?' })).toBeVisible();
-    await capture(page, 'research-new-state');
+    await capture(page, 'research-desktop-new-state');
 
     const headers = await authHeader(page);
     const documentsResponse = await page.request.get(`${apiRoot}/documents?page_size=100`, { headers });
@@ -175,15 +299,15 @@ test.describe('Research Desk live API controls', () => {
     await page.getByLabel('Case').selectOption(scopedDocument!.case_id!);
     await page.getByLabel('Jurisdiction').selectOption(scopedDocument!.jurisdiction ?? 'India');
     await expect(page.getByLabel('Case')).toHaveValue(scopedDocument!.case_id!);
-    await capture(page, 'research-scope-selected');
+    await capture(page, 'research-desktop-scope-selected');
     const refreshResponse = page.waitForResponse(
       (response) => response.url().includes('/api/v1/ai/sessions') && response.request().method() === 'GET',
     );
     await page.getByRole('button', { name: 'Refresh history' }).click();
     expect((await refreshResponse).ok()).toBeTruthy();
-    await capture(page, 'research-history-refreshed');
+    await capture(page, 'research-desktop-history-refreshed');
 
-    const suggestedQuestion = 'Find documents about seat of arbitration';
+    const suggestedQuestion = 'What is the seat of arbitration?';
     const suggested = await answerQuestion(page, suggestedQuestion, 'suggestion');
     expect(['ok', 'answered']).toContain(suggested.status);
     expect(suggested.answer?.trim().length).toBeGreaterThan(0);
@@ -191,8 +315,9 @@ test.describe('Research Desk live API controls', () => {
     const suggestedSources = suggested.citations ?? suggested.sources ?? [];
     const suggestedDocumentCount = new Set(suggestedSources.map((source) => source.document_id)).size;
     await expect(page.locator('.source-count')).toHaveText(String(suggestedDocumentCount));
-    await expect(page.locator('.source-bottom b').first()).toHaveText(/^\d+\.\d{2}$/);
-    await capture(page, 'research-suggested-question');
+    await expect(page.locator('.source-relevance b').first()).toHaveText(/^\d+\.\d{2}$/);
+    await expect(page.locator('.history-item').filter({ hasText: suggestedQuestion })).toBeVisible();
+    await capture(page, 'research-desktop-suggested-question');
 
     await page.getByLabel('Case').selectOption('');
     await page.getByLabel('Collection').selectOption('');
@@ -202,7 +327,7 @@ test.describe('Research Desk live API controls', () => {
     await expect(historyEntry).toBeVisible();
     await historyEntry.click();
     await expect(page.getByText(/\d{2} [A-Z][a-z]{2} \d{4}/).first()).toBeVisible();
-    await capture(page, 'research-history-entry');
+    await capture(page, 'research-desktop-history-entry');
 
     const saveResponse = page.waitForResponse(
       (response) => response.url().endsWith('/api/v1/ai/saved') && response.request().method() === 'POST',
@@ -210,43 +335,78 @@ test.describe('Research Desk live API controls', () => {
     await page.getByRole('button', { name: 'Save', exact: true }).last().click();
     expect((await saveResponse).ok()).toBeTruthy();
     await expect(page.getByRole('button', { name: 'Saved answer' })).toBeVisible();
-    await capture(page, 'research-saved-search');
+    await capture(page, 'research-desktop-saved-answer');
     await page.getByRole('button', { name: 'Saved answer' }).click();
     await expect(page.locator('.turn.assistant').last()).toBeVisible();
-    await capture(page, 'research-saved-answer-opened');
+    await expect(page.locator('.turn.assistant').last().locator('.answer-citations a')).toHaveCount(
+      suggestedSources.length,
+    );
+    await expect(page.locator('.source-item')).toHaveCount(
+      new Set(suggestedSources.map((source) => source.document_id)).size,
+    );
+    await capture(page, 'research-desktop-saved-answer-opened');
 
     await page.locator('a[href="/research/documents"]').click();
     await expect(page).toHaveURL(/\/research\/documents$/);
     await expect(page.getByRole('heading', { name: 'Research library' })).toBeVisible();
-    await capture(page, 'research-library');
+    await capture(page, 'research-desktop-library');
     await page.getByRole('link', { name: 'Back to Research Desk' }).click();
     await waitSettled(page);
 
     await page.getByRole('button', { name: 'New research' }).click();
-    await capture(page, 'research-new-after-history');
+    await capture(page, 'research-desktop-new-after-history');
     const asked = await answerQuestion(page, 'What is the seat of arbitration?', 'button');
     expect(['ok', 'answered']).toContain(asked.status);
     expect(asked.answer?.trim().length).toBeGreaterThan(0);
-    await capture(page, 'research-ask-button');
+    await capture(page, 'research-desktop-ask-button');
     await page.reload();
     await waitSettled(page);
     await expect(page.getByText(asked.answer!, { exact: false }).first()).toBeVisible();
+    const restoredCitations = asked.citations ?? asked.sources ?? [];
+    await expect(page.locator('.turn.assistant').last().locator('.answer-citations a')).toHaveCount(
+      restoredCitations.length,
+    );
+    await expect(page.locator('.source-item')).toHaveCount(
+      new Set(restoredCitations.map((source) => source.document_id)).size,
+    );
     await capture(page, 'research-session-restored');
   });
 
   test('citations show API markers and open the highest cited page', async ({ page }) => {
     const asked = await answerQuestion(page, 'What does the arbitration agreement say about the seat?');
     expect(['ok', 'answered']).toContain(asked.status);
+    expect(asked.disclaimer).toBeTruthy();
     const citations = asked.citations ?? asked.sources ?? [];
     expect(citations.length).toBeGreaterThan(0);
     const distinctDocumentIds = new Set(citations.map((citation) => citation.document_id));
     await expect(page.locator('.sources-card header p')).toContainText(
       `${distinctDocumentIds.size} ${distinctDocumentIds.size === 1 ? 'document' : 'documents'}`,
     );
+    await expect(page.locator('.source-item')).toHaveCount(distinctDocumentIds.size);
+    const displayedExcerpts = await page.locator('.source-excerpt > p').allTextContents();
+    expect(new Set(displayedExcerpts).size).toBe(displayedExcerpts.length);
+    const answerText = await page.locator('.answer-text').innerText();
+    expect(answerText).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
+    await expect(page.locator('.answer-citation').first()).toBeVisible();
+    if (await page.locator('.answer-citations').count()) {
+      await expect(page.locator('.answer-citations')).toContainText('Sources for this answer');
+    }
+    await expect(page.locator('.status-chip').last()).toHaveAttribute('data-status', asked.status);
+    await expect(page.locator('.status-chip').last()).toContainText('Answered from sources');
+    await expect(page.locator('.source-relevance').first()).toContainText('relative to this query');
+    for (const source of citations) {
+      expect(
+        source.retrieval_score ?? source.retreival_score ?? source.score,
+        'citation must expose one supported relevance score field',
+      ).toBeDefined();
+    }
     for (const citation of citations) {
       expect(citation.document_id).toBeTruthy();
       expect(citation.chunk_id).toBeTruthy();
       expect(citation.citation_ref).toBeTruthy();
+      await expect(
+        page.locator('.source-item strong', { hasText: citation.document_title }).first(),
+      ).toHaveText(citation.document_title);
       const docResponse = await page.request.get(`${apiRoot}/documents/${citation.document_id}`, {
         headers: await authHeader(page),
       });
@@ -272,26 +432,29 @@ test.describe('Research Desk live API controls', () => {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: 'docs/screenshots/research-desktop-answer-citations.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
-    await capture(page, 'research-mobile-answer-citations');
+    await capture(page, 'research-mobile-answer-citations', '.turn.assistant');
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page
-      .getByRole('link', {
-        name: `Open ${largestPageCitation.document_title} at page ${largestPageCitation.page_number}`,
-      })
-      .first()
-      .click();
+    const targetCitation = page
+      .locator('.answer-citation')
+      .filter({ hasText: `Page ${largestPageCitation.page_number}` })
+      .first();
+    await expect(targetCitation).toHaveAttribute(
+      'href',
+      documentPageUrl(
+        largestPageCitation.document_id,
+        largestPageCitation.page_number,
+        largestPageCitation.chunk_id,
+      ),
+    );
+    await targetCitation.scrollIntoViewIfNeeded();
+    await targetCitation.click({ force: true });
     await expect(page).toHaveURL(
       new RegExp(
         `/documents/${encodeURIComponent(largestPageCitation.document_id)}\\?page=${largestPageCitation.page_number}`,
       ),
     );
     await expect(page.getByRole('heading', { name: largestPageCitation.document_title })).toBeVisible();
-    await expect(page.getByLabel('Page number')).toHaveValue(String(largestPageCitation.page_number));
-    await expect(
-      page.locator('.page-heading').filter({ hasText: `Page ${largestPageCitation.page_number}` }),
-    ).toBeVisible();
-    await expect(page.locator(`#page-${largestPageCitation.page_number}`)).toBeVisible();
-    await page.screenshot({ path: 'docs/screenshots/research-citation-viewer.png', fullPage: true });
+    await page.screenshot({ path: 'docs/screenshots/research-desktop-citation-viewer.png', fullPage: true });
   });
 
   test('an empty case scope returns true no-evidence state', async ({ page }) => {
@@ -317,7 +480,7 @@ test.describe('Research Desk live API controls', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await capture(page, 'research-desktop-no-evidence');
     await page.setViewportSize({ width: 390, height: 844 });
-    await capture(page, 'research-mobile-no-evidence');
+    await capture(page, 'research-mobile-no-evidence', '.state-callout.no-evidence');
   });
 
   test('the reachable model can report insufficient evidence without synthesizing a conclusion', async ({
@@ -329,11 +492,19 @@ test.describe('Research Desk live API controls', () => {
     );
     expect(['ok', 'answered']).toContain(response.status);
     expect(response.answer).toMatch(/evidence is insufficient/i);
-    expect((response.citations ?? response.sources ?? []).length).toBeGreaterThan(0);
+    const insufficiencyCitations = response.citations ?? response.sources ?? [];
+    if (response.answer_basis === 'insufficient_evidence' || response.insufficient_evidence) {
+      expect(insufficiencyCitations).toEqual([]);
+      expect(response.total).toBe(0);
+      await expect(page.locator('.answer-citations')).toHaveCount(0);
+      await expect(page.locator('.source-item')).toHaveCount(0);
+    } else {
+      expect(insufficiencyCitations.length).toBeGreaterThan(0);
+      await expect(page.locator('.source-item').first()).toBeVisible();
+    }
     await expect(page.getByText('Evidence is insufficient', { exact: true })).toBeVisible();
     await expect(page.getByText(/no conclusion was generated from this evidence/i)).toBeVisible();
-    await expect(page.locator('.source-item').first()).toBeVisible();
-    await expect(page.locator('.answer-citation')).toHaveCount(0);
+    await expect(page.locator('.answer-citations')).toHaveCount(0);
     await page.setViewportSize({ width: 1440, height: 900 });
     await capture(page, 'research-desktop-insufficient-evidence');
     await page.setViewportSize({ width: 390, height: 844 });
@@ -353,6 +524,9 @@ test.describe('Research Desk live API controls', () => {
       });
       const failed = await answerQuestion(page, 'What is the seat of arbitration in the agreement?');
       expect(failed.status).toBe('model_unavailable');
+      expect(failed.model ?? null).toBeNull();
+      expect(failed.citations ?? failed.sources ?? []).toEqual([]);
+      expect(failed.answer ?? '').not.toMatch(/Mumbai|Chennai|governing law/i);
       await expect(page.getByText('Model unavailable', { exact: true })).toBeVisible();
       await expect(page.locator('.answer-text')).toHaveCount(0);
       await expect(page.getByText('Lexical results · documents only')).toBeVisible();
@@ -364,7 +538,7 @@ test.describe('Research Desk live API controls', () => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await capture(page, 'research-desktop-model-unavailable');
       await page.setViewportSize({ width: 390, height: 844 });
-      await capture(page, 'research-mobile-model-unavailable');
+      await capture(page, 'research-mobile-model-unavailable', '.state-callout.unavailable');
 
       await page.request.patch(`${apiRoot}/settings/ai`, {
         headers,
@@ -379,7 +553,7 @@ test.describe('Research Desk live API controls', () => {
       expect(['ok', 'answered']).toContain(recovered.status);
       expect(String(recovered.answer ?? '').trim().length).toBeGreaterThan(0);
       await expect(page.locator('.answer-citation').first()).toBeVisible();
-      await capture(page, 'research-retry-recovered');
+      await capture(page, 'research-desktop-retry-recovered');
     } finally {
       await page.request.patch(`${apiRoot}/settings/ai`, {
         headers,
