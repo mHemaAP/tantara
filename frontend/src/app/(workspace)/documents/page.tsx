@@ -157,7 +157,7 @@ export default function DocumentsPage() {
           or <button onClick={() => picker.current?.click()}>click to upload</button>
         </span>
         <small>
-          PDF, DOCX, TXT, MD · maximum {maximumUploadMb} MB (backend default) ·{' '}
+          PDF, DOCX, TXT, MD · maximum {maximumUploadMb} MB ·{' '}
           <details className="upload-mime-details">
             <summary>Accepted MIME types</summary>
             <span>
