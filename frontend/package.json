@@ -11,7 +11,8 @@
     "gen:api": "node scripts/gen-api.mjs",
     "screenshots": "node scripts/shoot.mjs",
     "test:e2e": "playwright test",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" tests/research.spec.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
