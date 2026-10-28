@@ -265,7 +265,7 @@ export function CommunityFeed() {
   }
 
   return (
-    <main
+    <div
       className="community-page"
       style={{ maxWidth: 980, margin: '0 auto', padding: '28px 20px', display: 'grid', gap: 18 }}
     >
@@ -439,7 +439,7 @@ export function CommunityFeed() {
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }
 
@@ -512,13 +512,13 @@ export function CommunityThread({ id }: { id: string }) {
 
   if (!post && !error)
     return (
-      <main className="community-page" style={{ maxWidth: 850, margin: '0 auto', padding: '28px 20px' }}>
+      <div className="community-page" style={{ maxWidth: 850, margin: '0 auto', padding: '28px 20px' }}>
         <p role="status">Loading discussion…</p>
-      </main>
+      </div>
     );
 
   return (
-    <main
+    <div
       className="community-thread"
       style={{ maxWidth: 850, margin: '0 auto', padding: '28px 20px', display: 'grid', gap: 16 }}
     >
@@ -649,6 +649,6 @@ export function CommunityThread({ id }: { id: string }) {
           {busy ? 'Sending…' : 'Reply'}
         </button>
       </form>
-    </main>
+    </div>
   );
 }
