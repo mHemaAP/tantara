@@ -50,6 +50,7 @@ test('workspace navigation exposes all module routes and each route resolves', a
   for (const route of moduleRoutes) {
     await page.goto(route, { waitUntil: 'domcontentloaded' });
     await expect(nav).toBeVisible();
+    await expect(page.locator('main'), `${route} should have one main landmark`).toHaveCount(1);
     const visibleLinks = nav.getByRole('link');
     await expect(visibleLinks).toHaveCount(14);
     for (let index = 0; index < 14; index += 1) await expect(visibleLinks.nth(index)).toBeVisible();
@@ -77,6 +78,32 @@ test('workspace navigation exposes all module routes and each route resolves', a
     if (route === '/documents') {
       await expect(page.getByRole('navigation', { name: 'Documents navigation' })).toHaveCount(0);
     }
+  }
+  const login = await request.post(`${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1/auth/login`, {
+    data: { email: 'advocate@tantara.local', password: 'tantara-local' },
+  });
+  expect(login.ok()).toBeTruthy();
+  const token = (await login.json()).access_token as string;
+  const headers = { Authorization: `Bearer ${token}` };
+  const [cases, clients, documents, bundles, posts] = await Promise.all([
+    request.get(`${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1/cases?page_size=1`, { headers }),
+    request.get(`${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1/clients?page_size=1`, { headers }),
+    request.get(`${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1/documents?page_size=1`, { headers }),
+    request.get(`${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1/bundles?page_size=1`, { headers }),
+    request.get(`${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1/community/posts?page_size=1`, { headers }),
+  ]);
+  for (const response of [cases, clients, documents, bundles, posts]) expect(response.ok()).toBeTruthy();
+  const ids = await Promise.all([cases, clients, documents, bundles, posts].map(async (response) => (await response.json()).items[0].id as string));
+  for (const route of [
+    '/research/documents',
+    `/cases/${ids[0]}/strategy`,
+    `/clients/${ids[1]}`,
+    `/documents/${ids[2]}`,
+    `/bundles/${ids[3]}`,
+    `/community/${ids[4]}`,
+  ]) {
+    await page.goto(route, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('main'), `${route} should have one main landmark`).toHaveCount(1);
   }
   for (const [route, label] of [
     ['/autofill', 'Smart Autofill'],
