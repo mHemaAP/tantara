@@ -68,7 +68,7 @@ export default function BundlesPage() {
   };
 
   return (
-    <main className="bundle-page bundle-list-page">
+    <div className="bundle-page bundle-list-page">
       <header className="bundle-head">
         <div>
           <div className="bundle-eyebrow">MODULE 08 · DOCUMENT ASSEMBLY</div>
@@ -167,6 +167,6 @@ export default function BundlesPage() {
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }
