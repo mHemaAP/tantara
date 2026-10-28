@@ -1,5 +1,4 @@
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
@@ -40,8 +39,7 @@ async function seededPageThreeDocument(request: APIRequestContext, token: string
 
 async function captureViewport(page: Page, name: string, width: number, height: number) {
   const screenshotPath = `${screenshots}/${name}.png`;
-  const image = await page.screenshot({ path: screenshotPath });
-  writeFileSync(`/tmp/${name}.png`, image);
+  await page.screenshot({ path: screenshotPath });
   const pixelData = execFileSync('python', [
     '-c',
     [
@@ -104,6 +102,9 @@ test('real seeded document opens from library, renders proportionally, reads, an
   await page.getByRole('link', { name: 'Page Three Motion' }).click();
   await expect(page).toHaveURL(new RegExp(`/documents/${document.id}$`));
   await expect(page.getByLabel('PDF page 1')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
   await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
   await expect(page.getByLabel('Jump to page')).toHaveValue('1');
   await expectPageRatio(page, 1);
@@ -126,6 +127,7 @@ test('real seeded document opens from library, renders proportionally, reads, an
   } else {
     await expect(page.getByRole('button', { name: 'Run AI Read' })).toBeVisible();
     await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 150000 });
     await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 150000 });
     await expect(page.locator('.ai-read-field[data-field-key="summary"]')).toContainText(
       'Routine procedural filing',
@@ -145,18 +147,33 @@ test('real seeded document opens from library, renders proportionally, reads, an
     await summaryDisclosure.locator('summary').click();
     await expect(summaryDisclosure).toContainText(/Unique page three clause/);
     await summaryDisclosure.locator('summary').click();
-    await extractedSummary.scrollIntoViewIfNeeded();
-    await page.locator('.ai-read-panel').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Zoom out' }).click();
+    await page.getByRole('button', { name: 'Zoom out' }).click();
+    await page.getByRole('button', { name: 'Zoom out' }).click();
+    await expect(page.locator('.pdf-zoom-controls')).toContainText('55%');
+    await page.getByRole('button', { name: 'Fit width' }).click();
+    await expect(page.locator('.pdf-zoom-controls')).toContainText('100%');
+    await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
+      timeout: 60000,
+    });
+    await page.evaluate(() => window.scrollTo(0, 0));
     await captureViewport(page, 'documents-round5-airead-desktop-1440-populated-real', 1440, 900);
   }
 
-  const pageThreeText = 'Unique page three clause: Sapphire Pavilion shall host the special procedural conference on the third calendar day.';
+  const pageThreeText =
+    'Unique page three clause: Sapphire Pavilion shall host the special procedural conference on the third calendar day.';
   await page.locator('.document-page-text-list summary').click();
   await page.locator('.document-page-text-list .document-page-citation').getByText('Page 3').click();
   await expect(page).toHaveURL(/page=3/);
   await expect(page.getByLabel('Jump to page')).toHaveValue('3', { timeout: 60000 });
   await expect(page.getByLabel('PDF page 3')).toBeVisible({ timeout: 60000 });
-  await expect(page.getByText(pageThreeText)).toBeVisible();
+  await expect(page.getByLabel('PDF page 3')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
+  await expect(page.locator('#page-3')).toContainText(pageThreeText);
+  await expect(page.locator('.pdf-page-card[data-page-card="3"] .pdf-text-layer')).toContainText(
+    /Unique page three clause/,
+  );
   await expectPageRatio(page, 3);
   await page.evaluate(() => window.scrollTo(0, 0));
   await captureViewport(page, 'documents-round5-citation-page3-desktop-1440-real', 1440, 900);
@@ -164,4 +181,91 @@ test('real seeded document opens from library, renders proportionally, reads, an
   expect(routeRegistrationCount).toBe(0);
   expect(document.content_hash).toMatch(/^[a-f0-9]{64}$/);
   expect(document.page_count).toBe(5);
+});
+
+test('upload control reports completion and opens the uploaded PDF with a source-linked field', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(180000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const token = await signIn(request);
+  await openWithToken(page, token, '/documents');
+  const fileName = 'arbitration-text-layer.pdf';
+  await page.locator('input[type="file"]').setInputFiles('tests/fixtures/arbitration-text-layer.pdf');
+  const uploadProgress = page.getByRole('progressbar', { name: `${fileName} upload progress` });
+  await expect(uploadProgress).toHaveAttribute('value', '100', { timeout: 30000 });
+  const uploadedLink = page.getByRole('link', { name: fileName, exact: true });
+  await expect(uploadedLink).toBeVisible({ timeout: 30000 });
+  const uploadedHref = await uploadedLink.getAttribute('href');
+  expect(uploadedHref).toBeTruthy();
+  const uploadedUrl = new URL(uploadedHref!, 'http://127.0.0.1:3013');
+  const uploadedId = uploadedUrl.pathname.split('/').at(-1)!;
+  const headers = { Authorization: `Bearer ${token}` };
+  await expect
+    .poll(async () =>
+      request
+        .get(`${apiUrl}/documents/${uploadedId}/job`, { headers })
+        .then((response) => response.json())
+        .then((job) => job.status),
+    )
+    .toBe('ready');
+  await uploadedLink.click();
+  await expect(page.getByLabel('PDF page 1')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
+  await page.getByRole('button', { name: 'Run AI Read' }).click();
+  await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 90000 });
+  const clause = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
+  await expect(clause).toBeVisible({ timeout: 90000 });
+  await expect(clause.locator('.ai-source-page')).toHaveText('Page 1');
+  await expect(page.getByLabel('PDF page 1')).toBeVisible();
+  await captureViewport(page, 'documents-round5-upload-outcome-desktop-1440-fixture', 1440, 900);
+  await request.delete(`${apiUrl}/documents/${uploadedId}`, { headers });
+});
+
+test('library filters, layout, selection, preview, and PDF download change state', async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const token = await signIn(request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const documents = await request
+    .get(`${apiUrl}/documents?page_size=100`, { headers })
+    .then((response) => response.json());
+  const firstDocument = documents.items[0] as { id: string; title: string; status: string };
+  await openWithToken(page, token, '/documents');
+  await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 60000 });
+
+  await page.getByLabel('Filter by status').selectOption('ready');
+  const readyCount = documents.items.filter((item: { status: string }) => item.status === 'ready').length;
+  await expect(page.locator('.documents-table tbody tr')).toHaveCount(readyCount);
+  await page.getByRole('button', { name: 'Grid view' }).click();
+  await expect(page.locator('.documents-list.grid .document-card').first()).toBeVisible();
+  await expect(page.locator('.documents-list.grid .document-card')).toHaveCount(readyCount);
+  await page.getByRole('button', { name: 'List view' }).click();
+  const titleLink = page.getByRole('link', { name: firstDocument.title, exact: true }).first();
+  const selectedCheckbox = page.getByRole('checkbox', { name: `Select ${firstDocument.title}` }).first();
+  await selectedCheckbox.check();
+  await expect(page.getByText('1 selected')).toBeVisible();
+  await selectedCheckbox.uncheck();
+  await expect(page.getByText('1 selected')).toHaveCount(0);
+  const firstRow = page.locator('.documents-table tbody tr').filter({ has: titleLink }).first();
+  await firstRow.click();
+  await expect(firstRow).toHaveClass(/previewed/);
+  const previewCanvas = page.locator('.document-preview-pane canvas').first();
+  await expect(previewCanvas).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
+  await page.getByRole('link', { name: `Open ${firstDocument.title}` }).click();
+  await expect(page).toHaveURL(new RegExp(`/documents/${firstDocument.id}$`));
+  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download PDF' }).click();
+  const downloadedFile = await downloadPromise;
+  expect(downloadedFile.suggestedFilename()).toMatch(/\.pdf$/i);
+  expect(await downloadedFile.path()).toBeTruthy();
+  await captureViewport(page, 'documents-round5-download-viewer-desktop-1440-real', 1440, 900);
 });
