@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from app.db import SessionLocal, session_scope
 from app.models import Document, KnowledgeCollection
 from app.security import current_user
+from app.timezone import to_utc_iso
 
 router = APIRouter(prefix="/api/v1/collections", tags=["collections"])
 
@@ -24,8 +25,8 @@ def _serialize(collection: KnowledgeCollection, document_count: int):
         "name": collection.name,
         "description": collection.description,
         "document_count": document_count,
-        "created_at": collection.created_at.isoformat(),
-        "updated_at": collection.updated_at.isoformat(),
+        "created_at": to_utc_iso(collection.created_at),
+        "updated_at": to_utc_iso(collection.updated_at),
     }
 
 
