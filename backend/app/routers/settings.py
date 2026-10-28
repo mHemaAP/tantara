@@ -19,6 +19,7 @@ from app.db import engine as get_engine
 from app.models import AppPreference, AuditEvent, Case, Client, Document, DocumentChunk, Draft, Task, User
 from app.security import current_user, hash_password
 from app.services.audit import record
+from app.timezone import to_utc_iso
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -110,7 +111,7 @@ def ai_settings(user=Depends(current_user)):
             "base_url": base_url,
             "model": model,
             "reachable": reachable,
-            "checked_at": started.isoformat(),
+            "checked_at": to_utc_iso(started),
         },
     }
 
@@ -195,7 +196,7 @@ def security(
                     "action": x.action,
                     "object_type": x.object_type,
                     "object_id": x.object_id,
-                    "at": x.created_at.isoformat(),
+                    "at": to_utc_iso(x.created_at),
                 }
                 for x in rows
             ],
