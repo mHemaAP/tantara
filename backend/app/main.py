@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.db import SessionLocal, init_db, session_scope
@@ -87,9 +88,8 @@ async def route_rate_limit(request: Request, call_next):
     return await call_next(request)
 
 
-@app.exception_handler(HTTPException)
-async def http_error(request, exc):
-    code = {
+def _http_error_code(status_code: int) -> str:
+    return {
         401: "unauthorized",
         403: "forbidden",
         404: "not_found",
@@ -98,8 +98,11 @@ async def http_error(request, exc):
         422: "validation_error",
         429: "rate_limited",
         503: "model_unavailable",
-    }.get(exc.status_code, "request_error")
-    detail = exc.detail
+    }.get(status_code, "request_error")
+
+
+def _http_error_response(status_code: int, detail) -> JSONResponse:
+    code = _http_error_code(status_code)
     if isinstance(detail, dict):
         message = detail.get("message", "Request failed")
         extra = {k: v for k, v in detail.items() if k != "message"}
@@ -109,7 +112,28 @@ async def http_error(request, exc):
     error = {"code": code, "message": message}
     if extra:
         error["details"] = extra
-    return JSONResponse(status_code=exc.status_code, content={"error": error})
+    return JSONResponse(status_code=status_code, content={"error": error})
+
+
+@app.exception_handler(HTTPException)
+async def http_error(request, exc):
+    return _http_error_response(exc.status_code, exc.detail)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_error(request, exc):
+    return _http_error_response(exc.status_code, exc.detail)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request, exc):
+    logging.getLogger("uvicorn.error").exception(
+        "Unhandled API exception for %s %s", request.method, request.url.path
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"code": "internal_error", "message": "Internal server error"}},
+    )
 
 
 @app.exception_handler(RequestValidationError)
@@ -166,9 +190,9 @@ app.include_router(community_router)
 from app.routers.strategy import router as strategy_router
 
 app.include_router(strategy_router)
+from app.routers.collections import router as collections_router
 from app.routers.documents import router as document_router
 from app.routers.documents import upload as document_upload
-from app.routers.collections import router as collections_router
 
 app.include_router(document_router)
 app.include_router(collections_router)
