@@ -1,39 +1,128 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import { Download, FileText, GripVertical, MoveDown, MoveUp, Plus, RefreshCw, Sparkles } from 'lucide-react';
-import { bundleApi, type Bundle, type BundleItem } from '@/features/bundles/api';
+
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowRight, FileText, Plus } from 'lucide-react';
+import { bundleApi, type Bundle, type CaseOption } from '@/features/bundles/api';
 import '@/features/bundles/bundles.css';
 
-const sections = ['Pleadings', 'Annexures', 'Exhibits', 'Orders', 'Authorities'];
-const rows = (v: { items?: BundleItem[] } | BundleItem[] | undefined) => Array.isArray(v) ? v : v?.items ?? [];
-const start = (i: BundleItem) => i.page_start ?? i.start_page;
-const end = (i: BundleItem) => i.page_end ?? i.end_page;
+type ListedBundle = Bundle & { sectionCount: number };
+const defaultSettings = { cover_page: true, index: true, synopsis: true, list_of_dates: true };
+
 export default function BundlesPage() {
-  const [cases, setCases] = useState<Array<{id:string;title:string}>>([]), [caseId,setCaseId]=useState('');
-  const [docs,setDocs]=useState<Array<{id:string;title:string;pages?:number;page_count?:number}>>([]), [selected,setSelected]=useState<string[]>([]);
-  const [bundle,setBundle]=useState<Bundle|null>(null), [items,setItems]=useState<BundleItem[]>([]), [busy,setBusy]=useState(false), [notice,setNotice]=useState('');
-  const [cover,setCover]=useState(true),[index,setIndex]=useState(true),[synopsis,setSynopsis]=useState(true),[dates,setDates]=useState(false),[drag,setDrag]=useState<number|null>(null),[pdf,setPdf]=useState(''),[sectionOrder,setSectionOrder]=useState(sections),[enabledSections,setEnabledSections]=useState(sections);
-  useEffect(()=>{ bundleApi.cases().then(x=>{setCases(x.items??[]); if(x.items?.[0])setCaseId(x.items[0].id)}).catch(()=>setNotice('Cases are unavailable. Check the private API connection.')); },[]);
-  useEffect(()=>{ if(!caseId)return; bundleApi.documents(caseId).then(x=>setDocs(x.items??[])).catch(()=>setNotice('Case documents could not be loaded.')); },[caseId]);
-  const refresh = async (id:string) => { const [b,it]=await Promise.all([bundleApi.get(id),bundleApi.items(id)]);setBundle(b);setItems(rows(it)); };
-  const move=(from:number,to:number)=>{if(to<0||to>=items.length)return;const copy=[...items];const [x]=copy.splice(from,1);copy.splice(to,0,x);setItems(copy);document.getElementById('bundle-live')!.textContent=`${x.title??x.document_title??'Document'} moved to position ${to+1}`;};
-  const moveSection=(from:number,to:number)=>{if(to<0||to>=sectionOrder.length)return;const copy=[...sectionOrder];const [x]=copy.splice(from,1);copy.splice(to,0,x);setSectionOrder(copy);};
-  const add = async () => { if(!caseId||selected.length===0)return; setBusy(true);setNotice('');try{const b=await bundleApi.create({case_id:caseId,title:'Filing bundle',document_ids:selected,include_cover_page:cover,generate_index:index,generate_synopsis:synopsis,generate_list_of_dates:dates});setBundle(b); await refresh(b.id);setSelected([]);}catch(e){setNotice(e instanceof Error?e.message:'Bundle could not be created.')}finally{setBusy(false)} };
-  const save = async (next:BundleItem[]) => { if(!bundle)return; setItems(next);try{await bundleApi.updateItems(bundle.id,{items:next.map((x,position)=>({document_id:x.document_id,section:x.section??'Annexures',position}))});await refresh(bundle.id);}catch(e){setNotice(e instanceof Error?e.message:'Bundle composition could not be saved.')} };
-  const generate=async()=>{if(!bundle)return;setBusy(true);setNotice('');try{await bundleApi.updateItems(bundle.id,{items:items.map((x,position)=>({document_id:x.document_id,section:x.section??'Annexures',position}))});await bundleApi.updateSections(bundle.id,{order:sectionOrder,enabled:enabledSections,include_cover_page:cover,generate_index:index,generate_synopsis:synopsis,generate_list_of_dates:dates});await bundleApi.generate(bundle.id);let latest:Bundle|undefined;for(let n=0;n<30;n++){await new Promise(r=>setTimeout(r,1000));const [next,contents]=await Promise.all([bundleApi.get(bundle.id),bundleApi.items(bundle.id)]);latest=next;setBundle(next);setItems(rows(contents));const s=(next.job_status??next.status??'').toLowerCase();if(['completed','complete','generated','failed','error','partial_failure'].includes(s))break;}if(latest&&['failed','error','partial_failure'].includes((latest.job_status??latest.status??'').toLowerCase()))setNotice(latest.error??'Some documents could not be included. Review the listed items and retry.');}catch(e){setNotice(e instanceof Error?e.message:'Generation failed.')}finally{setBusy(false)}};
-  const getPdf=async()=>{if(!bundle)throw new Error('Generate a bundle first.');const response=await fetch(bundleApi.fileUrl(bundle.id),{headers:bundleApi.headers()});if(!response.ok)throw new Error('Generated PDF is not available yet.');const blob=await response.blob();if(!(await blob.slice(0,4).text()).startsWith('%PDF'))throw new Error('The download did not contain a PDF.');return blob;};
-  const preview=async()=>{try{const blob=await getPdf();setPdf(URL.createObjectURL(blob));}catch(e){setNotice(e instanceof Error?e.message:'Preview unavailable.')}};
-  const download=async()=>{try{const blob=await getPdf(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='filing-bundle.pdf';a.click();URL.revokeObjectURL(url);}catch(e){setNotice(e instanceof Error?e.message:'Download unavailable.')}};
-  const docNames=useMemo(()=>new Map(docs.map(d=>[d.id,d.title])),[docs]);
-  return <main className="bundle-page"><header className="bundle-head"><div><div className="bundle-eyebrow">MODULE 08 · DOCUMENT ASSEMBLY</div><h1>Filing Bundle</h1><p>Arrange your case documents and prepare a filing-ready paperbook.</p></div><button className="bundle-primary" disabled={!bundle||busy} onClick={()=>void generate()}><Sparkles size={16}/>{busy?'Generating…':'Generate Bundle'}</button></header>
-  {notice&&<div className="bundle-notice" role="alert">{notice}<button onClick={()=>setNotice('')} aria-label="Dismiss">×</button></div>}
-  <section className="bundle-workspace"><div className="bundle-card bundle-left"><div className="bundle-card-title"><div><span className="bundle-step">01</span><h2>Bundle Contents</h2></div><span className="bundle-count">{items.length} documents</span></div>
-    <label className="bundle-label" htmlFor="bundle-case">Select case</label><select id="bundle-case" value={caseId} onChange={e=>{setCaseId(e.target.value);setSelected([]);setBundle(null);setItems([])}}>{cases.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</select>
-    <div className="bundle-add"><select aria-label="Choose document" id="bundle-doc">{docs.filter(d=>!items.some(i=>i.document_id===d.id)).map(d=><option key={d.id} value={d.id}>{d.title}</option>)}</select><button aria-label="Add document" onClick={()=>{const el=document.getElementById('bundle-doc') as HTMLSelectElement;if(el?.value)setSelected(v=>v.includes(el.value)?v:[...v,el.value])}}><Plus size={16}/></button></div>
-    {selected.length>0&&<div className="bundle-selected" aria-live="polite">{selected.map(id=><span key={id}>{docNames.get(id)??id}<button aria-label={`Remove ${docNames.get(id)}`} onClick={()=>setSelected(v=>v.filter(x=>x!==id))}>×</button></span>)}<button className="bundle-add-selected" disabled={busy} onClick={()=>void add()}>Add to bundle</button></div>}
-    {items.length===0?<div className="bundle-empty"><FileText size={26}/><strong>No documents added yet</strong><span>Choose a case document above to begin your bundle.</span></div>:<ol className="bundle-items" aria-label="Bundle document order">{items.map((item,i)=><li key={item.document_id} draggable onDragStart={()=>setDrag(i)} onDragOver={e=>e.preventDefault()} onDrop={()=>{if(drag!==null){const copy=[...items];const [v]=copy.splice(drag,1);copy.splice(i,0,v);void save(copy);}setDrag(null)}}><GripVertical className="bundle-grip" size={17}/><div className="bundle-doc-info"><strong>{item.title??item.document_title??docNames.get(item.document_id)??'Document'}</strong><span>{start(item)&&end(item)?`Pages ${start(item)}–${end(item)}`:'Page range pending'}</span>{item.needs_review&&<small className="bundle-review">Manual review · {item.review_reason??'scan or page layout needs checking'}</small>}<select aria-label={`Section for ${item.title??item.document_title??'document'}`} value={item.section??'Annexures'} onChange={e=>void save(items.map((x,j)=>j===i?{...x,section:e.target.value}:x))}>{sections.map(s=><option key={s}>{s}</option>)}</select></div><div className="bundle-moves"><button aria-label="Move up" disabled={i===0} onClick={()=>move(i,i-1)}><MoveUp size={15}/></button><button aria-label="Move down" disabled={i===items.length-1} onClick={()=>move(i,i+1)}><MoveDown size={15}/></button></div></li>)}</ol>}
-    <span id="bundle-live" className="sr-only" aria-live="polite"/>
-  </div>
-  <div className="bundle-card bundle-paper"><div className="bundle-card-title"><div><span className="bundle-step">02</span><h2>Index Preview</h2></div><button className="bundle-text-button" onClick={()=>bundle&&void refresh(bundle.id)}><RefreshCw size={14}/> Refresh</button></div>{pdf?<iframe className="bundle-pdf" src={pdf} title="Generated bundle PDF"/>:<article className="paper-preview"><div className="paper-mark">TANTARA <span>· FILING COPY</span></div><h2>{bundle?.title??'Index of Documents'}</h2><p className="paper-caption">{cases.find(c=>c.id===caseId)?.title??'Select a case'} · Bundle index</p><div className="paper-rule"/>{items.length?items.map((x,i)=><div className="paper-entry" key={x.document_id}><span>{String(i+1).padStart(2,'0')}</span><strong>{x.title??x.document_title??docNames.get(x.document_id)}</strong><small>{start(x)&&end(x)?`${start(x)}–${end(x)}`:'—'}</small></div>):<div className="paper-placeholder">Your document index will appear here once documents are added.</div>}<div className="paper-foot">PAGE RANGES ARE ASSIGNED WHEN THE BUNDLE IS GENERATED</div></article>}<div className="bundle-paper-actions"><button onClick={()=>void preview()} disabled={!bundle}><FileText size={15}/> Preview generated PDF</button><button onClick={()=>void download()} disabled={!bundle}><Download size={15}/> Download PDF</button></div>{bundle?.page_count!==undefined&&<div className="bundle-file-meta">Generated PDF · {bundle.page_count} pages{bundle.byte_size!==undefined?` · ${bundle.byte_size.toLocaleString()} bytes`:''}</div>}</div>
-  <aside className="bundle-card bundle-controls"><div className="bundle-card-title"><div><span className="bundle-step">03</span><h2>Bundle Setup</h2></div></div><label className="bundle-label">Section order · move to configure</label><ol className="bundle-section-order">{sectionOrder.map((s,i)=><li key={s}><span>{String(i+1).padStart(2,'0')}</span>{s}<div className="section-moves"><button aria-label={`Move ${s} up`} disabled={i===0} onClick={()=>moveSection(i,i-1)}>↑</button><button aria-label={`Move ${s} down`} disabled={i===sectionOrder.length-1} onClick={()=>moveSection(i,i+1)}>↓</button></div></li>)}</ol><div className="bundle-switches"><strong className="bundle-section-label">Include sections</strong>{sections.map(s=><label key={s}><span>{s}</span><input aria-label={`Include ${s}`} type="checkbox" checked={enabledSections.includes(s)} onChange={e=>setEnabledSections(v=>e.target.checked?[...v,s]:v.filter(x=>x!==s))}/></label>)}{[['Cover page',cover,setCover],['Generate index',index,setIndex],['Synopsis',synopsis,setSynopsis],['List of dates',dates,setDates]].map(([label,value,setter])=><label key={String(label)}><span>{String(label)}</span><input type="checkbox" checked={value as boolean} onChange={e=>(setter as (v:boolean)=>void)(e.target.checked)}/></label>)}</div><div className="bundle-status"><span className={`bundle-status-dot ${bundle?.status==='completed'?'ready':''}`}/><span>{bundle?.status??'Draft'}{bundle?.progress!==undefined?` · ${bundle.progress}%`:''}</span></div><button className="bundle-primary bundle-full" disabled={!bundle||busy||items.length===0} onClick={()=>void generate()}><Sparkles size={16}/>{busy?'Generating…':'Generate Bundle'}</button>{bundle?.status==='completed'&&<button className="bundle-secondary" onClick={()=>void preview()}>Open generated PDF</button>}<p className="bundle-help">PDF readability and page orientation should be checked before filing.</p></aside></section></main>;
+  const [bundles, setBundles] = useState<ListedBundle[]>([]);
+  const [cases, setCases] = useState<CaseOption[]>([]);
+  const [name, setName] = useState('');
+  const [caseId, setCaseId] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [bundleResult, caseResult] = await Promise.all([bundleApi.list(), bundleApi.cases()]);
+      const withSections = await Promise.all(
+        bundleResult.items.map(async (bundle) => {
+          try {
+            const preview = await bundleApi.preview(bundle.id);
+            return { ...bundle, sectionCount: preview.sections.length };
+          } catch {
+            return { ...bundle, sectionCount: 0 };
+          }
+        }),
+      );
+      setBundles(withSections);
+      setCases(caseResult.items);
+      setCaseId((current) => current || caseResult.items[0]?.id || '');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Filing bundles are unavailable.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => void reload(), [reload]);
+
+  const createBundle = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!name.trim() || !caseId) return;
+    setSaving(true);
+    setError('');
+    try {
+      const bundle = await bundleApi.create({ name: name.trim(), case_id: caseId, settings: defaultSettings });
+      window.location.assign(`/bundles/${bundle.id}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not create this bundle.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <main className="bundle-page bundle-list-page">
+      <header className="bundle-head">
+        <div>
+          <div className="bundle-eyebrow">MODULE 08 · DOCUMENT ASSEMBLY</div>
+          <h1>Filing Bundles</h1>
+          <p>Build, review, and download case paperbooks.</p>
+        </div>
+        <button className="bundle-primary" onClick={() => setShowCreate((value) => !value)}>
+          <Plus size={16} /> {showCreate ? 'Close' : 'New bundle'}
+        </button>
+      </header>
+
+      {error && <div className="bundle-notice" role="alert">{error}</div>}
+      {showCreate && (
+        <form className="bundle-card bundle-create-form" onSubmit={(event) => void createBundle(event)}>
+          <h2>Create a filing bundle</h2>
+          <div className="bundle-create-fields">
+            <label>
+              <span>Bundle name</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={300} />
+            </label>
+            <label>
+              <span>Case</span>
+              <select value={caseId} onChange={(event) => setCaseId(event.target.value)} required>
+                {cases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+              </select>
+            </label>
+          </div>
+          <button className="bundle-primary" disabled={saving || !caseId || !name.trim()}>
+            <Plus size={15} /> {saving ? 'Creating…' : 'Create bundle'}
+          </button>
+        </form>
+      )}
+
+      <section className="bundle-card bundle-list-card" aria-labelledby="bundle-list-title">
+        <div className="bundle-list-heading">
+          <div><span className="bundle-step">YOUR WORKSPACE</span><h2 id="bundle-list-title">Saved bundles</h2></div>
+          {!loading && <span className="bundle-count">{bundles.length} bundles</span>}
+        </div>
+        {loading ? (
+          <div className="bundle-load-state" role="status">Loading bundles…</div>
+        ) : bundles.length ? (
+          <div className="bundle-list">
+            {bundles.map((bundle) => (
+              <Link className="bundle-list-row" href={`/bundles/${bundle.id}`} key={bundle.id}>
+                <span className="bundle-list-icon"><FileText size={19} /></span>
+                <span className="bundle-list-name"><strong>{bundle.name}</strong><small>{new Date(bundle.created_at).toLocaleDateString()}</small></span>
+                <span className="bundle-list-meta"><span className={`bundle-status-pill status-${bundle.status}`}>{bundle.status}</span><small>{bundle.sectionCount} sections</small></span>
+                <ArrowRight size={17} className="bundle-list-arrow" />
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="bundle-empty bundle-list-empty">
+            <FileText size={27} />
+            <strong>No filing bundles yet</strong>
+            <span>Create a bundle, select a case, and add documents to prepare a paperbook.</span>
+            <button className="bundle-primary" onClick={() => setShowCreate(true)}><Plus size={15} /> Create your first bundle</button>
+          </div>
+        )}
+      </section>
+    </main>
+  );
 }
