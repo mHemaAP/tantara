@@ -15,7 +15,7 @@ const routes = [
 ];
 let authToken = '';
 test.beforeEach(async ({ page, request }) => {
-  const apiBase = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8010'}/api/v1`;
+  const apiBase = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
   const response = await request.post(`${apiBase}/auth/login`, {
     data: { email: 'advocate@tantara.local', password: 'tantara-local' },
   });
@@ -31,7 +31,7 @@ test('existing routes render without console or hydration errors and overflow', 
     if (message.type() === 'error') errors.push(message.text());
   });
   page.on('pageerror', (error) => errors.push(error.message));
-  const apiBase = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8010'}/api/v1`;
+  const apiBase = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
   const headers = { Authorization: `Bearer ${authToken}` };
   const [caseResponse, documentResponse] = await Promise.all([
     request.get(`${apiBase}/cases`, { headers }),
@@ -111,18 +111,10 @@ test('local AI status and guest mutation controls are accessible', async ({ page
   await expect(page.locator('.searchbox')).toBeHidden();
 });
 
-test('dashboard shows unavailable metrics as em dashes without dead actions', async ({ page }) => {
-  await page.route('**/api/v1/dashboard/summary', (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'offline', message: 'Unavailable' } }),
-    }),
-  );
+test('dashboard shows live seeded metrics without dead actions', async ({ page }) => {
   await page.goto('/dashboard');
-  await expect(page.getByText('Backend not reachable at 127.0.0.1:8010')).toBeVisible();
   await expect(page.locator('.metric strong')).toHaveCount(4);
-  await expect(page.locator('.metric strong')).toHaveText(['—', '—', '—', '—']);
+  await expect.poll(() => page.locator('.metric strong').allTextContents()).not.toEqual(['—', '—', '—', '—']);
   await expect(page.getByRole('button', { name: /coming soon/i })).toHaveCount(0);
   await expect(page.getByText('Additional workspace tools are not available yet.')).toBeVisible();
   await expect(page.getByText('Research Desk will be available in a later phase.')).toHaveCount(0);
