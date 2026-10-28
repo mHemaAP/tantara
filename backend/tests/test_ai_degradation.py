@@ -39,6 +39,7 @@ def test_dead_user_configured_model_returns_explicit_unavailable_result(client):
     provider_status = client.get("/api/v1/ai/status", headers=headers).json()["llm"]
     assert settings_status["model"] == provider_status["model"] == "dead-local-model"
     assert settings_status["reachable"] is provider_status["reachable"] is False
+    assert settings_status["checked_at"].endswith("+00:00")
     response = client.post(
         "/api/v1/ai/ask",
         headers=headers,
