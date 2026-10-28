@@ -143,9 +143,12 @@ Resource creation status codes are part of the API contract:
 | `POST /api/v1/community/posts/{id}/replies` | 200 OK |
 | `POST /api/v1/cases/{id}/participants` | 200 OK |
 | `POST /api/v1/cases/{id}/events` | 200 OK |
+
 | `POST /api/v1/documents/upload` | 202 Accepted |
 | `POST /api/v1/bundles/{id}/generate` | 202 Accepted |
 | `POST /api/v1/settings/data/import` | 202 Accepted |
+
+`GET /api/v1/cases` accepts `sort=<model-column>` for ascending order and `sort=-<model-column>` for descending order. It also accepts the computed key `next_hearing_at`: upcoming hearings sort by the nearest hearing in the requested direction, undated cases remain last, and equal dates are ordered by case title then ID. An unsupported key returns 422 with `{error: {code: "validation_error", message: "Unsupported sort key"}}` rather than silently selecting a default order.
 
 The most-used endpoints are:
 
