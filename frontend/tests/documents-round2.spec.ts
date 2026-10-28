@@ -65,16 +65,10 @@ test('captures seeded document and search states before fixture uploads', async 
     path: '../docs/screenshots/documents-library-desktop-1440-real.png',
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({
-    path: '../docs/screenshots/documents-library-mobile-390-real.png',
-  });
 
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-document-with-this-title-9472');
   await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
-  await page.screenshot({
-    path: '../docs/screenshots/documents-library-empty-mobile-390-real.png',
-  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
     path: '../docs/screenshots/documents-library-empty-desktop-1440-real.png',
@@ -89,8 +83,6 @@ test('captures seeded document and search states before fixture uploads', async 
   await page.screenshot({
     path: '../docs/screenshots/documents-search-desktop-1440-real.png',
   });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: '../docs/screenshots/documents-search-mobile-390-real.png' });
 });
 
 test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async ({ page, request }) => {
@@ -151,9 +143,6 @@ test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async
       mobilePage.locator('.topbar').evaluate((node) => Math.round(node.getBoundingClientRect().top)),
     )
     .toBe(0);
-  await mobilePage.screenshot({
-    path: '../docs/screenshots/documents-viewer-page2-mobile-390-fixture.png',
-  });
   await mobilePage.close();
 });
 
@@ -184,13 +173,6 @@ test('viewer metadata uses separated definition rows and an accessible copy conf
   await expect(copyButton).toBeVisible();
   await copyButton.click();
   await expect(page.getByRole('status').filter({ hasText: 'SHA-256 copied' })).toBeVisible();
-  await page
-    .locator('.document-metadata')
-    .screenshot({ path: '../docs/screenshots/documents-metadata-desktop-1440-fixture.png' });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page
-    .locator('.document-metadata')
-    .screenshot({ path: '../docs/screenshots/documents-metadata-mobile-390-fixture.png' });
 });
 
 test('page-aware chunks find SIAC Rules and open highlighted PDF page 2', async ({ page, request }) => {
@@ -258,10 +240,6 @@ test('AI Read renders real API fields and persists an edited field after reload'
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
     path: '../docs/screenshots/documents-ai-read-success-desktop-1440-fixture.png',
-  });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({
-    path: '../docs/screenshots/documents-ai-read-success-mobile-390-fixture.png',
   });
 });
 
@@ -361,10 +339,6 @@ test('no_evidence is shown without candidate extraction fields', async ({ page, 
   await expect(page.locator('.ai-read-field')).toHaveCount(0);
   await page.screenshot({
     path: '../docs/screenshots/documents-ai-read-no-evidence-desktop-1440-fixture.png',
-  });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({
-    path: '../docs/screenshots/documents-ai-read-no-evidence-mobile-390-fixture.png',
   });
 
   const remainingDocuments = await request
