@@ -302,17 +302,25 @@ def _case_record_context(question, case_id, owner_id):
 
 def llm_answer(question, hits, base_url=None, model=None, json_mode=False):
     s = get_settings()
-    prompt = (
-        "Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers. "
-        "Every factual sentence must include one or more bracketed source numbers, such as [1], matching the numbered excerpts below. "
-        "Do not cite a number that is not present.\nQuestion: "
-        + question
-        + "\n\n"
-        + "\n\n".join(
-            f"[{index}] {h['chunk_id']} p.{h['page_number']}: {h['snippet']}"
-            for index, h in enumerate(hits, 1)
+    if json_mode:
+        prompt = (
+            "Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers.\nQuestion: "
+            + question
+            + "\n\n"
+            + "\n\n".join(f"[{h['chunk_id']} p.{h['page_number']}] {h['snippet']}" for h in hits)
         )
-    )
+    else:
+        prompt = (
+            "Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers. "
+            "Every factual sentence must include one or more bracketed source numbers, such as [1], matching the numbered excerpts below. "
+            "Do not cite a number that is not present.\nQuestion: "
+            + question
+            + "\n\n"
+            + "\n\n".join(
+                f"[{index}] {h['chunk_id']} p.{h['page_number']}: {h['snippet']}"
+                for index, h in enumerate(hits, 1)
+            )
+        )
     try:
         if s.ai_provider == "local":
             payload = {
