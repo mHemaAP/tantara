@@ -101,7 +101,11 @@ export default function BundleDetailPage() {
       setSuccess('Bundle contents saved. Page mapping refreshed.');
     } catch (cause) {
       const status = (cause as { status?: number }).status;
-      setError(status === 400 ? (cause as Error).message : status === 409 ? 'A document can appear only once in a bundle. Remove the existing row before assigning a different section.' : cause instanceof Error ? cause.message : 'Bundle contents could not be saved.');
+      const message = status === 400 ? (cause as Error).message : status === 409 ? 'A document can appear only once in a bundle. Remove the existing row before assigning a different section.' : cause instanceof Error ? cause.message : 'Bundle contents could not be saved.';
+      // Restore the persisted form values after a rejected edit while keeping
+      // the backend's validation message visible to the user.
+      await reload();
+      setError(message);
     } finally {
       setBusy(false);
     }
