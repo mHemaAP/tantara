@@ -423,7 +423,7 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
   await page.locator('#autofill-draft').selectOption(String(draftId));
   const accepted = await sourcedField.locator('input').inputValue();
   await page.getByRole('button', { name: /Apply to Draft/ }).click();
-  await expect(page.getByRole('status')).toContainText(/Applied/i);
+  await expect(page.locator('.auto-message[role="status"]')).toContainText(/Applied/i);
   await expect(sourcedField).toHaveAttribute('aria-label', new RegExp(`${sourcedLabel} Accepted`));
   await expect(page.getByRole('button', { name: /Apply to Draft \(1 accepted\)/ })).toBeDisabled();
   const afterApply = (await (await api.get(`${apiV1}/drafts/${draftId}`, { headers })).json())
