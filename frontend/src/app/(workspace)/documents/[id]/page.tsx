@@ -252,7 +252,12 @@ export default function DocumentDetailPage() {
       >
         <div>
           <small className="muted">Documents / Preview</small>
-          <h1 className="title" style={{ marginTop: 8 }}>
+          <h1
+            className="title document-detail-title"
+            style={{ marginTop: 8 }}
+            aria-label={doc.data.title}
+            title={doc.data.title}
+          >
             {doc.data.title}
           </h1>
           <p className="subheading">
