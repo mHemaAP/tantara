@@ -8,7 +8,6 @@ import { RefreshCw, FileText, Download, Sparkles, Pencil, Check } from 'lucide-r
 import { documentsApi } from '@/features/documents/api';
 import { aiFailureMessage, classifyAiFailure, type AiFailure } from '@/features/documents/ai-read-errors';
 import { DocumentStatus } from '@/features/documents/DocumentStatus';
-import { WorkspaceModuleNav } from '@/features/documents/WorkspaceModuleNav';
 import { PdfDocumentViewer } from '@/features/viewer/PdfDocumentViewer';
 import { toast } from 'sonner';
 import '@/features/documents/documents.css';
@@ -244,7 +243,6 @@ export default function DocumentDetailPage() {
     aiOutcome === 'ready' || (aiOutcome === 'idle' && Boolean(extraction.data?.fields));
   return (
     <div className="document-detail-page">
-      <WorkspaceModuleNav />
       <div
         style={{
           display: 'flex',
