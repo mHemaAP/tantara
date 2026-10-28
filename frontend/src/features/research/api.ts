@@ -1,4 +1,5 @@
 import { api } from '@/lib/api/client';
+import { collectionsApi } from '@/features/documents/api';
 
 export type ResearchSource = {
   citation_ref?: string;
@@ -14,13 +15,8 @@ export type ResearchSource = {
 
 export type ResearchAnswer = {
   status:
-    | 'ok'
-    | 'answered'
-    | 'no_evidence'
-    | 'insufficient_evidence'
-    | 'model_unavailable'
-    | 'embedding_unavailable'
-    | 'error';
+    'ok' | 'answered' | 'insufficient_evidence' | 'model_unavailable' | 'embedding_unavailable' | 'error';
+  raw_status?: string;
   answer?: string;
   citations?: ResearchSource[];
   sources?: ResearchSource[];
@@ -66,6 +62,21 @@ export type ResearchSession = {
   }>;
 };
 
+export function normalizeResearchAnswer<T extends Omit<ResearchAnswer, 'status'> & { status: string }>(
+  response: T,
+): ResearchAnswer {
+  const insufficient =
+    response.status === 'no_evidence' ||
+    response.status === 'insufficient_evidence' ||
+    response.answer_basis === 'insufficient_evidence' ||
+    response.insufficient_evidence === true;
+  return {
+    ...response,
+    raw_status: response.raw_status ?? response.status,
+    status: insufficient ? 'insufficient_evidence' : (response.status as ResearchAnswer['status']),
+  };
+}
+
 export const researchApi = {
   sessions: () => api.get<{ items: ResearchSession[] }>('/ai/sessions?page_size=100'),
   session: (id: string) => api.get<ResearchSession>(`/ai/sessions/${encodeURIComponent(id)}`),
@@ -74,6 +85,7 @@ export const researchApi = {
     api.get<{ items: Array<{ id: string; item_id: string; item_type: string }> }>('/ai/saved?page_size=100'),
   cases: () =>
     api.get<{ items: Array<{ id: string; title: string; jurisdiction?: string }> }>('/cases?page_size=100'),
+  collections: () => collectionsApi.list(),
   documents: () =>
     api.get<{
       items: Array<{
@@ -95,10 +107,14 @@ export const researchApi = {
       session_id?: string;
       case_id?: string;
       collection_id?: string;
+      collection_ids?: string[];
       jurisdiction?: string;
     },
     signal: AbortSignal,
-  ) => api.post<ResearchAnswer>('/ai/ask', body, signal),
+  ) =>
+    api
+      .post<Omit<ResearchAnswer, 'status'> & { status: string }>('/ai/ask', body, signal)
+      .then(normalizeResearchAnswer),
   aiStatus: () => api.get<Record<string, unknown>>('/ai/status'),
   lexical: (question: string, signal: AbortSignal) =>
     api.get<{
