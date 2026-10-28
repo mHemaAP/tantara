@@ -37,7 +37,6 @@ import './research.css';
 type Choice = { id?: string; name?: string } | string;
 const EMPTY_SOURCES: ResearchSource[] = [];
 const ACTIVE_SESSION_KEY = 'tantara_research_active_session';
-const list = <T,>(v: { items?: T[] } | T[] | undefined): T[] => (Array.isArray(v) ? v : (v?.items ?? []));
 const scoreOf = (s: ResearchSource) => s.retrieval_score ?? s.retreival_score ?? s.score;
 const formatHistoryDate = (value?: string) => {
   if (!value || Number.isNaN(new Date(value).getTime())) return 'Date unavailable';
@@ -282,12 +281,10 @@ export default function ResearchPage() {
   const textarea = useRef<HTMLTextAreaElement>(null);
 
   const refreshHistory = useCallback(async () => {
-    const [history, library, caseData, collData, jurisdictionData, documentData] = await Promise.allSettled([
+    const [history, library, caseData, documentData] = await Promise.allSettled([
       researchApi.sessions(),
       researchApi.saved(),
       researchApi.cases(),
-      researchApi.collections(),
-      researchApi.jurisdictions(),
       researchApi.documents(),
     ]);
     if (history.status === 'fulfilled') setSessions(history.value.items ?? []);
@@ -296,24 +293,30 @@ export default function ResearchPage() {
       setSavedIds(new Set(library.value.items?.map((x) => x.item_id) ?? []));
     }
     if (caseData.status === 'fulfilled') setCases(caseData.value.items ?? []);
-    if (documentData.status === 'fulfilled') setDocuments(documentData.value.items ?? []);
-    if (collData.status === 'fulfilled') {
-      const v = collData.value;
-      setCollections(
-        list(v as { items?: Array<{ id: string; name: string }> } | Array<{ id: string; name: string }>),
-      );
-      setCollectionsUnavailable(
-        list(v as { items?: Array<{ id: string; name: string }> } | Array<{ id: string; name: string }>)
-          .length === 0,
-      );
-    } else setCollectionsUnavailable(true);
-    if (jurisdictionData.status === 'fulfilled') setJurisdictions(list(jurisdictionData.value));
+    if (documentData.status === 'fulfilled') {
+      const items = documentData.value.items ?? [];
+      setDocuments(items);
+      const collectionIds = [
+        ...new Set(items.map((document) => document.collection_id).filter(Boolean) as string[]),
+      ];
+      setCollections(collectionIds.map((id) => ({ id, name: id })));
+      setCollectionsUnavailable(collectionIds.length === 0);
+      const jurisdictionNames = [
+        ...new Set(items.map((document) => document.jurisdiction).filter(Boolean) as string[]),
+      ];
+      setJurisdictions(jurisdictionNames);
+    }
     if (history.status === 'rejected')
       setError('Research history is unavailable. Check your connection and retry.');
   }, []);
 
   useEffect(() => {
     void refreshHistory();
+    const params = new URLSearchParams(window.location.search);
+    const followUp = params.get('question');
+    const caseId = params.get('case_id');
+    if (followUp) setDraft(followUp);
+    if (caseId) setCaseFilter(caseId);
     const activeSessionId = localStorage.getItem(ACTIVE_SESSION_KEY);
     if (activeSessionId) {
       void researchApi
@@ -441,7 +444,9 @@ export default function ResearchPage() {
   const latestAssistant = [...activeMessages].reverse().find((message) => message.role === 'assistant');
   const restoredSources = latestAssistant?.citations ?? EMPTY_SOURCES;
   const answerHasInsufficientEvidence =
-    answer?.answer_basis === 'insufficient_evidence' || answer?.insufficient_evidence === true;
+    answer?.status === 'insufficient_evidence' ||
+    answer?.answer_basis === 'insufficient_evidence' ||
+    answer?.insufficient_evidence === true;
   const selectedSources = useMemo(
     () =>
       answer
@@ -558,7 +563,10 @@ export default function ResearchPage() {
       <div className="research-filters">
         <label>
           <span>Case</span>
-          <select value={caseFilter} onChange={(e) => setCaseFilter(e.target.value)}>
+          <span className="sr-only" id="research-case-filter-label">
+            Case filter
+          </span>
+          <select aria-label="Case filter" value={caseFilter} onChange={(e) => setCaseFilter(e.target.value)}>
             <option value="">All cases</option>
             {cases.map((c) => (
               <option key={c.id} value={c.id}>
@@ -682,23 +690,26 @@ export default function ResearchPage() {
               {visibleMessages.length
                 ? visibleMessages.map((m) => {
                     const messageIndex = activeMessages.indexOf(m);
+                    const messageStatus = answer?.message_id === m.id ? answer.status : m.status;
+                    const messageContent =
+                      answer?.message_id === m.id ? (answer.answer ?? m.content) : m.content;
                     return (
                       <article className={`turn ${m.role}`} key={m.id}>
                         <div className="turn-label">
                           {m.role === 'user' ? 'You' : 'TANTARA'}
-                          {m.role === 'assistant' && m.status && (
-                            <span className="status-chip" data-status={m.status}>
-                              {/evidence is insufficient/i.test(m.content)
+                          {m.role === 'assistant' && messageStatus && (
+                            <span className="status-chip" data-status={messageStatus}>
+                              {/evidence is insufficient/i.test(messageContent)
                                 ? 'Insufficient evidence — excerpts only'
                                 : answerStatusLabel(
-                                    m.status,
+                                    messageStatus,
                                     answer?.message_id === m.id ? answer.answer_kind : undefined,
                                     answer?.message_id === m.id ? answer.generation_kind : undefined,
                                   )}
                             </span>
                           )}
                         </div>
-                        {m.role === 'assistant' && m.status === 'model_unavailable' ? (
+                        {m.role === 'assistant' && messageStatus === 'model_unavailable' ? (
                           <div className="state-callout unavailable">
                             <strong>Model unavailable</strong>
                             <p>
@@ -718,7 +729,7 @@ export default function ResearchPage() {
                               <RefreshCw size={14} /> Retry
                             </button>
                           </div>
-                        ) : m.role === 'assistant' && m.status === 'no_evidence' ? (
+                        ) : m.role === 'assistant' && messageStatus === 'no_evidence' ? (
                           <div className="state-callout no-evidence">
                             <strong>Insufficient evidence in your library</strong>
                             <p>
@@ -727,15 +738,17 @@ export default function ResearchPage() {
                             </p>
                             <Link href="/research/documents">Upload a document</Link>
                           </div>
-                        ) : m.role === 'assistant' && m.status === 'embedding_unavailable' ? (
+                        ) : m.role === 'assistant' && messageStatus === 'embedding_unavailable' ? (
                           <div className="state-callout lexical-state">
                             <strong>Embeddings unavailable</strong>
                             <p>Only lexical results were available; no grounded answer is shown.</p>
                           </div>
-                        ) : m.role === 'assistant' && /evidence is insufficient/i.test(m.content) ? (
+                        ) : m.role === 'assistant' &&
+                          (messageStatus === 'insufficient_evidence' ||
+                            /evidence is insufficient/i.test(messageContent)) ? (
                           <div className="state-callout no-evidence model-insufficient">
                             <strong>Evidence is insufficient</strong>
-                            <AnswerText text={m.content} citations={[]} />
+                            {messageContent && <AnswerText text={messageContent} citations={[]} />}
                             <p>
                               Review the retrieved excerpts below; no conclusion was generated from this
                               evidence.
@@ -743,7 +756,7 @@ export default function ResearchPage() {
                           </div>
                         ) : m.role === 'assistant' ? (
                           <AnswerText
-                            text={m.content}
+                            text={messageContent}
                             citations={answer?.message_id === m.id ? sources : (m.citations ?? [])}
                           />
                         ) : (
@@ -755,9 +768,13 @@ export default function ResearchPage() {
                           </small>
                         )}
                         {m.role === 'assistant' &&
-                          !['model_unavailable', 'no_evidence', 'embedding_unavailable', 'error'].includes(
-                            m.status ?? '',
-                          ) && (
+                          ![
+                            'model_unavailable',
+                            'no_evidence',
+                            'insufficient_evidence',
+                            'embedding_unavailable',
+                            'error',
+                          ].includes(m.status ?? '') && (
                             <div className="turn-actions">
                               <button onClick={() => void copyAnswer(m.id, m.content)}>
                                 <Copy size={13} /> {copiedTurnId === m.id ? 'Copied' : 'Copy'}
