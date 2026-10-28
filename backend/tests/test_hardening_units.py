@@ -60,7 +60,7 @@ def test_nonexistent_citation_chunk_is_rejected_by_database_foreign_key(tmp_path
     config.get_settings.cache_clear()
 
 
-def test_index_rebuild_repairs_stale_ids_and_is_idempotent(client):
+def test_index_rebuild_repairs_stale_ids_and_is_idempotent(client, monkeypatch):
     from app.db import session_scope
     from app.models import Document, DocumentChunk, User
     from app.services.index_maintenance import rebuild_index, reconcile_index
@@ -112,6 +112,18 @@ def test_index_rebuild_repairs_stale_ids_and_is_idempotent(client):
     repaired = reconcile_index()
     assert repaired["consistent"] and "index-chunk" in store().id_set()
     assert rebuild_index()["consistent"]
+
+    # Queries repair a stale FAISS map from DB vectors before degrading retrieval.
+    import numpy as np
+
+    from app.services import retrieval
+
+    monkeypatch.setattr(retrieval, "embed_query", lambda _question: np.ones(384, dtype="float32"))
+    store().rebuild([])
+    hits, status = retrieval.retrieval_service.search_with_status("index evidence", "index-owner")
+    assert status == "ok"
+    assert [hit["chunk_id"] for hit in hits] == ["index-chunk"]
+    assert store().id_set() == {"index-chunk"}
 
 
 def test_security_helpers_reject_bad_credentials_and_tokens(tmp_path, monkeypatch):
