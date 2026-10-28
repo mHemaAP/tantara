@@ -304,7 +304,7 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
         f"/api/v1/clients/{root_client_id}",
     ):
         response = client.get(foreign_path, headers=junior_headers)
-        assert response.status_code in {403, 404}, (foreign_path, response.text)
+        assert response.status_code == 404, (foreign_path, response.text)
         assert "ABC Pvt." not in response.text and "Aarav" not in response.text
         body = (
             {"description": "stolen"}
@@ -314,7 +314,7 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
             else {"title": "stolen"}
         )
         mutation = client.patch(foreign_path, headers=junior_headers, json=body)
-        assert mutation.status_code in {403, 404}, (foreign_path, mutation.status_code, mutation.text)
+        assert mutation.status_code == 403, (foreign_path, mutation.status_code, mutation.text)
     junior_summary = client.get("/api/v1/dashboard/summary", headers=junior_headers).json()
     assert junior_summary["active_cases"] == 1 and junior_summary["documents_processed"] == 1
     junior_calendar = client.get("/api/v1/calendar", headers=junior_headers).json()
