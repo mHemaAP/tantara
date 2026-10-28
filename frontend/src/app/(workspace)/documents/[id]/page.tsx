@@ -49,9 +49,9 @@ type AiFailure = 'auth_failure' | 'embedding_failure' | 'extraction_failure' | '
 
 function renderExtractionValue(value: unknown): ReactNode {
   if (value == null || value === '')
-    return <span className="ai-read-not-found">Not found in this document</span>;
+    return <span className="ai-read-not-found">Not extracted</span>;
   if (Array.isArray(value)) {
-    if (!value.length) return <span className="ai-read-not-found">Not found in this document</span>;
+    if (!value.length) return <span className="ai-read-not-found">Not extracted</span>;
     return (
       <ul>
         {value.map((item, index) => (
@@ -60,9 +60,16 @@ function renderExtractionValue(value: unknown): ReactNode {
       </ul>
     );
   }
+  if (typeof value === 'string' && /^[\[{]/.test(value.trim())) {
+    try {
+      return renderExtractionValue(JSON.parse(value));
+    } catch {
+      return <span>{value}</span>;
+    }
+  }
   if (typeof value === 'object') {
     const fields = value as Record<string, unknown>;
-    if (fields.found === false) return <span className="ai-read-not-found">Not found in this document</span>;
+    if (fields.found === false) return <span className="ai-read-not-found">Not extracted</span>;
     if ('value' in fields) return renderExtractionValue(fields.value);
     if (typeof fields.quote === 'string' && fields.quote.trim())
       return <blockquote>{fields.quote}</blockquote>;
@@ -70,7 +77,7 @@ function renderExtractionValue(value: unknown): ReactNode {
       ([key, entry]) =>
         !['page', 'page_number', 'source_page'].includes(key) && entry != null && entry !== '',
     );
-    if (!entries.length) return <span className="ai-read-not-found">Not found in this document</span>;
+    if (!entries.length) return <span className="ai-read-not-found">Not extracted</span>;
     return (
       <ul>
         {entries.map(([key, entry]) => (
@@ -96,6 +103,21 @@ function provenanceLabel(value?: string) {
   if (value === 'ai_suggested') return 'AI suggestion';
   if (value === 'extracted_reviewed') return 'Reviewed extraction';
   return value ? value.replaceAll('_', ' ') : 'Candidate extraction';
+}
+
+function deduplicateExtractedText(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const sentences = value.match(/[^.!?]+[.!?]?/g) ?? [value];
+  const seen = new Set<string>();
+  return sentences
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => {
+      const normalized = sentence.replace(/\s+/g, ' ').toLocaleLowerCase();
+      if (!normalized || seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    })
+    .join(' ');
 }
 
 function aiFailureMessage(failure: AiFailure) {
@@ -381,7 +403,7 @@ export default function DocumentDetailPage() {
                 <h2>
                   <Sparkles size={17} /> AI Read
                 </h2>
-                <p>AI-generated — review before relying on it.</p>
+          <p>Candidate extraction — review before relying on it.</p>
               </div>
               <button className="primary" disabled={reading} onClick={() => void runAiRead()}>
                 {reading ? 'Reading…' : aiOutcome === 'ready' ? 'Run again' : 'Run AI Read'}
@@ -429,7 +451,7 @@ export default function DocumentDetailPage() {
             {extraction.data?.fields && showExtractionFields && (
               <div className="ai-read-fields">
                 {Object.entries(extraction.data.fields).map(([key, field]) => {
-                  const value = field.value;
+                  const value = key === 'summary' ? deduplicateExtractedText(field.value) : field.value;
                   const sourcePage = extractionSourcePage(value);
                   const provenanceKey = field.provenance || 'candidate_extraction';
                   return (
@@ -439,7 +461,9 @@ export default function DocumentDetailPage() {
                       data-provenance-key={provenanceKey}
                       key={key}
                     >
-                      <strong>{key.replaceAll('_', ' ')}</strong>
+                      <strong>
+                        {key === 'summary' ? 'Extracted text (raw, de-duplicated)' : key.replaceAll('_', ' ')}
+                      </strong>
                       {editingField === key ? (
                         <textarea
                           aria-label={`Edit ${key}`}
