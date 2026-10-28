@@ -92,6 +92,7 @@ class CommunityPostCreate(RequestModel):
     title: str = Field(min_length=1, max_length=300)
     body: str = Field(min_length=1)
     kind: Literal["discussion", "question"] = "discussion"
+    visibility: Literal["private", "workspace"] = "private"
     case_ref: str | None = None
     tags: list[str] = Field(default_factory=list)
 
