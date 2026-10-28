@@ -1,22 +1,27 @@
 # Open issues and verification notes
 
-This ledger separates current product findings from older tooling observations. The fixed items from the earlier M3 inventory—dashboard placeholder copy, seeded task filler, framework error envelopes, seed refusal/census, tab relationships, authorization skip, and calendar hook warning—are not listed as open product issues.
+This ledger includes only findings that remain open or explicitly deferred. Earlier R22–R25 implementation findings are fixed in the current tree: document warnings accept string and `{page, warning}` forms; draft evidence anchors navigate from the editor; client detail uses the matter layout and renders available fields; and case form submissions omit blank optional fields and display server validation details inline.
 
-## Current product findings
+## Current findings
 
 | Finding | Current evidence | Follow-up |
 |---|---|---|
-| Document extraction warnings can crash the viewer. | `frontend/src/app/(workspace)/documents/[id]/page.tsx:33` types warnings as `string[]`; lines 605-608 render each warning directly, while the API payload shape includes `{page, warning}` objects. | M3 R22 / F32: normalize both warning forms and test the real object payload in the viewer. |
-| Draft evidence links are rendered inside a contenteditable editor without link navigation handling. | `frontend/src/app/(workspace)/drafts/page.tsx:27-34` creates source anchors; the editor at lines 638-650 has input handling but no click delegation for those anchors. Prior browser probing found editor citation clicks did not navigate, while the Sources rail links did. | M3 R23 / F33: delegate citation clicks to the page-aware document route and retain an interaction test. |
-| Client detail omits fields and does not load the shared matter styles. | `frontend/src/app/(workspace)/clients/[id]/page.tsx:1-5` imports no case stylesheet; the page renders only name, email, linked cases, and notes, despite the API returning phone, address, and status. | M3 R24 / F34: load the shared stylesheet, show the returned fields, and cover an authenticated detail capture. |
-| Creating a case with blank optional dates still sends empty strings. | `frontend/src/features/cases/components/case-form.tsx:71-75` passes form values directly to `casesApi.create/update`; its optional date inputs include `notice_date`, `next_hearing_at`, `filed_at`, and `limitation_date`. | M3 R25 / F35: omit empty optional values and test default-state create plus field-level invalid-date feedback. |
-| Documents and Search still render a second navigation region that repeats workspace modules. | `frontend/src/features/documents/WorkspaceModuleNav.tsx:16-25` includes links for Dashboard, Cases, Search, Documents, Calendar, Tasks, Clients, Community, and Settings in addition to the global rail. Its `/search` entry is labelled “Research Desk,” while the rail has separate Search and Research Desk destinations. | M3 R45: remove the duplicate bar or make it a true Documents-family sub-navigation with non-overlapping destinations. |
-| Legacy screenshot files remain alongside current evidence. | `docs/screenshots/` still contains five 1440×1000 captures (`cases-desktop.png`, `case-detail-desktop.png`, `clients-desktop.png`, `calendar-desktop.png`, `tasks-desktop.png`) in addition to current 1440×900 / 390×844 screenshots. The README embeds only the current dimension-checked set. | M3 R32 / F43: label or move historical captures and keep the curated README links reproducible from the current seeded app. |
-| A blank Next Hearing cell is ambiguous. | `frontend/src/features/cases/components/case-list.tsx:213-218` renders `—` when `next_hearing_at` is null, without distinguishing “None scheduled” from a hearing that has already passed. | M3 R6: retain the upcoming-only API semantics and use a clear empty-state label. |
+| Five older desktop screenshots remain alongside the curated 1440×900 evidence. | `file docs/screenshots/{cases-desktop,case-detail-desktop,clients-desktop,calendar-desktop,tasks-desktop}.png` reports 1440×1000 for each. They are retained as historical captures; current screenshot links use the newer viewport files. | R32: decide whether to label these as historical or move them to an archive location. Do not remove target design assets. |
+
+## Deferred
+
+| Finding | Evidence | Reason deferred |
+|---|---|---|
+| Case list cannot distinguish “no hearings” from “past hearings only.” | `frontend/src/features/cases/components/case-list.tsx:213-218` renders an em dash when `next_hearing_at` is absent. The case API supplies the next upcoming hearing only; it exposes no past-hearing/history indicator. | R6: defer a differentiated label until the API provides enough history to make the distinction accurately. The existing upcoming-only semantics remain unchanged. |
+
+## Closed observations
+
+- **R45 inline navigation:** the Documents page renders `WorkspaceModuleNav` inside its `documents-heading` (`frontend/src/app/(workspace)/documents/page.tsx:131-145`). It is a separately named `Documents navigation` region (`frontend/src/features/documents/WorkspaceModuleNav.tsx:31`), presented in the page header as inline navigation; it is not a second global sidebar. The prior duplicate-global-rail finding is closed.
+- **R22–R25:** the stale ledger findings were removed after verifying their implementations in the current source. See the source and regression tests rather than the obsolete line references from the prior ledger.
 
 ## Tooling and validation notes
 
-- **Style-contract helper authentication:** the external helper run at `http://127.0.0.1:3034/` reported `auth_present: false` and no login request. Its no-heading/font-none output is not authenticated evidence. The helper still needs an authenticated setup; the authenticated Playwright and comparison captures are separate evidence.
-- **Verifier strategy-write probe:** an earlier verifier request returned HTTP 405 because it did not exercise the route/method that writes strategy data. That result does not prove or disprove strategy authorization. The current API domain contract test separately verifies that researcher and staff cannot create cases or bundles.
-- **Former authorization skip:** the skip has been replaced by the real cross-user authorization test in `frontend/tests/api-domain-contracts.spec.ts`. Focused result: `cross-user domain reads hide foreign records and read-only roles cannot create cases or bundles` passed. A temporary owner-filter removal caused the test to fail (`Expected: 404`, `Received: 200`); the filter was restored. The old `1 skipped` report is superseded.
-- **Calendar hook warning:** the missing `cursorParts.month/year` dependency was corrected in `frontend/src/features/calendar/index.tsx`. Current `pnpm lint` output reports “No ESLint warnings or errors.”
+- **Style-contract helper authentication:** the external helper run at `http://127.0.0.1:3034/` reported `auth_present: false` and no login request. Its no-heading/font-none output is not authenticated evidence. Authenticated Playwright and comparison captures are separate evidence; the helper itself still needs authenticated setup to support route conclusions.
+- **Verifier strategy-write probe:** an earlier verifier request returned HTTP 405 because it did not exercise the route/method that writes strategy data. That result does not prove or disprove strategy authorization. Treat it as a tooling limitation; use the API domain contract test for authorization evidence.
+- **Former authorization skip (resolved):** the prior cross-user skip was replaced by the real cross-user authorization test in `frontend/tests/api-domain-contracts.spec.ts`. A temporary owner-filter removal caused that test to fail (`Expected: 404`, `Received: 200`); the filter was restored.
+- **Calendar hook warning (resolved):** the missing `cursorParts.month/year` dependency was corrected in `frontend/src/features/calendar/index.tsx`; current `pnpm lint` reports no ESLint warnings or errors.
