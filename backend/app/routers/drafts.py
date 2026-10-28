@@ -90,6 +90,11 @@ def versions(
 
 @router.post("/drafts/{rid}/versions")
 def save_version(rid: str, payload: VersionBody, user=Depends(current_user)):
+    if payload.content_markdown is not None and not payload.content_markdown.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"code": "validation_error", "message": "Draft content cannot be blank"}},
+        )
     if user.get("role") == "researcher":
         raise HTTPException(403, "This role is read-only")
     with session_scope() as s:
@@ -371,16 +376,34 @@ def export(rid: str, format: str = Query("docx", pattern="^(docx|pdf)$"), user=D
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     else:
         from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.enums import TA_LEFT
+        from reportlab.platypus import Paragraph
+        from xml.sax.saxutils import escape
         from reportlab.pdfgen import canvas
 
         c = canvas.Canvas(output, pagesize=letter)
         y = 740
         for line in d.content_markdown.splitlines():
-            c.drawString(48, y, line[:110])
-            y -= 15
-            if y < 48:
+            heading = line.lstrip().startswith("##")
+            text = re.sub(r"^\s*#+\s*", "", line).strip()
+            if not text:
+                y -= 9
+                continue
+            style = ParagraphStyle(
+                "DraftHeading" if heading else "DraftBody",
+                fontName="Helvetica-Bold" if heading else "Helvetica",
+                fontSize=14 if heading else 10,
+                leading=18 if heading else 14,
+                alignment=TA_LEFT,
+            )
+            paragraph = Paragraph(escape(text), style)
+            _, height = paragraph.wrap(516, 680)
+            if y - height < 48:
                 c.showPage()
                 y = 740
+            paragraph.drawOn(c, 48, y - height)
+            y -= height + (8 if heading else 5)
         c.save()
         media = "application/pdf"
     output.seek(0)
