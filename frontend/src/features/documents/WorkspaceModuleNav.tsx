@@ -2,8 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import {
   CalendarDays,
   CheckCircle2,
@@ -29,31 +27,22 @@ const moduleLinks = [
 
 export function WorkspaceModuleNav() {
   const pathname = usePathname();
-  const [nav, setNav] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    setNav(document.querySelector<HTMLElement>('.sidebar .nav'));
-  }, []);
-
-  if (!nav) return null;
-  return createPortal(
-    <div className="documents-module-nav">
+  return (
+    <nav className="documents-module-nav" aria-label="Documents navigation">
       {moduleLinks.map(({ href, label, Icon }) => (
         <Link
           key={href}
           href={href}
           aria-current={
             pathname === href || (href === '/documents' && pathname.startsWith('/documents/'))
-              ? 'true'
+              ? 'location'
               : undefined
           }
-          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))}
         >
           <Icon size={19} aria-hidden="true" />
           {label}
         </Link>
       ))}
-    </div>,
-    nav,
+    </nav>
   );
 }
