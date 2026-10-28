@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { documentPageUrl } from '../src/features/research/document-url';
 import { normalizeResearchAnswer, type ResearchSource } from '../src/features/research/api';
 import { normalizeStrategyData } from '../src/features/strategy/api';
+import { normalizeAskResponse } from '../src/lib/api/endpoints';
 import {
   citationAccessibleLabel,
   answerStatusLabel,
@@ -87,7 +88,7 @@ async function capture(page: Page, name: string, focusSelector?: string) {
         ? '../docs/screenshots/research-no-evidence-1440.png'
         : name === 'research-desktop-scope-selected'
           ? '../docs/screenshots/research-collection-selected-1440.png'
-        : `docs/screenshots/${name}.png`,
+          : `docs/screenshots/${name}.png`,
     fullPage: (await page.evaluate(() => window.innerWidth)) > 500,
   });
 }
@@ -750,6 +751,17 @@ test('strategy API normalization preserves raw status and canonicalizes no-evide
     assertion_citations: [],
     manually_edited: false,
     generation_note: '',
+  });
+  expect(normalized.status).toBe('no_evidence');
+  expect(normalized.raw_status).toBe('insufficient_evidence');
+});
+
+test('dashboard ask API boundary canonicalizes insufficient evidence and keeps raw status', () => {
+  const normalized = normalizeAskResponse({
+    status: 'insufficient_evidence',
+    answer: 'No indexed excerpt directly answers this question.',
+    citations: [],
+    follow_ups: [],
   });
   expect(normalized.status).toBe('no_evidence');
   expect(normalized.raw_status).toBe('insufficient_evidence');
