@@ -43,8 +43,6 @@ type ChunkHit = {
   page_number: number;
   snippet?: string;
   retrieval_score?: number;
-  retreival_score?: number;
-  score?: number;
 };
 
 function renderExtractionValue(value: unknown): ReactNode {
@@ -547,7 +545,7 @@ export default function DocumentDetailPage() {
           {chunkHits.data?.items
             .filter((hit) => hit.document_id === id)
             .map((hit, index) => {
-              const relevance = hit.retrieval_score ?? hit.retreival_score ?? hit.score;
+              const relevance = hit.retrieval_score;
               return (
                 <article className="citation-chunk" key={`${hit.page_number}-${index}`}>
                   <p>{hit.snippet || 'Matching document passage'}</p>
