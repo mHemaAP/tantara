@@ -37,7 +37,7 @@ export default function SearchPage() {
     },
   });
   return (
-    <main className="documents-page search-page">
+    <div className="documents-page search-page">
       <header className="documents-heading">
         <div>
           <p className="documents-eyebrow">Research desk</p>
@@ -144,6 +144,6 @@ export default function SearchPage() {
           )}
         </section>
       )}
-    </main>
+    </div>
   );
 }
