@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { documentHref } from '../src/features/documents/links';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8010'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
 
 async function signIn(request: APIRequestContext) {
   const response = await request.post(`${apiUrl}/auth/login`, {
@@ -22,6 +22,7 @@ async function uploadFixture(request: APIRequestContext, fixtureName: string) {
         mimeType: 'application/pdf',
         buffer: readFileSync(`tests/fixtures/${fixtureName}`),
       },
+      title: fixtureName,
     },
   });
   expect(response.status()).toBe(202);
