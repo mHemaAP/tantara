@@ -3137,6 +3137,39 @@
               ],
               "title": "To"
             }
+          },
+          {
+            "in": "query",
+            "name": "envelope",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean",
+              "title": "Envelope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 100,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
