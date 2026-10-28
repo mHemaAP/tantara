@@ -632,18 +632,24 @@ test('case without indexed evidence shows an explicit empty strategy state', asy
   await page.setViewportSize({ width: 1440, height: 900 });
   await authenticatePage(page);
   await page.goto(`/cases/${noEvidenceCaseId}/strategy`);
+  const generation = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === `/api/v1/cases/${noEvidenceCaseId}/strategy/generate` &&
+      response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Generate' }).click();
-  await expect(
-    page.getByText('No indexed evidence is available for this case.', { exact: true }),
-  ).toBeVisible({ timeout: 30000 });
-  await expect(
-    page.getByText('No indexed evidence is available for this case.', { exact: true }),
-  ).toHaveCount(1);
+  const generated = await generation;
+  expect(generated.status(), await generated.text()).toBe(200);
+  const strategy = await generated.json();
+  expect(strategy.status).toBe('no_evidence');
+  const emptyState = page.locator('.strategy-empty');
+  await expect(emptyState).toBeVisible({ timeout: 30000 });
+  await expect(emptyState).toContainText('No indexed evidence is available for this case.');
   await expect(page.getByRole('link', { name: 'Open case files' })).toHaveAttribute(
     'href',
     `/cases/${noEvidenceCaseId}`,
   );
-  await expect(page.locator('.strategy-empty')).toHaveCount(1);
+  await expect(emptyState).toHaveCount(1);
   await capture(page, 'strategy-1440x900-no-evidence-real.png');
 });
 
