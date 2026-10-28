@@ -73,6 +73,7 @@ export const documentsApi = {
       request.onerror = () => reject(new Error('Upload failed. Check your connection and retry.'));
       const data = new FormData();
       data.append('file', file);
+      data.append('title', file.name);
       request.send(data);
     });
   },
