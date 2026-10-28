@@ -48,8 +48,12 @@ def list_owned(
     page_size=20,
     sort="created_at",
     extra_filters=(),
+    include_workspace=False,
 ):
-    stmt = select(cls).where(cls.owner_id == owner_id)
+    if include_workspace and cls is models.CommunityPost:
+        stmt = select(cls).where(or_(cls.owner_id == owner_id, cls.visibility == "workspace"))
+    else:
+        stmt = select(cls).where(cls.owner_id == owner_id)
     if case_id and hasattr(cls, "case_id"):
         stmt = stmt.where(cls.case_id == case_id)
     if status and hasattr(cls, "status"):
