@@ -296,27 +296,58 @@ browserTest('client case count zero is displayed as a real zero', async ({ page,
   await browserExpect(row.locator('td').nth(2)).toHaveText('0');
 });
 
-browserTest('calendar labels all-day events without a time or raw event enums', async ({ page, request }) => {
-  browserTest.skip(!(await apiReady()), 'TANTARA API is not running');
-  const login = await request.post(`${base}/auth/login`, {
-    data: {
-      email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
-      password: process.env.TANTARA_E2E_PASSWORD || 'tantara-local',
-    },
-  });
-  const token = (await login.json()).access_token;
-  await page.addInitScript((value) => {
-    localStorage.setItem('tantara_token', value as string);
-    document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
-  }, token);
-  await page.goto('/calendar');
-  const allDayEvent = page.getByRole('button', { name: /View All-day event/ }).first();
-  await browserExpect(allDayEvent.locator('time')).toHaveCount(0);
-  await allDayEvent.click();
-  const details = page.getByRole('dialog', { name: 'Event details' });
-  await browserExpect(details).toContainText('All-day');
-  await browserExpect(details).not.toContainText(/\b\d{1,2}:\d{2}\b|\b(am|pm)\b/i);
-  await browserExpect(page.locator('body')).not.toContainText(
-    /all_day_event|first_hearing|hearing_completed/i,
-  );
-});
+browserTest(
+  'calendar labels real event records as all day without a time or raw event enums',
+  async ({ page, request }) => {
+    browserTest.skip(!(await apiReady()), 'TANTARA API is not running');
+    const login = await request.post(`${base}/auth/login`, {
+      data: {
+        email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
+        password: process.env.TANTARA_E2E_PASSWORD || 'tantara-local',
+      },
+    });
+    const token = (await login.json()).access_token;
+    const headers = { Authorization: `Bearer ${token}` };
+    const parts = await page.evaluate(() => {
+      const values = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const number = (type: string) => Number(values.find((part) => part.type === type)?.value);
+      const date = new Date(Date.UTC(number('year'), number('month') - 1, number('day') + 2));
+      return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    });
+    const createdCase = await request.post(`${base}/cases`, {
+      headers,
+      data: { title: `All-day event check ${Date.now()}` },
+    });
+    browserExpect(createdCase.ok()).toBeTruthy();
+    const caseId = (await createdCase.json()).id as string;
+    try {
+      const createdEvent = await request.post(`${base}/cases/${caseId}/events`, {
+        headers,
+        data: { type: 'event', occurred_at: `${parts}T00:00:00+05:30`, detail: 'All-day event test record' },
+      });
+      browserExpect(createdEvent.ok()).toBeTruthy();
+      await page.addInitScript((value) => {
+        localStorage.setItem('tantara_token', value as string);
+        document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+      }, token);
+      await page.goto('/calendar');
+      const allDayEvent = page.getByRole('button', { name: 'View All day', exact: true }).first();
+      await browserExpect(allDayEvent).toBeVisible();
+      await browserExpect(allDayEvent.locator('time')).toHaveCount(0);
+      await allDayEvent.click();
+      const details = page.getByRole('dialog', { name: 'Event details' });
+      await browserExpect(details).toContainText('All day');
+      await browserExpect(details).not.toContainText(/\b\d{1,2}:\d{2}\b|\b(am|pm)\b/i);
+      await browserExpect(page.locator('body')).not.toContainText(
+        /all_day_event|first_hearing|hearing_completed/i,
+      );
+    } finally {
+      await request.delete(`${base}/cases/${caseId}`, { headers });
+    }
+  },
+);
