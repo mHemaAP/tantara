@@ -23,7 +23,7 @@ def _create_case(client, headers, *, title="Grounding Probe Memorandum", seat="M
         headers=headers,
         json={"title": title, "seat": seat, "claimant": "Alpha Ltd", "respondent": "Beta Ltd"},
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
     return response.json()
 
 
