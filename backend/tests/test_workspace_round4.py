@@ -256,7 +256,11 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
     assert junior_login.status_code == 200
     junior_headers = {"Authorization": f"Bearer {junior_login.json()['access_token']}"}
     junior_feed = client.get("/api/v1/community/posts", headers=junior_headers).json()
-    assert {post["author_name"] for post in junior_feed["items"]} >= {"Workspace Advocate", "Dev Patel", "Mira Shah"}
+    assert {post["author_name"] for post in junior_feed["items"]} >= {
+        "Workspace Advocate",
+        "Dev Patel",
+        "Mira Shah",
+    }
     assert not foreign_private_demo_ids.intersection(post["id"] for post in junior_feed["items"])
     junior_clients = client.get("/api/v1/clients", headers=junior_headers).json()["items"]
     assert [row["name"] for row in junior_clients] == ["Junior Demo Client"]
@@ -445,7 +449,7 @@ def test_client_case_count_is_owner_scoped_and_requires_auth(client):
     assert client.get("/api/v1/clients").status_code == 401
 
 
-def test_missing_faiss_index_is_explicit_on_search_and_ask(client):
+def test_stale_faiss_index_is_reconciled_on_search_and_ask(client):
     login = client.post(
         "/api/v1/auth/login", json={"email": "advocate@tantara.local", "password": "tantara-local"}
     )
@@ -468,7 +472,8 @@ def test_missing_faiss_index_is_explicit_on_search_and_ask(client):
     search = client.get(
         "/api/v1/search/documents", headers=headers, params={"query": "arbitration seat Mumbai"}
     )
-    assert search.status_code == 200 and search.json()["status"] == "embedding_unavailable"
+    assert search.status_code == 200 and search.json()["status"] == "ok"
+    assert store().count() > 0
     ask = client.post("/api/v1/ai/ask", headers=headers, json={"question": "What is the seat?"})
     assert ask.status_code == 200
-    assert ask.json()["meta"]["retrieval_status"] == "embedding_unavailable"
+    assert ask.json()["meta"]["retrieval_status"] == "ok"
