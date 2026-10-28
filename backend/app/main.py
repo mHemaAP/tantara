@@ -19,6 +19,12 @@ from app.config import get_settings
 from app.db import SessionLocal, init_db, session_scope
 from app.models import *
 from app.security import current_user
+from app.services.answer_grounding import (
+    extract_field_value,
+    requested_field,
+    select_supports,
+    values_differ,
+)
 from app.services.audit import record
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -213,6 +219,22 @@ def retrieve(question, user, top_k=5, case_id=None, jurisdiction=None, document_
 
 
 DISCLAIMER = "AI-generated research assistance only. Verify against current authoritative law and original sources; professional legal review is required."
+INSUFFICIENT_ANSWER = "No indexed excerpt directly answers this question."
+UNAVAILABLE_ANSWER = "The search could not be completed because the configured language model is unavailable."
+
+
+def _case_record_context(question, case_id, owner_id):
+    field = requested_field(question)
+    if not field or not case_id:
+        return []
+    with SessionLocal() as s:
+        case = s.scalar(select(Case).where(Case.id == case_id, Case.owner_id == owner_id))
+        if case is None:
+            return []
+        value = getattr(case, field, None)
+    if value is None or not str(value).strip():
+        return []
+    return [{"field": field, "value": value, "source": "case record"}]
 
 
 def llm_answer(question, hits, base_url=None, model=None, json_mode=False):
@@ -280,6 +302,12 @@ def ask(req: Ask, user=Depends(current_user)):
             "meta": {"retrieval_status": "embedding_unavailable"},
             "answer": "Local evidence search is unavailable.",
             "citations": [],
+            "supports": [],
+            "answer_basis": "insufficient_evidence",
+            "context_fields": [],
+            "conflicts": [],
+            "total": 0,
+            "citation_count": 0,
             "follow_ups": [],
             "model": None,
             "answer_kind": "embedding_unavailable",
@@ -289,47 +317,90 @@ def ask(req: Ask, user=Depends(current_user)):
         }
     sid, mid = req.session_id or str(uuid.uuid4()), str(uuid.uuid4())
     used_model = None
-    if not hits:
-        answer = "There is insufficient evidence in the indexed documents to answer this question."
-        status = retrieval_status if retrieval_status == "embedding_unavailable" else "no_evidence"
-    else:
+    field = requested_field(req.question)
+    supports = select_supports(req.question, hits)
+    support_hits = [support["_hit"] for support in supports]
+    context_fields = []
+    conflicts = []
+    if support_hits:
         with SessionLocal() as s:
             preference = s.scalar(
                 select(AppPreference).where(AppPreference.owner_id == user["id"], AppPreference.key == "ai")
             )
             user_ai_settings = preference.value if preference else {}
         used_model = user_ai_settings.get("model") or get_settings().local_llm_model
-        answer = llm_answer(
+        model_answer = llm_answer(
             req.question,
-            hits,
+            support_hits,
             base_url=user_ai_settings.get("base_url"),
             model=user_ai_settings.get("model"),
         )
-        status = "model_unavailable" if not answer else retrieval_status
-        answer = (
-            answer
-            or "The search could not be completed because the configured language model is unavailable."
-        )
-    citations = (
-        [
+        if not model_answer:
+            status = "model_unavailable"
+            answer = UNAVAILABLE_ANSWER
+            supports = []
+            support_hits = []
+            used_model = None
+            answer_basis = "insufficient_evidence"
+        else:
+            status = retrieval_status
+            answer_basis = "cited_excerpts"
+            answer = "\n".join(f"“{support['quote']}” [{index}]" for index, support in enumerate(supports, 1))
+            if req.case_id and field:
+                with SessionLocal() as s:
+                    case = s.scalar(select(Case).where(Case.id == req.case_id, Case.owner_id == user["id"]))
+                    case_value = getattr(case, field, None) if case is not None else None
+                excerpt_value = extract_field_value(field, supports[0]["quote"])
+                if (
+                    case_value is not None
+                    and excerpt_value is not None
+                    and values_differ(case_value, excerpt_value)
+                ):
+                    conflicts = [
+                        {
+                            "field": field,
+                            "case_value": case_value,
+                            "excerpt_value": excerpt_value,
+                            "excerpt_chunk_id": supports[0]["chunk_id"],
+                            "page_number": supports[0]["page_number"],
+                        }
+                    ]
+    else:
+        context_fields = _case_record_context(req.question, req.case_id, user["id"])
+        status = retrieval_status if retrieval_status == "embedding_unavailable" else "ok"
+        if context_fields:
+            answer = "No indexed excerpt directly answers this question; see the separately labeled context_fields."
+            answer_basis = "case_record"
+        else:
+            status = (
+                "embedding_unavailable"
+                if retrieval_status == "embedding_unavailable"
+                else "insufficient_evidence"
+            )
+            answer = (
+                "Local evidence search is unavailable."
+                if status == "embedding_unavailable"
+                else INSUFFICIENT_ANSWER
+            )
+            answer_basis = "insufficient_evidence"
+    citations = []
+    for index, (_support, hit) in enumerate(zip(supports, support_hits, strict=True), 1):
+        citations.append(
             {
-                "citation_ref": f"[{h['chunk_id']}]",
-                "document_id": h["document_id"],
-                "document_title": h["document_title"],
-                "chunk_id": h["chunk_id"],
-                "page_number": h["page_number"],
-                "excerpt": h["snippet"],
-                "score": h["score"],
-                "retreival_score": h["score"],
-                "retrieval_score": h["score"],
-                "source_type": h["source_type"],
-                "jurisdiction": h["jurisdiction"],
+                "citation_ref": f"[{hit['chunk_id']}]",
+                "citation_number": index,
+                "document_id": hit["document_id"],
+                "document_title": hit["document_title"],
+                "chunk_id": hit["chunk_id"],
+                "page_number": hit["page_number"],
+                "excerpt": hit["snippet"],
+                "score": hit["score"],
+                "retreival_score": hit["score"],
+                "retrieval_score": hit["score"],
+                "source_type": hit["source_type"],
+                "jurisdiction": hit["jurisdiction"],
             }
-            for h in hits
-        ]
-        if status in {"ok", "embedding_unavailable"}
-        else []
-    )
+        )
     with session_scope() as s:
         if req.session_id is None:
             s.add(ResearchSession(id=sid, owner_id=user["id"], title=req.question[:120], case_id=req.case_id))
@@ -356,7 +427,7 @@ def ask(req: Ask, user=Depends(current_user)):
                 status=status,
                 model=(
                     {"provider": get_settings().ai_provider, "model": used_model}
-                    if status not in {"model_unavailable", "no_evidence"}
+                    if used_model and status != "model_unavailable"
                     else None
                 ),
             )
@@ -382,18 +453,21 @@ def ask(req: Ask, user=Depends(current_user)):
             "retrieval_status": retrieval_status,
         },
         "answer": answer,
-        "answer_kind": (
-            "model_unavailable"
-            if status == "model_unavailable"
-            else "model_generated"
-            if hits
-            else "no_evidence"
-        ),
+        "answer_kind": "model_unavailable" if status == "model_unavailable" else answer_basis,
         "citations": citations,
+        "supports": [
+            {key: support[key] for key in ("chunk_id", "document_id", "page_number", "quote")}
+            for support in supports
+        ],
+        "answer_basis": answer_basis,
+        "context_fields": context_fields,
+        "conflicts": conflicts,
+        "total": len(citations),
+        "citation_count": len(citations),
         "follow_ups": [],
         "model": (
             {"provider": get_settings().ai_provider, "model": used_model}
-            if status not in {"model_unavailable", "no_evidence"}
+            if used_model and status != "model_unavailable"
             else None
         ),
         "disclaimer": DISCLAIMER,
