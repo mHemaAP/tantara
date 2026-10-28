@@ -186,6 +186,7 @@ def seed_junior_workspace():
             title="Junior demo discussion",
             body="A researcher-owned sample discussion.",
             kind="discussion",
+            visibility="workspace",
             tags=["commercial"],
             case_ref=case.id,
             is_demo=True,
@@ -220,7 +221,7 @@ def seed_junior_workspace():
                 ),
             ]
         )
-        db.flush()
+
         fixture = settings.data_dir / "demo-fixtures" / "junior-demo.pdf"
         fixture.parent.mkdir(parents=True, exist_ok=True)
         make_pdf(
@@ -279,6 +280,99 @@ def seed_junior_workspace():
                 is_demo=True,
             )
         )
+
+
+def seed_community_workspace():
+    """Create stable cross-author workspace posts and replies for demo accounts."""
+    settings = get_settings()
+    with session_scope() as db:
+        root = db.scalar(select(User).where(User.email == "advocate@tantara.local"))
+        authors = []
+        for email, name, role, initials in (
+            ("researcher@tantara.local", "Mira Shah", "researcher", "MS"),
+            ("staff@tantara.local", "Dev Patel", "staff", "DP"),
+        ):
+            user = db.scalar(select(User).where(User.email == email))
+            if user is None:
+                user = User(
+                    id=str(uuid.uuid4()),
+                    name=name,
+                    email=email,
+                    password_hash=hash_password(settings.tantara_admin_password),
+                    role=role,
+                    avatar_initials=initials,
+                    title=role.title(),
+                )
+                db.add(user)
+                db.flush()
+            authors.append(user)
+        if root is None:
+            return
+        # Keep one explicit advocate-authored workspace thread so the
+        # researcher feed demonstrates all three seeded identities.
+        root_post = db.scalar(
+            select(CommunityPost).where(
+                CommunityPost.owner_id == root.id,
+                CommunityPost.title == "Demo: case practice discussion 1",
+            )
+        )
+        if root_post is not None:
+            root_post.visibility = "workspace"
+        posts = []
+        for author in authors:
+            for index in range(1, 3):
+                title = f"Workspace demo: {author.name} discussion {index}"
+                post = db.scalar(
+                    select(CommunityPost).where(
+                        CommunityPost.owner_id == author.id,
+                        CommunityPost.title == title,
+                    )
+                )
+                if post is None:
+                    post = CommunityPost(
+                        id=str(uuid.uuid4()),
+                        owner_id=author.id,
+                        title=title,
+                        body="Demo workspace discussion. Replies are shared with workspace readers.",
+                        kind="discussion" if index == 1 else "question",
+                        visibility="workspace",
+                        tags=["commercial", "procedure"],
+                        is_demo=True,
+                    )
+                    db.add(post)
+                    db.flush()
+                else:
+                    post.visibility = "workspace"
+                posts.append(post)
+        posts = db.scalars(
+            select(CommunityPost).where(
+                CommunityPost.owner_id.in_([author.id for author in authors]),
+                CommunityPost.visibility == "workspace",
+            )
+        ).all()
+        for post in posts:
+            respondent = next(author for author in authors if author.id != post.owner_id)
+            for author, body in (
+                (root, "Advocate demo reply: review the source documents before relying on a position."),
+                (respondent, "Colleague demo reply: identify any contrary material in the record."),
+            ):
+                if not db.scalar(
+                    select(CommunityReply.id).where(
+                        CommunityReply.post_id == post.id,
+                        CommunityReply.owner_id == author.id,
+                        CommunityReply.body == body,
+                    )
+                ):
+                    db.add(
+                        CommunityReply(
+                            id=str(uuid.uuid4()),
+                            owner_id=author.id,
+                            post_id=post.id,
+                            body=body,
+                            is_demo=True,
+                        )
+                    )
+        db.flush()
 
 
 def main():
@@ -364,6 +458,7 @@ def main():
         if db.scalar(select(func.count(Case.id)).where(Case.owner_id == owner, Case.is_demo.is_(True))):
             db.rollback()
             seed_junior_workspace()
+            seed_community_workspace()
             print("Demo workspace already seeded; researcher workspace reconciled.")
             return
         users = []
@@ -702,6 +797,7 @@ def main():
                 title=f"Demo: case practice discussion {post_index + 1}",
                 body="Sample workspace discussion. Replace with your team's own notes and questions.",
                 kind="question" if post_index % 2 else "discussion",
+                visibility="workspace" if post_index == 0 else "private",
                 tags=[cases[post_index].dispute_category.lower(), "procedure"],
                 case_ref=cases[post_index].id,
                 is_demo=True,
@@ -794,6 +890,7 @@ def main():
     for did, jid, filename, blob in docs:
         process_job(did, jid, owner, blob, filename)
     seed_junior_workspace()
+    seed_community_workspace()
     with session_scope() as db:
         for did, _jid, filename, _blob in docs:
             fields = (
