@@ -10,14 +10,9 @@ import {
   workspaceDateTimeIso,
 } from '../src/lib/datetime';
 import { test as browserTest, expect as browserExpect } from '@playwright/test';
+import { requirePlaywrightApi } from './api-readiness';
 const base = `${process.env.TANTARA_API_ORIGIN || 'http://127.0.0.1:8010'}/api/v1`;
-async function apiReady() {
-  try {
-    return (await fetch(`${base}/health`)).ok;
-  } catch {
-    return false;
-  }
-}
+test.beforeAll(async () => requirePlaywrightApi());
 
 test('tasks partition into exclusive workspace-timezone groups including undated open work', () => {
   const now = new Date('2026-10-27T09:00:00Z'); // 14:30 in Asia/Kolkata
@@ -327,7 +322,6 @@ browserTest('client case count zero is displayed as a real zero', async ({ page,
 browserTest(
   'calendar labels real event records as all day without a time or raw event enums',
   async ({ page, request }) => {
-    browserTest.skip(!(await apiReady()), 'TANTARA API is not running');
     const login = await request.post(`${base}/auth/login`, {
       data: {
         email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
