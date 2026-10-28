@@ -53,6 +53,24 @@ def list_domain(cls, user, **kwargs):
         return list_owned(s, cls, user["id"], **kwargs)
 
 
+def visible_community_post(session, post_id, user_id):
+    return session.scalar(
+        select(CommunityPost).where(
+            CommunityPost.id == post_id,
+            (CommunityPost.owner_id == user_id) | (CommunityPost.visibility == "workspace"),
+        )
+    )
+
+
+def add_community_author(session, item):
+    author = session.get(User, item.get("owner_id"))
+    if author:
+        item["author"] = {"display_name": author.name, "role": author.role}
+        item["author_name"] = author.name
+        item["author_role"] = author.role
+    return item
+
+
 def add_derived_fields(session, cls, item, owner_id):
     if cls is Client:
         item["case_count"] = (
@@ -133,6 +151,8 @@ def register_crud(path, cls):
                     )
                 )
         with SessionLocal() as s:
+            if cls is CommunityPost and sort == "created_at":
+                sort = "-created_at"
             result = list_owned(
                 s,
                 cls,
@@ -144,9 +164,12 @@ def register_crud(path, cls):
                 page_size=page_size,
                 sort=sort,
                 extra_filters=filters,
+                include_workspace=cls is CommunityPost,
             )
             for item in result["items"]:
                 add_derived_fields(s, cls, item, user["id"])
+                if cls is CommunityPost:
+                    add_community_author(s, item)
                 for key in ("owner_id", "output_path", "stored_path", "text_content", "embedding_blob"):
                     item.pop(key, None)
                 if cls is FilingBundle:
@@ -157,7 +180,8 @@ def register_crud(path, cls):
             return result
 
     def create(payload: Payload, user=Depends(current_user)):
-        assert_write_role(user, cls)
+        if cls is not CommunityPost:
+            assert_write_role(user, cls)
         values = payload.model_dump(exclude_unset=True)
         allowed = fields_for(cls) - {"id", "created_at", "updated_at", "owner_id", "is_demo"}
         if cls is FilingBundle:
@@ -175,13 +199,25 @@ def register_crud(path, cls):
         with session_scope() as s:
             row = repo_create(s, cls, user["id"], values)
             record(s, user["id"], "create", cls.__tablename__, row.id)
-            return serialize(row)
+            result = serialize(row)
+            if cls is CommunityPost:
+                add_community_author(s, result)
+                result.pop("owner_id", None)
+            return result
 
     def get(rid: str, user=Depends(current_user)):
         with SessionLocal() as s:
-            row = owned(s, cls, rid, user)
+            row = (
+                visible_community_post(s, rid, user["id"])
+                if cls is CommunityPost
+                else owned(s, cls, rid, user)
+            )
+            if row is None:
+                raise HTTPException(404, "Record not found")
             out = serialize(row)
             add_derived_fields(s, cls, out, user["id"])
+            if cls is CommunityPost:
+                add_community_author(s, out)
             for key in ("owner_id", "output_path", "stored_path", "text_content", "embedding_blob"):
                 out.pop(key, None)
             if cls is FilingBundle:
@@ -190,7 +226,8 @@ def register_crud(path, cls):
             return out
 
     def patch(rid: str, payload: Payload, user=Depends(current_user)):
-        assert_write_role(user, cls)
+        if cls is not CommunityPost:
+            assert_write_role(user, cls)
         values = payload.model_dump(exclude_unset=True)
         if cls is FilingBundle and "output_path" in values:
             raise HTTPException(400, "Bundle output paths are system managed")
@@ -207,7 +244,11 @@ def register_crud(path, cls):
             row = owned(s, cls, rid, user)
             repo_update(s, row, values)
             record(s, user["id"], "update", cls.__tablename__, rid)
-            return serialize(row)
+            result = serialize(row)
+            if cls is CommunityPost:
+                add_community_author(s, result)
+                result.pop("owner_id", None)
+            return result
 
     def delete(rid: str, user=Depends(current_user)):
         assert_write_role(user, cls)
