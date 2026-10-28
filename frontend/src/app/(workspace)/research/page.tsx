@@ -720,13 +720,11 @@ export default function ResearchPage() {
                           {m.role === 'user' ? 'You' : 'TANTARA'}
                           {m.role === 'assistant' && messageStatus && (
                             <span className="status-chip" data-status={messageStatus}>
-                              {/evidence is insufficient/i.test(messageContent)
-                                ? 'Insufficient evidence — excerpts only'
-                                : answerStatusLabel(
-                                    messageStatus,
-                                    answer?.message_id === m.id ? answer.answer_kind : undefined,
-                                    answer?.message_id === m.id ? answer.generation_kind : undefined,
-                                  )}
+                              {answerStatusLabel(
+                                messageStatus,
+                                answer?.message_id === m.id ? answer.answer_kind : undefined,
+                                answer?.message_id === m.id ? answer.generation_kind : undefined,
+                              )}
                             </span>
                           )}
                         </div>
@@ -752,7 +750,7 @@ export default function ResearchPage() {
                           </div>
                         ) : m.role === 'assistant' && messageStatus === 'no_evidence' ? (
                           <div className="state-callout no-evidence">
-                            <strong>Insufficient evidence in your library</strong>
+                            <strong>No supporting excerpts</strong>
                             {messageContent && <AnswerText text={messageContent} citations={[]} />}
                             <p>
                               No supporting documents were found. Upload a document, widen the research scope,
@@ -820,9 +818,7 @@ export default function ResearchPage() {
                     <span className="status-chip" data-status={answer.status}>
                       {answer.answer_basis === 'case_record'
                         ? 'From the case record'
-                        : answerIsInsufficient
-                          ? 'Insufficient evidence — excerpts only'
-                          : answerStatusLabel(answer.status, answer.answer_kind, answer.generation_kind)}
+                        : answerStatusLabel(answer.status, answer.answer_kind, answer.generation_kind)}
                     </span>
                   </div>
                   {answer.status === 'model_unavailable' ? (
@@ -838,16 +834,12 @@ export default function ResearchPage() {
                     </div>
                   ) : answerIsInsufficient ? (
                     <div className="state-callout no-evidence model-insufficient">
-                      <strong>
-                        {answer.raw_status === 'no_evidence'
-                          ? 'Insufficient evidence in your library'
-                          : 'Evidence is insufficient'}
-                      </strong>
+                      <strong>No supporting excerpts</strong>
                       {answer.answer && <AnswerText text={answer.answer} citations={[]} />}
                       <p>
                         {answerHasInsufficientEvidence
-                          ? 'No supporting excerpts were found. Upload a document, widen the scope, or rephrase the question.'
-                          : 'Review the retrieved excerpts below; no conclusion was generated from this evidence.'}
+                          ? 'No indexed excerpt directly answers this question. Upload a document, widen the scope, or rephrase the question.'
+                          : 'The available excerpts do not support a conclusion. Review them below before deciding how to proceed.'}
                       </p>
                       {answer.status === 'no_evidence' && (
                         <Link href="/research/documents">Upload a document</Link>
