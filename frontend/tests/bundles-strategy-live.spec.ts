@@ -21,6 +21,7 @@ let seededCaseId = '';
 let seededDocId = '';
 let noEvidenceCaseId = '';
 let workflowBundleId = '';
+let workflowBundleName = '';
 let originalAiSettings: Record<string, unknown> = {};
 
 async function login(email: string, password: string) {
@@ -174,12 +175,13 @@ test('builder saves a chosen range, maps source pages to bundle pages, and gener
   await page.setViewportSize({ width: 1440, height: 900 });
   await openBundleList(page);
   await page.getByRole('button', { name: 'New bundle' }).click();
-  workflowBundleId = `bundle-workflow-${Date.now()}`;
-  await page.getByLabel('Bundle name').fill(workflowBundleId);
+  workflowBundleName = `bundle-workflow-${Date.now()}`;
+  await page.getByLabel('Bundle name').fill(workflowBundleName);
   await page.getByLabel('Case').selectOption(seededCaseId);
   await page.getByRole('button', { name: 'Create bundle' }).click();
   await expect(page).toHaveURL(/\/bundles\/[0-9a-f-]+/);
-  await expect(page.getByRole('heading', { name: workflowBundleId })).toBeVisible();
+  workflowBundleId = new URL(page.url()).pathname.split('/').pop() ?? '';
+  await expect(page.getByRole('heading', { name: workflowBundleName })).toBeVisible();
 
   const scanned = await apiGet<{ items: Array<{ id: string; title: string }> }>(`/documents?case_id=${seededCaseId}&page_size=100`);
   const chosen = scanned.items.find((doc) => doc.title === 'Scanned Arbitration Agreement')!;
@@ -201,7 +203,7 @@ test('builder saves a chosen range, maps source pages to bundle pages, and gener
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(page.getByRole('heading', { name: workflowBundleId })).toBeVisible();
+  await expect(page.getByRole('heading', { name: workflowBundleName })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await expect(page.getByRole('button', { name: 'Download PDF' }).first()).toBeVisible();
   await capture(page, 'bundle-390x844-generated-real.png');
