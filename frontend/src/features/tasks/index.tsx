@@ -1,12 +1,12 @@
-"use client";
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { endpoints } from "@/lib/api/endpoints";
-import { api } from "@/lib/api/client";
-import * as Dialog from "@radix-ui/react-dialog";
-import Link from "next/link";
-import "../cases/styles.css";
-import { taskGroup } from "./grouping";
+'use client';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { endpoints } from '@/lib/api/endpoints';
+import { api } from '@/lib/api/client';
+import * as Dialog from '@radix-ui/react-dialog';
+import Link from 'next/link';
+import '../cases/styles.css';
+import { taskGroup } from './grouping';
 
 type Task = {
   id: string;
@@ -18,61 +18,43 @@ type Task = {
   case_id?: string;
   case_title?: string;
 };
-const groups = [
-  "Overdue",
-  "Today",
-  "This week",
-  "Later",
-  "No due date",
-  "Done",
-];
+const groups = ['Overdue', 'Today', 'This week', 'Later', 'No due date', 'Done'];
 export default function TasksPage() {
   const [show, setShow] = useState(false);
-  const [title, setTitle] = useState("");
-  const [due, setDue] = useState("");
-  const [priority, setPriority] = useState("medium");
-  const [status, setStatus] = useState("todo");
-  const [notes, setNotes] = useState("");
-  const [caseId, setCaseId] = useState("");
+  const [title, setTitle] = useState('');
+  const [due, setDue] = useState('');
+  const [priority, setPriority] = useState('medium');
+  const [status, setStatus] = useState('todo');
+  const [notes, setNotes] = useState('');
+  const [caseId, setCaseId] = useState('');
   const [editing, setEditing] = useState<Task | null>(null);
   const [actionMenu, setActionMenu] = useState<string | null>(null);
   const [now] = useState(() => new Date());
   const qc = useQueryClient();
   const q = useQuery({
-    queryKey: ["tasks"],
-    queryFn: () => endpoints.tasks.list("?page_size=100"),
+    queryKey: ['tasks'],
+    queryFn: () => endpoints.tasks.list('?page_size=100'),
   });
   const casesQuery = useQuery({
-    queryKey: ["task-case-options"],
-    queryFn: () =>
-      api.get<{ items: Array<{ id: string; title: string }> }>(
-        "/cases?page_size=100",
-      ),
+    queryKey: ['task-case-options'],
+    queryFn: () => api.get<{ items: Array<{ id: string; title: string }> }>('/cases?page_size=100'),
   });
-  const [preview, setPreview] = useState(false);
-  useEffect(
-    () => setPreview(localStorage.getItem("tantara_preview") === "true"),
-    [],
-  );
   const complete = async (t: Task) => {
-    if (preview || localStorage.getItem("tantara_preview") === "true") return;
     const old = q.data;
     if (!old) return;
-    qc.setQueryData(["tasks"], {
+    qc.setQueryData(['tasks'], {
       ...old,
       items: (old.items as Task[]).map((x: Task) =>
-        x.id === t.id
-          ? { ...x, status: x.status === "done" ? "open" : "done" }
-          : x,
+        x.id === t.id ? { ...x, status: x.status === 'done' ? 'open' : 'done' } : x,
       ),
     });
     try {
       await endpoints.tasks.update(t.id, {
-        status: t.status === "done" ? "todo" : "done",
+        status: t.status === 'done' ? 'todo' : 'done',
       });
     } catch {
-      qc.setQueryData(["tasks"], old);
-      window.alert("Task update failed; previous status restored.");
+      qc.setQueryData(['tasks'], old);
+      window.alert('Task update failed; previous status restored.');
     }
   };
   const items: Task[] = (q.data?.items || []) as Task[];
@@ -83,12 +65,12 @@ export default function TasksPage() {
   const caseTitles = new Map(cases.map((c) => [c.id, c.title]));
   const openTask = (task?: Task) => {
     setEditing(task || null);
-    setTitle(task?.title || "");
-    setDue(task?.due_at?.slice(0, 16) || "");
-    setPriority(task?.priority || "medium");
-    setStatus(task?.status || "todo");
-    setNotes(task?.notes || "");
-    setCaseId(task?.case_id || "");
+    setTitle(task?.title || '');
+    setDue(task?.due_at?.slice(0, 16) || '');
+    setPriority(task?.priority || 'medium');
+    setStatus(task?.status || 'todo');
+    setNotes(task?.notes || '');
+    setCaseId(task?.case_id || '');
     setShow(true);
   };
   return (
@@ -98,20 +80,13 @@ export default function TasksPage() {
           <h1 className="matter-title">Tasks</h1>
           <p className="subheading">Your casework, organized</p>
         </div>
-        <button
-          className="matter-action"
-          disabled={preview}
-          title={
-            preview ? "Changes are disabled in read-only preview" : undefined
-          }
-          onClick={() => openTask()}
-        >
+        <button className="matter-action" onClick={() => openTask()}>
           ＋ New task
         </button>
       </div>
       {q.isError ? (
         <div className="matter-error">
-          Tasks are unavailable.{" "}
+          Tasks are unavailable.{' '}
           <button className="task-retry" onClick={() => void q.refetch()}>
             Retry
           </button>
@@ -134,81 +109,47 @@ export default function TasksPage() {
                         <input
                           type="checkbox"
                           aria-label={`Complete ${task.title}`}
-                          checked={
-                            task.status === "done" ||
-                            task.status === "completed"
-                          }
-                          disabled={preview}
-                          title={
-                            preview
-                              ? "Changes are disabled in read-only preview"
-                              : undefined
-                          }
+                          checked={task.status === 'done' || task.status === 'completed'}
                           onChange={() => void complete(task)}
                         />
-                        <button
-                          className="task-edit-title"
-                          disabled={preview}
-                          title={
-                            preview
-                              ? "Changes are disabled in read-only preview"
-                              : "Edit task"
-                          }
-                          onClick={() => openTask(task)}
-                        >
+                        <button className="task-edit-title" title="Edit task" onClick={() => openTask(task)}>
                           {task.title}
                         </button>
                         <span className="task-due">
                           {task.due_at
-                            ? new Intl.DateTimeFormat("en-IN", {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                                timeZone: "Asia/Kolkata",
+                            ? new Intl.DateTimeFormat('en-IN', {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                                timeZone: 'Asia/Kolkata',
                               }).format(new Date(task.due_at))
-                            : "No due date"}
-                          {name === "Overdue" ? " · Overdue" : ""}
+                            : 'No due date'}
+                          {name === 'Overdue' ? ' · Overdue' : ''}
                         </span>
                         <span
-                          className={`task-priority priority-${(task.priority || "normal").toLowerCase()}`}
+                          className={`task-priority priority-${(task.priority || 'normal').toLowerCase()}`}
                         >
-                          {task.priority || "Normal"}
+                          {task.priority || 'Normal'}
                         </span>
                         {task.case_id ? (
-                          <Link
-                            className="task-case"
-                            href={`/cases/${task.case_id}`}
-                          >
-                            {task.case_title ||
-                              caseTitles.get(task.case_id) ||
-                              "Linked case"}
+                          <Link className="task-case" href={`/cases/${task.case_id}`}>
+                            {task.case_title || caseTitles.get(task.case_id) || 'Linked case'}
                           </Link>
                         ) : (
-                          <span className="task-case muted">
-                            No linked case
-                          </span>
+                          <span className="task-case muted">No linked case</span>
                         )}
                         <div className="task-row-actions">
                           <button
                             className="matter-more"
                             aria-label={`Actions for ${task.title}`}
                             aria-expanded={actionMenu === task.id}
-                            onClick={() =>
-                              setActionMenu(
-                                actionMenu === task.id ? null : task.id,
-                              )
-                            }
+                            onClick={() => setActionMenu(actionMenu === task.id ? null : task.id)}
                           >
                             ⋯
                           </button>
                           {actionMenu === task.id && (
                             <div className="task-action-menu">
                               <button
-                                disabled={preview}
-                                title={
-                                  preview
-                                    ? "Changes are disabled in read-only preview"
-                                    : "Edit task"
-                                }
+                                title="Edit task"
                                 onClick={() => {
                                   setActionMenu(null);
                                   openTask(task);
@@ -217,22 +158,12 @@ export default function TasksPage() {
                                 Edit
                               </button>
                               <button
-                                disabled={preview}
-                                title={
-                                  preview
-                                    ? "Changes are disabled in read-only preview"
-                                    : undefined
-                                }
                                 onClick={() => {
                                   setActionMenu(null);
                                   void complete(task);
                                 }}
                               >
-                                Mark{" "}
-                                {task.status === "done" ||
-                                task.status === "completed"
-                                  ? "open"
-                                  : "done"}
+                                Mark {task.status === 'done' || task.status === 'completed' ? 'open' : 'done'}
                               </button>
                             </div>
                           )}
@@ -249,18 +180,11 @@ export default function TasksPage() {
         <Dialog.Portal>
           <Dialog.Overlay className="matter-dialog-overlay" />
           <Dialog.Content className="matter-dialog">
-            <Dialog.Title>{editing ? "Edit task" : "New task"}</Dialog.Title>
-            <Dialog.Description>
-              Create a task for your casework.
-            </Dialog.Description>
+            <Dialog.Title>{editing ? 'Edit task' : 'New task'}</Dialog.Title>
+            <Dialog.Description>Create a task for your casework.</Dialog.Description>
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (
-                  preview ||
-                  localStorage.getItem("tantara_preview") === "true"
-                )
-                  return;
                 try {
                   const payload = {
                     title,
@@ -270,18 +194,13 @@ export default function TasksPage() {
                     notes,
                     case_id: caseId || null,
                   };
-                  if (editing)
-                    await endpoints.tasks.update(editing.id, payload);
+                  if (editing) await endpoints.tasks.update(editing.id, payload);
                   else await endpoints.tasks.create(payload);
                   setShow(false);
                   setEditing(null);
                   await q.refetch();
                 } catch (err) {
-                  window.alert(
-                    err instanceof Error
-                      ? err.message
-                      : "Unable to create task",
-                  );
+                  window.alert(err instanceof Error ? err.message : 'Unable to create task');
                 }
               }}
             >
@@ -335,13 +254,11 @@ export default function TasksPage() {
                   onChange={(event) => setCaseId(event.target.value)}
                 >
                   <option value="">No case</option>
-                  {casesQuery.data?.items.map(
-                    (item: { id: string; title: string }) => (
-                      <option key={item.id} value={item.id}>
-                        {item.title}
-                      </option>
-                    ),
-                  )}
+                  {casesQuery.data?.items.map((item: { id: string; title: string }) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -356,17 +273,7 @@ export default function TasksPage() {
                 <button type="button" onClick={() => setShow(false)}>
                   Cancel
                 </button>
-                <button
-                  className="matter-action"
-                  disabled={preview}
-                  title={
-                    preview
-                      ? "Changes are disabled in read-only preview"
-                      : undefined
-                  }
-                >
-                  Save task
-                </button>
+                <button className="matter-action">Save task</button>
               </div>
             </form>
           </Dialog.Content>
