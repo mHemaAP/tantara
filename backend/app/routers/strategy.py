@@ -3,7 +3,7 @@
 import json
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -165,7 +165,27 @@ def autofill_apply(cid: str, payload: Fields, user=Depends(current_user)):
             if provenance == "ai_suggested":
                 skipped.append(key)
                 continue
-            setattr(c, key, item.get("value"))
+            value = item.get("value")
+            if key in {"filed_at", "notice_date", "limitation_date"} and value is not None:
+                try:
+                    value = date.fromisoformat(value) if isinstance(value, str) else value
+                    if not isinstance(value, date):
+                        raise ValueError("expected ISO date")
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        422,
+                        {
+                            "message": "Request validation failed",
+                            "details": [
+                                {
+                                    "loc": ["body", "fields", key, "value"],
+                                    "msg": "Input should be a valid date in YYYY-MM-DD format",
+                                    "type": "date_from_datetime_parsing",
+                                }
+                            ],
+                        },
+                    )
+            setattr(c, key, value)
             applied.append(key)
         record(s, user["id"], "apply", "case_autofill", cid, {"applied": applied, "skipped": skipped})
     return {"applied": applied, "skipped": skipped}
