@@ -162,4 +162,120 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   );
   await expectPageRatio(page, 3);
   await captureMobile(page, 'documents-round5-citation-page3-mobile-390-real');
+
+  await page.goto('/search');
+  await page.getByRole('textbox', { name: 'Search documents' }).fill('agreement');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.locator('.search-hit').first()).toBeVisible({ timeout: 60000 });
+  await expect(page.locator('.search-hit').first()).not.toContainText('Untitled document');
+  await expect.poll(() => page.evaluate(() => window.document.documentElement.scrollWidth)).toBe(390);
+  await expect
+    .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0);
+  await captureMobile(page, 'documents-round5-search-mobile-390-real');
+});
+
+test('mobile empty, failure, model-unavailable and no-evidence captures settle with navigation closed', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(180000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const token = await signIn(request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const documentsResponse = await request.get(`${apiUrl}/documents?page_size=100`, { headers });
+  expect(documentsResponse.ok()).toBeTruthy();
+  const documents = (await documentsResponse.json()).items as Array<{ id: string; filename: string }>;
+  const seededDocument = documents.find((document) => document.filename === 'page-three-motion.pdf');
+  expect(seededDocument).toBeTruthy();
+  const sidebar = page.locator('.sidebar');
+  const main = page.locator('#main');
+  const assertNavigationClosed = async () => {
+    await expect
+      .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().right))
+      .toBeLessThanOrEqual(0);
+    const sidebarBounds = await sidebar.boundingBox();
+    const mainBounds = await main.boundingBox();
+    expect(sidebarBounds).not.toBeNull();
+    expect(mainBounds).not.toBeNull();
+    expect(
+      sidebarBounds!.x < mainBounds!.x + mainBounds!.width &&
+        sidebarBounds!.x + sidebarBounds!.width > mainBounds!.x,
+    ).toBeFalsy();
+  };
+
+  await openWithToken(page, token, '/documents');
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({ timeout: 60000 });
+  await assertNavigationClosed();
+  await page.getByRole('textbox', { name: 'Search documents' }).fill('no-match-round5-69428');
+  await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
+  await captureMobile(page, 'documents-round5-empty-mobile-390-real');
+
+  await page.route('**/api/v1/documents*', (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'offline', message: 'Offline' } }),
+    }),
+  );
+  await page.goto('/documents');
+  await expect(page.getByRole('heading', { name: 'Documents are unavailable' })).toBeVisible({
+    timeout: 60000,
+  });
+  await assertNavigationClosed();
+  await captureMobile(page, 'documents-round5-failure-mobile-390-fixture');
+  await page.unroute('**/api/v1/documents*');
+
+  const originalSettings = await request
+    .get(`${apiUrl}/settings/ai`, { headers })
+    .then((response) => response.json());
+  await page.route(`**/api/v1/documents/${seededDocument!.id}/ai-read`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ fields: {} }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+  try {
+    await request.patch(`${apiUrl}/settings/ai`, {
+      headers,
+      data: { base_url: 'http://127.0.0.1:9/v1', model: originalSettings.model },
+    });
+    const deadSettings = await request
+      .get(`${apiUrl}/settings/ai`, { headers })
+      .then((response) => response.json());
+    expect(deadSettings.runtime_status?.reachable).toBeFalsy();
+    await openWithToken(page, token, `/documents/${seededDocument!.id}`);
+    await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
+    await assertNavigationClosed();
+    await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible({ timeout: 60000 });
+    await expect(page.locator('.ai-read-field')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
+    await captureMobile(page, 'documents-round5-ai-read-unavailable-mobile-390-fixture');
+  } finally {
+    await request.patch(`${apiUrl}/settings/ai`, {
+      headers,
+      data: { base_url: originalSettings.base_url, model: originalSettings.model },
+    });
+  }
+
+  await page.route('**/api/v1/ai/ask', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'no_evidence', citations: [] }),
+    }),
+  );
+  await openWithToken(page, token, `/documents/${seededDocument!.id}`);
+  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
+  await assertNavigationClosed();
+  await page.getByRole('button', { name: 'Run AI Read' }).click();
+  await expect(page.getByText('No evidence found')).toBeVisible({ timeout: 60000 });
+  await expect(page.locator('.ai-read-field')).toHaveCount(0);
+  await captureMobile(page, 'documents-round5-ai-read-no-evidence-mobile-390-fixture');
 });
