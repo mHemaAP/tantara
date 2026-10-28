@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import * as Dialog from "@radix-ui/react-dialog";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import Link from 'next/link';
+import * as Dialog from '@radix-ui/react-dialog';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import {
   Bell,
   BookOpen,
@@ -21,74 +21,69 @@ import {
   X,
   ArrowRight,
   CheckSquare,
-} from "lucide-react";
-import { api, clearToken } from "@/lib/api/client";
-import { toast } from "sonner";
-import type { Activity } from "@/lib/api/types";
-import "@/features/shell/styles.css";
+} from 'lucide-react';
+import { api, clearToken } from '@/lib/api/client';
+import { toast } from 'sonner';
+import type { Activity } from '@/lib/api/types';
+import '@/features/shell/styles.css';
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", Icon: House },
-  { href: "/cases", label: "My Cases", Icon: FolderOpen },
-  { href: "/research", label: "Research Desk", Icon: BookOpen },
-  { href: "/drafts", label: "Drafts & Documents", Icon: FileText },
-  { href: "/calendar", label: "Calendar", Icon: CalendarDays },
-  { href: "/tasks", label: "Tasks", Icon: CheckSquare },
-  { href: "/clients", label: "Clients", Icon: Users },
+export const navItems = [
+  { href: '/dashboard', label: 'Dashboard', Icon: House },
+  { href: '/cases', label: 'My Cases', Icon: FolderOpen },
+  { href: '/clients', label: 'Clients', Icon: Users },
+  { href: '/tasks', label: 'Tasks', Icon: CheckSquare },
+  { href: '/calendar', label: 'Calendar', Icon: CalendarDays },
+  { href: '/documents', label: 'Documents', Icon: FileText },
+  { href: '/search', label: 'Search', Icon: Search },
+  { href: '/research', label: 'Research Desk', Icon: BookOpen },
+  { href: '/drafts', label: 'Drafts & Documents', Icon: FileText },
+  { href: '/autofill', label: 'Smart Autofill', Icon: CheckSquare },
+  { href: '/bundles', label: 'Bundles', Icon: FileText },
+  { href: '/strategy', label: 'Strategy', Icon: BriefcaseBusiness },
   {
-    href: "/community",
-    label: "Community (Arbitration)",
+    href: '/community',
+    label: 'Community (Arbitration)',
     Icon: BriefcaseBusiness,
   },
-  { href: "/settings/profile", label: "Settings", Icon: Settings },
+  { href: '/settings/profile', label: 'Settings', Icon: Settings },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [preview, setPreview] = useState(false);
   const [authReady, setAuthReady] = useState(false);
-  const [displayName, setDisplayName] = useState("");
-  const [displayRole, setDisplayRole] = useState("");
+  const [displayName, setDisplayName] = useState('');
+  const [displayEmail, setDisplayEmail] = useState('');
+  const [displayRole, setDisplayRole] = useState('');
   const [authError, setAuthError] = useState(false);
   const [notifications, setNotifications] = useState(false);
   const [noticeItems, setNoticeItems] = useState<Activity[]>([]);
   const [palette, setPalette] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState('');
   const [profile, setProfile] = useState(false);
-  const [hits, setHits] = useState<
-    Array<{ title: string; href: string; kind: string }>
-  >([]);
+  const [hits, setHits] = useState<Array<{ title: string; href: string; kind: string }>>([]);
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const isPreview = localStorage.getItem("tantara_preview") === "true";
-    document.documentElement.dataset.theme =
-      localStorage.getItem("tantara_theme") || "light";
-    document.documentElement.dataset.density =
-      localStorage.getItem("tantara_density") || "comfortable";
-    document.documentElement.dataset.font =
-      localStorage.getItem("tantara_font") || "inter";
-    setPreview(isPreview);
+    document.documentElement.dataset.theme = localStorage.getItem('tantara_theme') || 'light';
+    document.documentElement.dataset.density = localStorage.getItem('tantara_density') || 'comfortable';
+    document.documentElement.dataset.font = localStorage.getItem('tantara_font') || 'inter';
     const hasToken =
-      !!document.cookie
-        .split("; ")
-        .find((x) => x.startsWith("tantara_token=")) ||
-      !!localStorage.getItem("tantara_token");
-    if (isPreview) {
-      setAuthReady(true);
-    } else if (!hasToken) {
+      !!document.cookie.split('; ').find((x) => x.startsWith('tantara_token=')) ||
+      !!localStorage.getItem('tantara_token');
+    if (!hasToken) {
       setAuthError(true);
       setAuthReady(true);
     } else {
       api
-        .get<{ name: string; role: string }>("/auth/me")
+        .get<{ full_name?: string; name?: string; email?: string; role: string }>('/auth/me')
         .then((user) => {
-          setDisplayName(user.name || "");
-          setDisplayRole(user.role || "");
+          setDisplayName(user.full_name || user.name || '');
+          setDisplayEmail(user.email || '');
+          setDisplayRole(user.role || '');
           setAuthReady(true);
         })
         .catch(() => {
@@ -97,18 +92,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
         });
     }
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setPalette(true);
         setTimeout(() => input.current?.focus(), 0);
       }
-      if (event.key === "Escape") {
+      if (event.key === 'Escape') {
         setPalette(false);
         setOpen(false);
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   const search = async (term: string) => {
@@ -122,35 +117,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setOffline(false);
     try {
       const [cases, docs] = await Promise.allSettled([
-        api.get<{ items: Array<{ id: string; title: string }> }>(
-          `/cases?q=${encodeURIComponent(term)}`,
-        ),
+        api.get<{ items: Array<{ id: string; title: string }> }>(`/cases?q=${encodeURIComponent(term)}`),
         api.get<{
           items: Array<{ document_id: string; document_title: string }>;
-        }>(
-          `/search/documents?query=${encodeURIComponent(term)}&page=1&page_size=5`,
-        ),
+        }>(`/search/documents?query=${encodeURIComponent(term)}&page=1&page_size=5`),
       ]);
       const results: Array<{ title: string; href: string; kind: string }> = [];
-      if (cases.status === "fulfilled")
+      if (cases.status === 'fulfilled')
         cases.value.items?.forEach((item) =>
           results.push({
             title: item.title,
             href: `/cases/${item.id}`,
-            kind: "Case",
+            kind: 'Case',
           }),
         );
-      if (docs.status === "fulfilled")
+      if (docs.status === 'fulfilled')
         docs.value.items?.forEach((item) =>
           results.push({
             title: item.document_title,
             href: `/documents/${item.document_id}`,
-            kind: "Document",
+            kind: 'Document',
           }),
         );
       setHits(results.slice(0, 8));
-      if (cases.status === "rejected" && docs.status === "rejected")
-        setOffline(true);
+      if (cases.status === 'rejected' && docs.status === 'rejected') setOffline(true);
     } finally {
       setBusy(false);
     }
@@ -161,27 +151,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setNotifications(next);
     if (next) {
       try {
-        setNoticeItems(await api.get<Activity[]>("/dashboard/activity"));
+        setNoticeItems(await api.get<Activity[]>('/dashboard/activity'));
       } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "Recent activity unavailable",
-        );
+        toast.error(error instanceof Error ? error.message : 'Recent activity unavailable');
       }
     }
   };
   const onKey = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    const links = Array.from(document.querySelectorAll<HTMLElement>(".nav a"));
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const links = Array.from(document.querySelectorAll<HTMLElement>('.nav a'));
     const index = links.indexOf(document.activeElement as HTMLElement);
     event.preventDefault();
     const next =
-      event.key === "Home"
+      event.key === 'Home'
         ? 0
-        : event.key === "End"
+        : event.key === 'End'
           ? links.length - 1
-          : event.key === "ArrowDown"
+          : event.key === 'ArrowDown'
             ? (index + 1) % links.length
             : (index - 1 + links.length) % links.length;
     links[next]?.focus();
@@ -190,7 +176,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     .trim()
     .split(/\s+/)
     .map((part) => part[0])
-    .join("")
+    .join('')
     .slice(0, 2)
     .toUpperCase();
 
@@ -199,16 +185,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      {open && (
-        <button
-          className="sidebar-backdrop"
-          aria-label="Close menu"
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <aside className={`sidebar ${open ? "open" : ""}`}>
+      {open && <button className="sidebar-backdrop" aria-label="Close menu" onClick={() => setOpen(false)} />}
+      <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand">
-          <span className="brandmark">T</span>
+          <img className="brandmark" src="/brand/t-mark.svg" alt="" />
           <span className="brandword">TANTARA</span>
         </div>
         <nav className="nav" aria-label="Main navigation" onKeyDown={onKey}>
@@ -218,16 +198,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
               href={href}
               aria-current={
                 path === href ||
-                (href !== "/dashboard" &&
-                  href !== "/community" &&
-                  path.startsWith(`${href}/`)) ||
-                (href === "/settings/profile" && path.startsWith("/settings"))
-                  ? "page"
+                (href === '/cases' && path.startsWith('/cases/')) ||
+                (href === '/community' && path.startsWith('/community/')) ||
+                (href === '/settings/profile' && path.startsWith('/settings/'))
+                  ? 'page'
                   : undefined
               }
-              className={
-                href === "/settings/profile" ? "settings-link" : undefined
-              }
+              className={href === '/settings/profile' ? 'settings-link' : undefined}
               onClick={() => setOpen(false)}
             >
               <Icon size={19} />
@@ -242,6 +219,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <br />
               Arbitration Law
             </strong>
+            <span className="sidebar-art-rule" aria-hidden="true" />
             <small>
               Smarter Tools.
               <br />
@@ -250,11 +228,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </aside>
-      <button
-        className="mobile-toggle"
-        aria-label="Open navigation"
-        onClick={() => setOpen(true)}
-      >
+      <button className="mobile-toggle" aria-label="Open navigation" onClick={() => setOpen(true)}>
         <Menu size={19} />
       </button>
       <header className="topbar">
@@ -265,15 +239,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
         >
           <Search size={17} />
         </button>
-        <button
-          className="searchbox"
-          onClick={() => setPalette(true)}
-          aria-label="Search arbitration cases, documents, provisions, or ask TANTARA"
-        >
+        <button className="searchbox" onClick={() => setPalette(true)} aria-label="Site search">
           <Search size={16} />
-          <span>
-            Search arbitration cases, documents, provisions, or ask TANTARA…
-          </span>
+          <span>Search arbitration cases, documents, provisions, or ask TANTARA…</span>
           <span className="search-submit">
             <Search size={17} />
           </span>
@@ -285,12 +253,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
             onClick={() => void showNotifications()}
           >
             <Bell size={19} />
-            {noticeItems.length > 0 && (
-              <span
-                className="activity-dot"
-                aria-label="Recent activity available"
-              />
-            )}
           </button>
           {notifications && (
             <div className="notification-pop">
@@ -309,29 +271,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
         </div>
         <div className="user-menu">
-          <button
-            onClick={() => setProfile(!profile)}
-            aria-expanded={profile}
-            aria-label="Account menu"
-          >
-            <span className="user-avatar">{initials || "—"}</span>
+          <button onClick={() => setProfile(!profile)} aria-expanded={profile} aria-label="Account menu">
+            <span className="user-avatar">{initials || '—'}</span>
             <span className="user-caption">
-              <strong>
-                {displayName ||
-                  (preview
-                    ? "Preview workspace"
-                    : authReady && authError
-                      ? "Signed out"
-                      : "Signing in…")}
-              </strong>
-              <small>
-                {displayRole ||
-                  (preview
-                    ? "Read-only preview"
-                    : authError
-                      ? "Authentication unavailable"
-                      : "—")}
-              </small>
+              <strong>{displayName || (authReady && authError ? 'Signed out' : 'Signing in…')}</strong>
+              <small>{displayEmail || displayRole || (authError ? 'Authentication unavailable' : '—')}</small>
             </span>
             <ChevronDown size={14} />
           </button>
@@ -342,8 +286,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => {
                   clearToken();
-                  router.push("/");
-                  toast.success("Signed out");
+                  router.push('/');
+                  toast.success('Signed out');
                 }}
               >
                 Sign out
@@ -354,10 +298,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </header>
       <main id="main" className="main">
         {authReady ? (
-          authError && !preview ? (
-            <div className="card shell-auth-error">
-              Signed out. Please sign in to open your workspace.
-            </div>
+          authError ? (
+            <div className="card shell-auth-error">Signed out. Please sign in to open your workspace.</div>
           ) : (
             children
           )
@@ -384,19 +326,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             {offline ? (
-              <div className="offline shell-search-feedback">
-                Backend not reachable
-              </div>
+              <div className="offline shell-search-feedback">Backend not reachable</div>
             ) : busy ? (
               <p className="muted">Searching…</p>
             ) : hits.length > 0 ? (
               <div className="shell-search-results">
                 {hits.map((hit, index) => (
-                  <Link
-                    key={index}
-                    href={hit.href}
-                    onClick={() => setPalette(false)}
-                  >
+                  <Link key={index} href={hit.href} onClick={() => setPalette(false)}>
                     <span>{hit.title}</span>
                     <small className="muted">
                       {hit.kind}
@@ -408,18 +344,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
             ) : q.length > 1 ? (
               <p className="muted">No matching records. Try another search.</p>
             ) : (
-              <p className="muted">
-                Type to search your cases and documents. Press Esc to close.
-              </p>
+              <p className="muted">Type to search your cases and documents. Press Esc to close.</p>
             )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-      {preview && (
-        <div className="mobile-preview">
-          Read-only preview · Changes disabled
-        </div>
-      )}
     </div>
   );
 }
