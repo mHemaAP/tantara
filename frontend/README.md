@@ -76,6 +76,8 @@ Navigation only exposes routes present in this phase. Cases, Research, Drafts, C
 
 `pnpm test:e2e` starts one isolated backend and one frontend. The backend is migrated and seeded with `scripts/seed.py --demo` in a fresh temporary data directory that is removed after the run. Tests use `TANTARA_API_ORIGIN` as their sole backend origin variable; the frontend proxies `/api/v1` to that origin, so browser requests remain same-origin. `TANTARA_API_PORT`, `TANTARA_WEB_PORT`, and `TANTARA_WEB_URL` can select alternate local ports. `TANTARA_PYTHON` can select the backend Python executable. `TANTARA_TEST_DATA_DIR` can select an explicit data directory, which is retained after the run.
 
+`TANTARA_WORKSPACE_TIME_ZONE` is the shared server and browser display zone (default `Asia/Kolkata`). Datetime inputs carry that zone's offset in API payloads; stored wall times are returned with the same offset. Playwright pins its browser to UTC to catch host-timezone regressions. The calendar keeps its existing bare-array response by default for API compatibility; callers that need pagination metadata can request `?envelope=true` for `{items,total,page,page_size,pages}`.
+
 The default test ports are `8011` for the API and `3011` for the frontend. Existing application development commands continue to use port `3010`.
 
 ## Third-party licenses
