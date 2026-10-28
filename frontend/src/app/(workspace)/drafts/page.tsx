@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
 import { draftsApi, type Row } from '@/features/drafts/api';
+import { workspaceDateTimeDisplay } from '@/lib/datetime';
 import '@/features/drafts/styles.css';
 
 const TYPES = [
@@ -70,10 +71,9 @@ const safeHtml = (value: string, documents: Row[] = []) =>
     .join('');
 const stamp = (value: string) => {
   if (!value) return { date: 'Date unavailable', time: 'Time unavailable' };
-  const d = new Date(value);
   return {
-    date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(d),
-    time: new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(d),
+    date: workspaceDateTimeDisplay(value, { dateStyle: 'medium' }),
+    time: workspaceDateTimeDisplay(value, { timeStyle: 'short' }),
   };
 };
 const newestFirst = (rows: Row[]) =>
