@@ -104,7 +104,7 @@ browserTest('task wall time stays in the workspace zone inside a UTC browser', a
     browserExpect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe('UTC');
     browserExpect(await page.evaluate(() => localStorage.getItem('tantara_token'))).toBeTruthy();
     browserExpect(await page.evaluate(() => document.documentElement.scrollWidth <= 1440)).toBeTruthy();
-    await page.screenshot({ path: '../docs/screenshots/tasks-1440x900.png', fullPage: false });
+    await page.screenshot({ path: 'test-results/tasks-workspace-time-proof.png', fullPage: false });
   } finally {
     await request.delete(`${base}/tasks/${(await task.json()).id}`, { headers });
     await request.delete(`${base}/tasks/${(await deadline.json()).id}`, { headers });
@@ -156,7 +156,7 @@ browserTest(
       browserExpect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe('UTC');
       browserExpect(await page.evaluate(() => localStorage.getItem('tantara_token'))).toBeTruthy();
       browserExpect(await page.evaluate(() => document.documentElement.scrollWidth <= 1440)).toBeTruthy();
-      await page.screenshot({ path: '../docs/screenshots/calendar-1440x900.png', fullPage: false });
+      await page.screenshot({ path: 'test-results/calendar-all-day-proof.png', fullPage: false });
     } finally {
       await request.delete(`${base}/cases/${caseId}`, { headers });
     }
