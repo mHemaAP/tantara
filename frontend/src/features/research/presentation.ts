@@ -65,7 +65,7 @@ export function groupSources(sources: ResearchSource[]): CitationGroup[] {
       }
       excerptGroup.sources.push(source);
     }
-    const score = source.retrieval_score ?? source.retreival_score ?? source.score;
+    const score = source.retrieval_score;
     if (score != null && Number.isFinite(score)) {
       page.bestScore = page.bestScore == null ? score : Math.max(page.bestScore, score);
     }
