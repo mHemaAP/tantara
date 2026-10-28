@@ -235,7 +235,10 @@ test('AI Read renders real API fields and persists an edited field after reload'
   await openWithToken(page, token, `/documents/${document.id}`);
   await page.getByRole('button', { name: 'Run AI Read' }).click();
   await expect(page.locator('.ai-read-field').first()).toBeVisible();
-  await expect(page.locator('.ai-read-field[data-field-key="arbitration_clause"]')).toContainText('Page 1');
+  const clauseField = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
+  await expect(clauseField).toContainText('Page 1');
+  await expect(clauseField.locator('blockquote')).toContainText('arbitration clause applies');
+  await expect(clauseField.locator('blockquote')).not.toContainText(/\\n|"quote"/);
   await page.getByRole('button', { name: 'Edit document_type' }).click();
   await page.getByRole('textbox', { name: 'Edit document_type' }).fill('Reviewed arbitration agreement');
   await page.getByRole('button', { name: 'Save document_type' }).click();
