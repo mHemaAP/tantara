@@ -49,7 +49,6 @@ TANTARA FRONTEND PHASE 2 — IMPLEMENTATION REPORT
 - frontend/src/lib/api/schema.ts
 - frontend/src/lib/api/types.ts
 - frontend/tailwind.config.ts
-- frontend/tests/api-fixtures.mjs
 - frontend/tests/smoke.spec.ts
 - frontend/tsconfig.json
 - frontend/REPORT.txt
@@ -71,7 +70,7 @@ TANTARA FRONTEND PHASE 2 — IMPLEMENTATION REPORT
 - `docs/screenshots/settings-local-ai-desktop.png`
 - `docs/screenshots/settings-local-ai-mobile.png`
 
-The backend was offline during the final screenshot run. The Playwright-only contract fixtures in `frontend/tests/api-fixtures.mjs` supplied the review data; production application code does not import or use these fixtures.
+This historical report describes a previous fixture-based capture run; those captures are not integration evidence.
 
 5. Commits
 - First commit: `154b9f1 chore: ignore local frontend build artifacts`.
