@@ -7,6 +7,14 @@
   color: #12234c;
 }
 
+.document-detail-title {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .document-detail-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.85fr);
