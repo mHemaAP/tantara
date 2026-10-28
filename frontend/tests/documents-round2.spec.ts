@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { documentHref } from '../src/features/documents/links';
 
-const apiUrl = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1`;
 
 async function signIn(request: APIRequestContext) {
   const response = await request.post(`${apiUrl}/auth/login`, {
