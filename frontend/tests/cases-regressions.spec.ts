@@ -135,21 +135,28 @@ browserTest(
       headers,
       data: {
         title: 'UTC calendar all-day proof',
-        filed_at: `${day}T00:00:00+05:30`,
+        // Case creation correctly rejects future filing dates. Keep the event
+        // under test in the future while the actual filing date is historical.
+        filed_at: '2020-01-01T00:00:00+05:30',
         notice_date: `${day}T00:00:00+05:30`,
       },
     });
     browserExpect(created.ok()).toBeTruthy();
     const caseId = (await created.json()).id as string;
+    let eventId: string | undefined;
     try {
+      const createdEvent = await request.post(`${base}/cases/${caseId}/events`, {
+        headers,
+        data: { type: 'event', occurred_at: `${day}T00:00:00+05:30`, detail: 'All-day event proof' },
+      });
+      browserExpect(createdEvent.ok()).toBeTruthy();
+      eventId = (await createdEvent.json()).id as string;
       await page.addInitScript((value) => {
         localStorage.setItem('tantara_token', value);
         document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
       }, token);
       await page.goto('/calendar');
-      const event = page
-        .getByRole('button', { name: /View Filing date.*UTC calendar all-day proof/ })
-        .first();
+      const event = page.getByRole('button', { name: /View All day.*UTC calendar all-day proof/ }).first();
       const deadline = page
         .getByRole('button', { name: /View Deadline.*UTC calendar all-day proof/ })
         .first();
@@ -157,11 +164,17 @@ browserTest(
       await browserExpect(deadline).toBeVisible();
       await browserExpect(event.locator('time')).toHaveCount(0);
       await browserExpect(deadline.locator('time')).toHaveCount(0);
+      await event.click();
+      const details = page.getByRole('dialog', { name: 'Event details' });
+      await browserExpect(details).toContainText('UTC calendar all-day proof');
+      await browserExpect(details).toContainText('All day');
+      await browserExpect(details).toContainText('All-day event proof');
       browserExpect(await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe('UTC');
       browserExpect(await page.evaluate(() => localStorage.getItem('tantara_token'))).toBeTruthy();
       browserExpect(await page.evaluate(() => document.documentElement.scrollWidth <= 1440)).toBeTruthy();
       await page.screenshot({ path: 'test-results/calendar-all-day-proof.png', fullPage: false });
     } finally {
+      if (eventId) await request.delete(`${base}/cases/${caseId}/events/${eventId}`, { headers });
       await request.delete(`${base}/cases/${caseId}`, { headers });
     }
   },
@@ -352,7 +365,7 @@ browserTest(
         `calendar API should contain created event ${eventId} for ${parts}`,
       ).toBeTruthy();
       const allDayEvent = page.getByRole('button', {
-        name: /View All-day event test record.*All-day event check/,
+        name: /View All day.*All-day event check/,
       });
       await browserExpect(allDayEvent).toBeVisible({ timeout: 15_000 });
       await browserExpect(allDayEvent.locator('time')).toHaveCount(0);
