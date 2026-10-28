@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-const base = `${process.env.TANTARA_API_BASE || 'http://127.0.0.1:8010'}/api/v1`;
+const base = `${process.env.TANTARA_API_ORIGIN || 'http://127.0.0.1:8010'}/api/v1`;
 async function apiReady() {
   try {
     return (await fetch(`${base}/health`)).ok;
