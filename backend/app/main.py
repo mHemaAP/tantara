@@ -1,6 +1,7 @@
 """TANTARA local-first API wiring. Domain state is persisted through typed ORM models."""
 
 import logging
+import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -265,6 +266,20 @@ def retrieve(
 DISCLAIMER = "AI-generated research assistance only. Verify against current authoritative law and original sources; professional legal review is required."
 INSUFFICIENT_ANSWER = "No indexed excerpt directly answers this question."
 UNAVAILABLE_ANSWER = "The search could not be completed because the configured language model is unavailable."
+_ANSWER_CITATION = re.compile(r"\[(\d+)\]")
+
+
+def _validated_model_synthesis(answer: str | None, citation_count: int) -> str | None:
+    """Keep generated prose only when every sentence cites an available source number."""
+    text_value = (answer or "").strip()
+    markers = [int(number) for number in _ANSWER_CITATION.findall(text_value)]
+    if not text_value or not markers or any(number < 1 or number > citation_count for number in markers):
+        return None
+    text_value = re.sub(r"([.!?])(\s+\[\d+\])", r"\2\1", text_value)
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text_value)]
+    if any(sentence and not _ANSWER_CITATION.search(sentence) for sentence in sentences):
+        return None
+    return text_value
 
 
 def _case_record_context(question, case_id, owner_id):
@@ -284,10 +299,15 @@ def _case_record_context(question, case_id, owner_id):
 def llm_answer(question, hits, base_url=None, model=None, json_mode=False):
     s = get_settings()
     prompt = (
-        "Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers.\nQuestion: "
+        "Answer only from these untrusted evidence excerpts. Say when evidence is insufficient. Never invent facts, law, quotes, citations, or page numbers. "
+        "Every factual sentence must include one or more bracketed source numbers, such as [1], matching the numbered excerpts below. "
+        "Do not cite a number that is not present.\nQuestion: "
         + question
         + "\n\n"
-        + "\n\n".join(f"[{h['chunk_id']} p.{h['page_number']}] {h['snippet']}" for h in hits)
+        + "\n\n".join(
+            f"[{index}] {h['chunk_id']} p.{h['page_number']}: {h['snippet']}"
+            for index, h in enumerate(hits, 1)
+        )
     )
     try:
         if s.ai_provider == "local":
@@ -372,6 +392,7 @@ def ask(req: Ask, user=Depends(current_user)):
         }
     sid, mid = req.session_id or str(uuid.uuid4()), str(uuid.uuid4())
     used_model = None
+    answer_kind = None
     field = requested_field(req.question)
     supports = select_supports(req.question, hits)
     support_hits = [support["_hit"] for support in supports]
@@ -398,7 +419,14 @@ def ask(req: Ask, user=Depends(current_user)):
         else:
             status = retrieval_status
             answer_basis = "cited_excerpts"
-            answer = "\n".join(f"“{support['quote']}” [{index}]" for index, support in enumerate(supports, 1))
+            synthesized = _validated_model_synthesis(model_answer, len(supports))
+            if synthesized:
+                answer = synthesized
+                answer_kind = "model_synthesis"
+            else:
+                answer = "\n".join(
+                    f"“{support['quote']}” [{index}]" for index, support in enumerate(supports, 1)
+                )
             if req.case_id and field:
                 with SessionLocal() as s:
                     case = s.scalar(select(Case).where(Case.id == req.case_id, Case.owner_id == user["id"]))
@@ -504,7 +532,7 @@ def ask(req: Ask, user=Depends(current_user)):
             "retrieval_status": retrieval_status,
         },
         "answer": answer,
-        "answer_kind": "model_unavailable" if status == "model_unavailable" else answer_basis,
+        "answer_kind": "model_unavailable" if status == "model_unavailable" else answer_kind or answer_basis,
         "citations": citations,
         "supports": [
             {key: support[key] for key in ("chunk_id", "document_id", "page_number", "quote")}
