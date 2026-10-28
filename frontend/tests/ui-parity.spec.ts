@@ -178,7 +178,6 @@ test('dashboard renders four metrics before Ask TANTARA and keeps both secondary
   page,
   request,
 }) => {
-  test.setTimeout(120_000);
   await authenticate(page, request);
   await page.goto('/dashboard');
   await expect(page.locator('h1')).toHaveCount(1);
@@ -216,6 +215,7 @@ test('deep-linked workspace routes retain one main landmark after real content l
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   const apiOrigin = process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010';
   const login = await request.post(`${apiOrigin}/api/v1/auth/login`, {
     data: { email: 'advocate@tantara.local', password: 'tantara-local' },
