@@ -8,6 +8,7 @@ import { api } from '@/lib/api/client';
 import '@/features/documents/documents.css';
 import '@/features/search/search.css';
 import { documentHref } from '@/features/documents/links';
+import { collectionsApi } from '@/features/documents/api';
 import { WorkspaceModuleNav } from '@/features/documents/WorkspaceModuleNav';
 
 type SearchHit = {
@@ -27,10 +28,16 @@ type SearchResponse = { status?: string; items: SearchHit[]; total: number };
 export default function SearchPage() {
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
+  const [collectionId, setCollectionId] = useState('');
+  const collections = useQuery({ queryKey: ['collections'], queryFn: collectionsApi.list });
   const hits = useQuery({
-    queryKey: ['document-search', submitted],
+    queryKey: ['document-search', submitted, collectionId],
     enabled: Boolean(submitted),
-    queryFn: () => api.get<SearchResponse>(`/search/documents?query=${encodeURIComponent(submitted)}`),
+    queryFn: () => {
+      const params = new URLSearchParams({ query: submitted });
+      if (collectionId) params.set('collection_id', collectionId);
+      return api.get<SearchResponse>(`/search/documents?${params}`);
+    },
   });
   return (
     <main className="documents-page search-page">
@@ -56,6 +63,21 @@ export default function SearchPage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
+        <label className="search-collection-filter">
+          <span>Collection</span>
+          <select
+            aria-label="Search collection"
+            value={collectionId}
+            onChange={(event) => setCollectionId(event.target.value)}
+          >
+            <option value="">All collections</option>
+            {collections.data?.items.map((collection) => (
+              <option key={collection.id} value={collection.id}>
+                {collection.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <button className="documents-button documents-button-primary" type="submit">
           Search
         </button>
