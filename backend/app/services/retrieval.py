@@ -88,7 +88,9 @@ class RetrievalService:
             rows = session.execute(stmt).all()
             allowed = {r.id: r for r in rows}
             where = "d.owner_id=:owner"
-            tokens = re.findall(r"[\w-]{2,}", question)
+            # Hyphenated legal references are tokenized as their word parts so X-P2
+            # retrieves the same evidence pool as X and does not become a dead FTS term.
+            tokens = re.findall(r"[\w]{2,}", question)
             fts_query = " OR ".join('"' + t.replace('"', '""') + '"' for t in tokens) or '""'
             params = {"owner": owner_id, "query": fts_query}
             if case_id:
