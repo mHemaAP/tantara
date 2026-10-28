@@ -1,8 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('../styles/fonts/playfair-display-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+}
 :root {
-  --workspace: #f6f7f9;
+  --workspace: #fdfdfd;
   --ink: #0f172a;
   --muted: #64748b;
   --line: #e7eaf0;
@@ -52,10 +59,10 @@ a {
   background: var(--workspace);
 }
 .topbar {
-  height: 64px;
+  height: 70px;
   position: fixed;
   z-index: 20;
-  left: 224px;
+  left: 218px;
   right: 0;
   top: 0;
   background: #fff;
@@ -115,10 +122,10 @@ a {
   place-items: center;
 }
 .sidebar {
-  width: 224px;
+  width: 218px;
   position: fixed;
   inset: 0 auto 0 0;
-  background: linear-gradient(160deg, #0a1730, #06101f);
+  background: linear-gradient(160deg, #031023, #06101f);
   color: #c6d2e6;
   padding: 22px 14px;
   display: flex;
@@ -141,22 +148,22 @@ a {
 }
 .brandword {
   font:
-    20px var(--font-playfair),
+    20px 'Playfair Display',
     Georgia,
     serif;
   letter-spacing: 0.18em;
 }
 .nav {
   display: grid;
-  gap: 7px;
-  margin-top: 34px;
+  gap: 3px;
+  margin-top: 22px;
 }
 .nav a {
-  height: 42px;
+  height: 40px;
   border-radius: 9px;
   padding: 0 14px;
   display: flex;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
   font-size: 13px;
   color: #c6d2e6;
@@ -173,21 +180,21 @@ a {
 }
 .nav .settings-link {
   border-top: 1px solid #ffffff24;
-  margin-top: 14px;
-  padding-top: 14px;
-  height: 57px;
+  margin-top: 6px;
+  padding-top: 6px;
+  height: 44px;
 }
 .sidebar-art {
-  margin-top: auto;
-  border-radius: 12px;
+  margin-top: 12px;
+  border-radius: 0;
   overflow: hidden;
-  min-height: 206px;
+  min-height: 160px;
   background:
     linear-gradient(to top, #06101f 0%, rgba(6, 16, 31, 0.94) 45%, rgba(6, 16, 31, 0.62) 100%),
     url('/brand/legal-scales.jpg') center 35% / cover no-repeat;
   display: flex;
   align-items: end;
-  padding: 13px;
+  padding: 13px 7px;
 }
 .sidebar-art div {
   margin: -13px;
@@ -197,10 +204,17 @@ a {
 .sidebar-art strong {
   display: block;
   font:
-    20px var(--font-playfair),
+    20px 'Playfair Display',
     Georgia,
     serif;
   color: white;
+}
+.sidebar-art-rule {
+  display: block;
+  width: 80px;
+  height: 2px;
+  background: #d2ae62;
+  margin-top: 10px;
 }
 .sidebar-art small {
   display: block;
@@ -210,8 +224,8 @@ a {
   margin-top: 8px;
 }
 .main {
-  margin-left: 224px;
-  padding: 88px 22px 30px;
+  margin-left: 218px;
+  padding: 94px 22px 30px;
   min-height: 100vh;
 }
 .mobile-toggle {
@@ -238,10 +252,14 @@ a {
   color: var(--muted);
 }
 .title {
+  font-family: 'Playfair Display', Georgia, serif;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.025em;
   margin: 0;
+}
+.main h1 {
+  font-family: 'Playfair Display', Georgia, serif !important;
 }
 .subheading {
   font-size: 13px;
@@ -589,7 +607,7 @@ a {
 }
 .hero h1 {
   font:
-    34px var(--font-playfair),
+    34px 'Playfair Display',
     Georgia,
     serif;
   margin: 0;
@@ -1063,7 +1081,7 @@ html[data-density='compact'] .metric {
   min-height: 98px;
 }
 html[data-font='serif'] body {
-  font-family: var(--font-playfair), Georgia, serif;
+  font-family: 'Playfair Display', Georgia, serif;
 }
 
 .sr-only {
