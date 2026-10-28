@@ -98,6 +98,8 @@ def test_strategy_local_model_generates_cited_assertions_and_persists_mode(clien
         generated = client.post(f"/api/v1/cases/{case_id}/strategy/generate", headers=headers)
         assert generated.status_code == 200
         result = generated.json()
+        assert result["updated_at"].endswith("+00:00")
+        assert result["generated_at"].endswith("+00:00")
         assert result["status"] == "model_generated"
         assert result["model"] == {"provider": "local", "model": "fixture-strategy-model"}
         assert result["case_theory"]
