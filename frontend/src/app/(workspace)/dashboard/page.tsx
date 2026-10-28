@@ -21,6 +21,7 @@ import { endpoints } from '@/lib/api/endpoints';
 import { keys } from '@/lib/api/keys';
 import type { Summary, Activity, Upcoming, Case } from '@/lib/api/types';
 import { MattersCard } from '@/features/dashboard/matters';
+import { collectionsApi } from '@/features/documents/api';
 function Offline({ retry }: { retry: () => void }) {
   return (
     <div className="offline" role="status">
@@ -46,7 +47,9 @@ export default function Dashboard() {
     [answer, setAnswer] = useState<Awaited<ReturnType<typeof endpoints.ask>> | null>(null),
     [askBusy, setAskBusy] = useState(false),
     [scope, setScope] = useState(''),
+    [collection, setCollection] = useState(''),
     [jurisdiction, setJurisdiction] = useState('');
+  const collections = useQuery({ queryKey: ['collections'], queryFn: collectionsApi.list });
   const jurisdictions = useQuery({
     queryKey: ['meta', 'jurisdictions'],
     queryFn: endpoints.meta.jurisdictions,
@@ -67,6 +70,7 @@ export default function Dashboard() {
       const r = await endpoints.ask({
         question: q,
         case_id: scope || undefined,
+        collection_id: collection || undefined,
         jurisdiction: jurisdiction || undefined,
       });
       setAnswer(r);
@@ -207,19 +211,30 @@ export default function Dashboard() {
                 </select>
                 <select
                   aria-label="Knowledge collection"
-                  disabled
+                  value={collection}
+                  onChange={(e) => setCollection(e.target.value)}
                   aria-describedby="collection-help"
-                  title="Collection scope is not available in the current API"
                 >
                   <option value="">All collections</option>
+                  {collections.data?.items.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.document_count})
+                    </option>
+                  ))}
                 </select>
               </div>
-              <small id="collection-help">Collection filtering is not available in the current API.</small>
+              <small id="collection-help">
+                {collections.isError
+                  ? 'Collection list unavailable; retry from Documents.'
+                  : 'Scope Ask TANTARA to a knowledge collection.'}
+              </small>
             </details>
             {answer && (
               <div className="result" style={{ background: '#ffffff18', padding: 12, borderRadius: 8 }}>
                 <strong>
-                  {answer.status === 'no_evidence'
+                  {answer.status === 'no_evidence' ||
+                  answer.status === 'insufficient_evidence' ||
+                  answer.answer_basis === 'insufficient_evidence'
                     ? 'Insufficient evidence'
                     : answer.status === 'model_unavailable'
                       ? 'Model unavailable'
