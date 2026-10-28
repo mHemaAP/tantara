@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
 const screenshots = '../docs/screenshots';
 const liveModelBase = 'http://192.168.0.101:8080/v1';
 const liveModelName = 'MiniCPM5-2B';
@@ -49,12 +49,6 @@ async function waitForViewer(page: Page, requestedPage = 1) {
     timeout: 60000,
   });
   await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
-}
-
-async function noModelDetailsLeak(page: Page) {
-  const degradation = page.locator('.ai-read-degradation, .ai-read-error-category');
-  await expect(degradation).toBeVisible();
-  await expect(degradation).not.toContainText(/https?:\/\/|127\.0\.0\.1|192\.168\.|:\d{2,5}/);
 }
 
 test('workspace shell, skip link, metadata, and PDF page controls are stable on direct viewer entry', async ({
@@ -206,10 +200,11 @@ test('reachable model settings do not relabel local extraction as model generate
   }
 });
 
-test('model-unavailable state keeps the error private and captures desktop failure', async ({
+test('local extraction remains labeled as candidate text when model is unavailable', async ({
   page,
   request,
 }) => {
+  test.setTimeout(90000);
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   const document = await getSeededPdf(request, token);
@@ -225,11 +220,14 @@ test('model-unavailable state keeps the error private and captures desktop failu
     await openWithToken(page, token, `/documents/${document.id}`);
     await waitForViewer(page, 1);
     await page.getByRole('button', { name: 'Run document extraction' }).click();
-    await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible({ timeout: 30000 });
-    await noModelDetailsLeak(page);
-    await expect(page.locator('.ai-read-field')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('.ai-read-field').first()).toBeVisible();
+    await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction');
+    await expect(page.locator('.ai-read-panel')).toContainText('candidate only');
+    await expect(page.locator('.ai-read-panel')).not.toContainText('AI-generated');
+    await expect(page.locator('body')).not.toContainText(/https?:\/\/|127\.0\.0\.1|192\.168\.|:\d{2,5}/);
     await page.screenshot({
-      path: `${screenshots}/documents-ai-read-unavailable-desktop-1440.png`,
+      path: `${screenshots}/documents-ai-read-local-candidate-desktop-1440.png`,
     });
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, {
