@@ -147,8 +147,12 @@ browserTest(
         document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
       }, token);
       await page.goto('/calendar');
-      const event = page.getByRole('button', { name: 'View All day', exact: true }).first();
-      const deadline = page.getByRole('button', { name: 'View Deadline', exact: true }).first();
+      const event = page
+        .getByRole('button', { name: /View Filing date.*UTC calendar all-day proof/ })
+        .first();
+      const deadline = page
+        .getByRole('button', { name: /View Deadline.*UTC calendar all-day proof/ })
+        .first();
       await browserExpect(event).toBeVisible();
       await browserExpect(deadline).toBeVisible();
       await browserExpect(event.locator('time')).toHaveCount(0);
@@ -347,15 +351,25 @@ browserTest(
         calendarItems.some((item: { id: string }) => item.id === eventId),
         `calendar API should contain created event ${eventId} for ${parts}`,
       ).toBeTruthy();
-      const allDayEvent = page.getByRole('button', { name: 'View All day', exact: true }).first();
+      const allDayEvent = page.getByRole('button', {
+        name: /View All-day event test record.*All-day event check/,
+      });
       await browserExpect(allDayEvent).toBeVisible({ timeout: 15_000 });
       await browserExpect(allDayEvent.locator('time')).toHaveCount(0);
+      await browserExpect(allDayEvent).toContainText('All-day event test record');
+      await browserExpect(allDayEvent).toContainText(`All-day event check`);
+      const eventLabels = await page
+        .locator('.calendar-event')
+        .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label') || ''));
+      browserExpect(new Set(eventLabels).size).toBe(eventLabels.length);
       await allDayEvent.click();
       const details = page.getByRole('dialog', { name: 'Event details' });
       await browserExpect(details).toContainText('All day');
+      await browserExpect(details).toContainText('All-day event test record');
+      await browserExpect(details).toContainText(`All-day event check`);
       await browserExpect(details).not.toContainText(/\b\d{1,2}:\d{2}\b|\b(am|pm)\b/i);
       await browserExpect(page.locator('body')).not.toContainText(
-        /all_day_event|first_hearing|hearing_completed/i,
+        /all_day_event|first_hearing|hearing_completed|document_uploaded|deadline_set/i,
       );
     } finally {
       if (eventId) await request.delete(`${base}/cases/${caseId}/events/${eventId}`, { headers });
