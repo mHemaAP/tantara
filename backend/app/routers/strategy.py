@@ -14,6 +14,7 @@ from app.models import AppPreference, Case, Document, ExtractionField, Hearing
 from app.repositories.domain import get_owned
 from app.security import current_user
 from app.services.audit import record
+from app.timezone import to_utc_iso
 
 router = APIRouter(prefix="/api/v1/cases/{cid}", tags=["strategy", "autofill"])
 
@@ -230,7 +231,7 @@ def generate_strategy(cid: str, user=Depends(current_user)):
         }
         for hit in hits
     ]
-    now = datetime.now(UTC).isoformat()
+    now = to_utc_iso(datetime.now(UTC))
     model = None
     assertion_citations = []
     if not hits:
@@ -445,7 +446,7 @@ def strategy_put(cid: str, payload: StrategyBody, user=Depends(current_user)):
         )
         result = {
             **payload.model_dump(),
-            "updated_at": datetime.now(UTC).isoformat(),
+            "updated_at": to_utc_iso(datetime.now(UTC)),
             "generated_at": row.value.get("generated_at") if row and isinstance(row.value, dict) else None,
             "status": row.value.get("status", "template")
             if row and isinstance(row.value, dict)
