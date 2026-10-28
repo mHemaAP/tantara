@@ -31,7 +31,6 @@ export default function Home() {
     try {
       const r = await endpoints.login(values);
       persistToken(r.access_token);
-      localStorage.removeItem('tantara_preview');
       toast.success('Welcome to TANTARA');
       router.push('/dashboard');
     } catch (e) {
@@ -40,10 +39,6 @@ export default function Home() {
       setBusy(false);
     }
   });
-  const guest = () => {
-    localStorage.setItem('tantara_preview', 'true');
-    router.push('/dashboard');
-  };
   return (
     <main className="home-layout">
       <section className="hero">
@@ -61,9 +56,6 @@ export default function Home() {
             <a href="#login" className="primary">
               Continue as Advocate <ArrowRight size={16} />
             </a>
-            <button onClick={guest} className="guest-btn">
-              Explore as User
-            </button>
           </div>
         </div>
         <div className="home-tiles">
