@@ -6,6 +6,7 @@ import uuid
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
+from app import main
 from app.db import SessionLocal
 from app.models import Case, DocumentChunk, User
 from app.security import hash_password
@@ -133,6 +134,35 @@ def test_answer_quotes_page_two_evidence_and_surfaces_case_conflict(client):
     assert "retreival_score" not in citation
     assert citation["retrieval_score"] > 0
     _assert_marker_integrity(result)
+
+
+def test_ai_ask_returns_valid_model_prose_and_falls_back_on_invalid_citations(client, monkeypatch):
+    headers = _auth(client)
+    case = _create_case(client, headers)
+    _upload_pdf(client, headers, case["id"])
+    question = "What is the seat of arbitration in the probe memorandum?"
+    monkeypatch.setattr(main, "llm_answer", lambda *_args, **_kwargs: "The seat is Chennai [1].")
+    response = client.post(
+        "/api/v1/ai/ask", headers=headers, json={"question": question, "case_id": case["id"]}
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["answer"] == "The seat is Chennai [1]."
+    assert result["answer_kind"] == "model_synthesis"
+    assert result["answer_basis"] == "cited_excerpts"
+    assert result["citations"][0]["citation_number"] == 1
+    assert re.search(r"\[1\]", result["answer"])
+    assert result["answer"] != "\n".join(
+        f"“{support['quote']}” [{index}]" for index, support in enumerate(result["supports"], 1)
+    )
+
+    monkeypatch.setattr(main, "llm_answer", lambda *_args, **_kwargs: "Unsupported conclusion [99].")
+    fallback = client.post(
+        "/api/v1/ai/ask", headers=headers, json={"question": question, "case_id": case["id"]}
+    ).json()
+    assert fallback["answer_kind"] == "cited_excerpts"
+    assert "Unsupported conclusion" not in fallback["answer"]
+    _assert_marker_integrity(fallback)
 
 
 def test_case_record_only_answer_is_labeled_and_not_inserted_into_answer(client):
