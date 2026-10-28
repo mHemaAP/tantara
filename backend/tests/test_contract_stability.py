@@ -74,7 +74,7 @@ def test_generated_method_inventory_covers_every_openapi_operation():
     spec.loader.exec_module(module)
     inventory = Path(__file__).resolve().parents[2] / "docs" / "BACKEND_ROUTES.txt"
     assert inventory.read_text() == module.render_inventory()
-    assert sum(1 for line in inventory.read_text().splitlines() if line and not line.startswith("#")) == 123
+    assert sum(1 for line in inventory.read_text().splitlines() if line and not line.startswith("#")) == 131
     matrix = Path(__file__).resolve().parents[2] / "docs" / "TEST_MATRIX.md"
     generated_section = matrix.read_text().split("## Method-level expansion\n", 1)[1]
     assert generated_section == module.render_method_matrix().split("## Method-level expansion\n", 1)[1]
@@ -98,6 +98,21 @@ def test_runtime_openapi_operation_ids_are_unique_without_duplicate_warning(clie
     operation_ids = [operation["operationId"] for operation in operations]
     assert len(operation_ids) == len(set(operation_ids))
     assert "Duplicate Operation ID" not in caplog.text
+
+
+def test_search_and_ask_openapi_success_responses_are_typed(client):
+    schema = client.get("/openapi.json").json()
+    expected = (
+        ("/api/v1/search/documents", "get", "SearchResponse"),
+        ("/query", "post", "AskResponse"),
+        ("/api/v1/ai/ask", "post", "AskResponse"),
+    )
+    for path, method, response_name in expected:
+        response = schema["paths"][path][method]["responses"]["200"]
+        assert response["content"]["application/json"]["schema"]["$ref"].endswith(f"/{response_name}")
+    assert "items" in schema["components"]["schemas"]["SearchResponse"]["properties"]
+    ask_properties = schema["components"]["schemas"]["AskResponse"]["properties"]
+    assert {"answer", "citations", "supports", "model"} <= set(ask_properties)
 
 
 def test_all_openapi_mutation_bodies_return_validation_envelope(client):
