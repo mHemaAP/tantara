@@ -419,13 +419,15 @@
   line-height: 1.7;
 }
 .answer-citation {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   margin-left: 5px;
   color: #4038ca;
   background: #f0f1ff;
   border-radius: 5px;
-  padding: 1px 5px;
-  font-size: 9px;
+  min-height: 40px;
+  padding: 6px 9px;
+  font-size: 11px;
   font-weight: 700;
   text-decoration: none;
   vertical-align: baseline;
@@ -455,8 +457,9 @@
   border-radius: 999px;
   background: #f7f7ff;
   color: #3730a3;
-  padding: 4px 8px;
-  font-size: 10px;
+  min-height: 40px;
+  padding: 7px 10px;
+  font-size: 11px;
   font-weight: 650;
   text-decoration: none;
   white-space: nowrap;
@@ -666,6 +669,42 @@
   border-radius: 9px;
   padding: 10px;
 }
+.source-item summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 40px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.source-item summary strong {
+  color: #273554;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.source-item summary span {
+  flex: 0 0 auto;
+  color: #7f899d;
+  font-size: 10px;
+}
+.source-group > h3 {
+  margin: 8px 4px 2px;
+  color: #263453;
+  font-size: 12px;
+}
+.source-reason {
+  margin: 4px 4px 8px;
+  color: #7b8498;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.answer-provenance {
+  display: block;
+  margin-top: 8px;
+  color: #68738a;
+  font-size: 10px;
+}
 .source-top {
   display: flex;
   align-items: flex-start;
@@ -760,6 +799,44 @@
   border-radius: 14px;
   padding: 20px;
 }
+.research-upload {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0;
+}
+.research-upload input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.research-upload button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: #4f46e5;
+  color: white;
+  font-size: 12px;
+  font-weight: 650;
+}
+.research-upload button:disabled {
+  opacity: 0.55;
+}
+.research-upload p {
+  flex-basis: 100%;
+  margin: 0;
+  color: #65718a;
+  font-size: 11px;
+}
 .research-docs-list {
   display: grid;
   gap: 8px;
@@ -823,6 +900,9 @@
   }
   .research-filters label {
     min-width: 0;
+  }
+  .research-filters label:first-child {
+    grid-column: 1 / -1;
   }
   .research-filters label.collection-filter {
     grid-column: 1 / -1;
