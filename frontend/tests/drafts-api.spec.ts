@@ -1,7 +1,6 @@
 import { expect, request, test, type APIRequestContext } from '@playwright/test';
 
-const apiBase =
-  (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8115').replace(/\/$/, '') + '/api/v1/';
+const apiBase = (process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010').replace(/\/$/, '') + '/api/v1/';
 let owner: APIRequestContext;
 let researcher: APIRequestContext;
 let anonymous: APIRequestContext;
