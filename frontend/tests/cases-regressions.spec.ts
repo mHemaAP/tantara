@@ -338,8 +338,7 @@ browserTest(
         document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
       }, token);
       const calendarResponse = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname === '/api/v1/calendar' && response.status() === 200,
+        (response) => new URL(response.url()).pathname === '/api/v1/calendar' && response.status() === 200,
       );
       await page.goto('/calendar');
       const calendarPayload = await (await calendarResponse).json();
