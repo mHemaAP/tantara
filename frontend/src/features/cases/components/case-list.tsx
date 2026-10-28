@@ -390,11 +390,6 @@ export function CaseList({
           </div>
         </footer>
       </div>
-      {data.data?.items.some((c) => c.is_demo) && (
-        <small style={{ display: "block", marginTop: 8, color: "#667085" }}>
-          Sample workspace data
-        </small>
-      )}
     </section>
   );
 }
