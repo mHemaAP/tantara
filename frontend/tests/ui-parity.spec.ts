@@ -172,6 +172,9 @@ test('dashboard renders four metrics before Ask TANTARA and keeps both secondary
   ]) {
     await expect(ask.getByRole('button', { name: chip })).toBeVisible();
   }
+  const caseManagement = page.getByRole('link', { name: 'View all cases' });
+  await expect(caseManagement).toBeVisible();
+  await expect(caseManagement).toHaveAttribute('href', '/cases');
   await expect(page.locator('.secondary-summary .secondary-summary-item')).toHaveCount(2);
 });
 
