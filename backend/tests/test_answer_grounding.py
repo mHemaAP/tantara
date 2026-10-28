@@ -130,7 +130,8 @@ def test_answer_quotes_page_two_evidence_and_surfaces_case_conflict(client):
         }
     ]
     assert result["context_fields"] == []
-    assert citation["score"] == citation["retrieval_score"] == citation["retreival_score"]
+    assert "retreival_score" not in citation
+    assert citation["retrieval_score"] > 0
     _assert_marker_integrity(result)
 
 
@@ -165,10 +166,10 @@ def test_noise_query_returns_empty_insufficient_evidence(client):
     assert "No indexed excerpt" in result["answer"]
 
 
-def test_dead_model_returns_no_citations_or_fabricated_support(client):
+def test_dead_model_retains_retrieved_citations_without_fabricating_an_answer(client):
     headers = _auth(client)
     case = _create_case(client, headers)
-    _upload_pdf(client, headers, case["id"])
+    document_id = _upload_pdf(client, headers, case["id"])
     configured = client.patch(
         "/api/v1/settings/ai",
         headers=headers,
@@ -186,9 +187,14 @@ def test_dead_model_returns_no_citations_or_fabricated_support(client):
     ).json()
     assert result["status"] == "model_unavailable"
     assert result["model"] is None
-    assert result["citations"] == result["supports"] == []
-    assert result["answer_basis"] == "insufficient_evidence"
+    assert result["citations"] and result["supports"]
+    assert result["total"] == result["citation_count"] == len(result["citations"])
+    assert result["answer_basis"] == "cited_excerpts"
+    assert "language model is unavailable" in result["answer"]
     assert "Chennai" not in result["answer"] and "Mumbai" not in result["answer"]
+    assert {item["document_id"] for item in result["citations"]} == {document_id}
+    assert all(item["page_number"] >= 1 and item["retrieval_score"] > 0 for item in result["citations"])
+    assert {item["chunk_id"] for item in result["supports"]} == {item["chunk_id"] for item in result["citations"]}
 
 
 def test_anonymous_foreign_case_and_researcher_access_boundaries(client):
