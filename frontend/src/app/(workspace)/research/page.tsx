@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowDown,
   ArrowRight,
   Bookmark,
   BookOpen,
@@ -26,12 +25,20 @@ import {
   type ResearchSession,
   type ResearchSource,
 } from '@/features/research/api';
-import { documentPageUrl } from '@/features/research/document-url';
+import {
+  answerStatusLabel,
+  citationLink,
+  citationLabel,
+  groupSources,
+  normalizeDocumentTitle,
+} from '@/features/research/presentation';
 import './research.css';
 
 type Choice = { id?: string; name?: string } | string;
+const EMPTY_SOURCES: ResearchSource[] = [];
+const ACTIVE_SESSION_KEY = 'tantara_research_active_session';
 const list = <T,>(v: { items?: T[] } | T[] | undefined): T[] => (Array.isArray(v) ? v : (v?.items ?? []));
-const scoreOf = (s: ResearchSource) => s.retrieval_score ?? s.retreival_score;
+const scoreOf = (s: ResearchSource) => s.retrieval_score ?? s.retreival_score ?? s.score;
 const formatHistoryDate = (value?: string) => {
   if (!value || Number.isNaN(new Date(value).getTime())) return 'Date unavailable';
   return new Date(value).toLocaleDateString('en-GB', {
@@ -42,33 +49,162 @@ const formatHistoryDate = (value?: string) => {
 };
 
 function AnswerText({ text, citations }: { text: string; citations: ResearchSource[] }) {
+  const chunks = text.split(
+    /(\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\](?:\s+p\.\s*\d+)?)/gi,
+  );
+  const hasInlineRefs = chunks.some((chunk) =>
+    /^\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]/i.test(chunk),
+  );
   return (
     <div className="answer-text">
-      {text.split(/(?<=[.!?])\s+(?=[A-Z])/).map((sentence, index) => (
-        <p className="answer-sentence" key={`${index}-${sentence}`}>
-          {sentence}
-          {citations.map((source) =>
-            source.citation_ref ? (
-              <a
-                className="answer-citation"
-                key={`${source.chunk_id}-${source.citation_ref}`}
-                href={documentPageUrl(source.document_id, source.page_number, source.chunk_id)}
-                aria-label={`Citation ${source.citation_ref}: ${source.document_title}, page ${source.page_number}`}
-              >
-                {source.citation_ref}
-              </a>
-            ) : null,
-          )}
-        </p>
-      ))}
+      <p className="answer-sentence">
+        {chunks.map((chunk, index) => {
+          const ref = chunk.match(/^\[([0-9a-f-]{36})\](?:\s+p\.\s*(\d+))?$/i);
+          if (!ref) return chunk;
+          const citationIndex = citations.findIndex((source) => source.chunk_id === ref[1]);
+          const source = citations[citationIndex];
+          return source ? (
+            <CitationAnchor
+              key={`${source.chunk_id}-${index}`}
+              source={source}
+              className="answer-citation"
+              display={`${citationLabel(source.page_number)} [${citationIndex + 1}]`}
+            />
+          ) : null;
+        })}
+      </p>
+      {citations.length > 0 && !hasInlineRefs && (
+        <div className="answer-citations" aria-label="Sources for this answer">
+          <span>Sources for this answer</span>
+          {citations.map((source) => (
+            <CitationAnchor
+              key={`${source.document_id}-${source.page_number}-${source.chunk_id}`}
+              source={source}
+              className="answer-citation"
+              display={`${citationLabel(source.page_number)} [${citations.indexOf(source) + 1}]`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+function CitationAnchor({
+  source,
+  className,
+  display,
+}: {
+  source: ResearchSource;
+  className: string;
+  display?: string;
+}) {
+  const citation = citationLink(source);
+  return (
+    <Link
+      className={className}
+      href={citation.href}
+      aria-label={`Open ${normalizeDocumentTitle(source.document_title)} at page ${source.page_number}`}
+      data-chunk-id={citation.chunkId}
+    >
+      {display ?? citation.label}
+    </Link>
+  );
+}
+
+function ConflictNotices({
+  conflicts,
+  sources,
+}: {
+  conflicts: NonNullable<ResearchAnswer['conflicts']>;
+  sources: ResearchSource[];
+}) {
+  if (conflicts.length === 0) return null;
+  return (
+    <div className="answer-conflicts" role="alert">
+      {conflicts.map((conflict) => {
+        const source = sources.find((item) => item.chunk_id === conflict.excerpt_chunk_id);
+        return (
+          <p key={`${conflict.field}-${conflict.excerpt_chunk_id}`}>
+            Conflict for {conflict.field}: the case record says “{conflict.case_value}”; the excerpt on page{' '}
+            {conflict.page_number} says {source ? `“${source.excerpt}”` : 'its value is unavailable'}.
+            {source && <CitationAnchor source={source} className="page-chip" />}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function CaseRecordAnswer({ answer }: { answer: ResearchAnswer }) {
+  const fields = answer.context_fields ?? [];
+  return (
+    <div className="case-record-answer">
+      {answer.answer && <p>{answer.answer}</p>}
+      {fields.map((field) => (
+        <p key={field.field}>
+          <strong>{field.field.replaceAll('_', ' ')}:</strong> {field.value}{' '}
+          <small>from the case record</small>
+        </p>
+      ))}
+      {fields.length === 0 && answer.answer && <small>From the case record</small>}
+    </div>
+  );
+}
+
+function PageLinks({ sources }: { sources: ResearchSource[] }) {
+  const seen = new Set<string>();
+  return (
+    <span className="page-links">
+      {sources.map((source) => {
+        const key = `${source.document_id}-${source.page_number}-${source.chunk_id}`;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        return <CitationAnchor className="page-chip" key={key} source={source} />;
+      })}
+    </span>
+  );
+}
+
+async function hydrateSession(session: ResearchSession): Promise<ResearchSession> {
+  const citedIds = new Set(
+    session.messages?.flatMap(
+      (message) => message.citations?.map((citation) => citation.document_id) ?? [],
+    ) ?? [],
+  );
+  const documents = new Map<string, { title?: string; filename?: string }>();
+  await Promise.all(
+    [...citedIds].map(async (id) => {
+      try {
+        documents.set(id, await researchApi.document(id));
+      } catch {
+        // Keep the saved citation and page link even if document metadata is temporarily unavailable.
+      }
+    }),
+  );
+  return {
+    ...session,
+    messages: session.messages?.map((message) => ({
+      ...message,
+      citations: message.citations?.map((citation) => {
+        const document = documents.get(citation.document_id);
+        return {
+          ...citation,
+          document_title: document?.title ?? document?.filename ?? 'Untitled document',
+          retrieval_score: citation.retrieval_score ?? citation.retreival_score,
+        };
+      }),
+    })),
+  };
 }
 
 export default function ResearchPage() {
   const [sessions, setSessions] = useState<ResearchSession[]>([]);
   const [saved, setSaved] = useState<Array<{ id: string; item_id: string; item_type: string }>>([]);
-  const [cases, setCases] = useState<Array<{ id: string; title: string }>>([]);
+  const [cases, setCases] = useState<Array<{ id: string; title: string; jurisdiction?: string }>>([]);
+  const [documents, setDocuments] = useState<
+    Array<{ id: string; case_id?: string; jurisdiction?: string; collection_id?: string }>
+  >([]);
   const [collections, setCollections] = useState<Array<{ id: string; name: string }>>([]);
   const [collectionsUnavailable, setCollectionsUnavailable] = useState(false);
   const [jurisdictions, setJurisdictions] = useState<Choice[]>([]);
@@ -86,12 +222,13 @@ export default function ResearchPage() {
   const textarea = useRef<HTMLTextAreaElement>(null);
 
   const refreshHistory = useCallback(async () => {
-    const [history, library, caseData, collData, jurisdictionData] = await Promise.allSettled([
+    const [history, library, caseData, collData, jurisdictionData, documentData] = await Promise.allSettled([
       researchApi.sessions(),
       researchApi.saved(),
       researchApi.cases(),
       researchApi.collections(),
       researchApi.jurisdictions(),
+      researchApi.documents(),
     ]);
     if (history.status === 'fulfilled') setSessions(history.value.items ?? []);
     if (library.status === 'fulfilled') {
@@ -99,6 +236,7 @@ export default function ResearchPage() {
       setSavedIds(new Set(library.value.items?.map((x) => x.item_id) ?? []));
     }
     if (caseData.status === 'fulfilled') setCases(caseData.value.items ?? []);
+    if (documentData.status === 'fulfilled') setDocuments(documentData.value.items ?? []);
     if (collData.status === 'fulfilled') {
       const v = collData.value;
       setCollections(
@@ -116,16 +254,32 @@ export default function ResearchPage() {
 
   useEffect(() => {
     void refreshHistory();
+    const activeSessionId = localStorage.getItem(ACTIVE_SESSION_KEY);
+    if (activeSessionId) {
+      void researchApi
+        .session(activeSessionId)
+        .then(hydrateSession)
+        .then((session) => {
+          setSelected(session);
+          setCaseFilter(session.case_id ?? '');
+          setCollection(session.collection_id ?? '');
+          setJurisdiction(session.jurisdiction ?? '');
+        })
+        .catch(() => localStorage.removeItem(ACTIVE_SESSION_KEY));
+    }
     return () => abortRef.current?.abort();
   }, [refreshHistory]);
 
   const loadSession = async (session: ResearchSession) => {
-    setSelected(session);
     setAnswer(null);
     setLexical([]);
     setError('');
+    setCaseFilter(session.case_id ?? '');
+    setCollection(session.collection_id ?? '');
+    setJurisdiction(session.jurisdiction ?? '');
+    localStorage.setItem(ACTIVE_SESSION_KEY, session.id);
     try {
-      setSelected(await researchApi.session(session.id));
+      setSelected(await hydrateSession(await researchApi.session(session.id)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load this research session.');
     }
@@ -146,7 +300,7 @@ export default function ResearchPage() {
       const result = await researchApi.ask(
         {
           question: question.trim(),
-          session_id: selected?.id,
+          session_id: selected && (!caseFilter || selected.case_id === caseFilter) ? selected.id : undefined,
           case_id: caseFilter || undefined,
           collection_id: collection || undefined,
           jurisdiction: jurisdiction || undefined,
@@ -155,8 +309,9 @@ export default function ResearchPage() {
       );
       setAnswer(result);
       if (result.research_session_id) {
+        localStorage.setItem(ACTIVE_SESSION_KEY, result.research_session_id);
         try {
-          setSelected(await researchApi.session(result.research_session_id));
+          setSelected(await hydrateSession(await researchApi.session(result.research_session_id)));
         } catch {
           /* answer remains visible */
         }
@@ -191,18 +346,12 @@ export default function ResearchPage() {
 
   const startNew = async () => {
     abortRef.current?.abort();
+    localStorage.removeItem(ACTIVE_SESSION_KEY);
+    setSelected(null);
     setAnswer(null);
     setLexical([]);
     setDraft('');
     setError('');
-    try {
-      const session = await researchApi.createSession('New research session');
-      setSelected(session);
-      setSessions((current) => [session, ...current.filter((item) => item.id !== session.id)]);
-    } catch {
-      setSelected(null);
-      setError('A new research session could not be created. Check your connection and retry.');
-    }
     textarea.current?.focus();
   };
   const save = async (id?: string) => {
@@ -219,21 +368,71 @@ export default function ResearchPage() {
     }
   };
 
-  const selectedSources = answer?.status === 'model_unavailable' ? lexical : sources;
-  const distinctSourceCount = new Set(selectedSources.map((source) => source.document_id)).size;
-  const corpusCount = answer ? String(distinctSourceCount) : '—';
-  const answerIsInsufficient =
-    (answer?.status === 'ok' || answer?.status === 'answered') &&
-    /evidence is insufficient/i.test(answer.answer ?? '');
   const activeMessages = selected?.messages ?? [];
+  const latestAssistant = [...activeMessages].reverse().find((message) => message.role === 'assistant');
+  const restoredSources = latestAssistant?.citations ?? EMPTY_SOURCES;
+  const answerHasInsufficientEvidence =
+    answer?.answer_basis === 'insufficient_evidence' || answer?.insufficient_evidence === true;
+  const selectedSources = useMemo(
+    () =>
+      answer
+        ? answer.status === 'model_unavailable'
+          ? lexical
+          : answer.status === 'no_evidence' || answerHasInsufficientEvidence
+            ? EMPTY_SOURCES
+            : sources
+        : restoredSources,
+    [answer, answerHasInsufficientEvidence, lexical, restoredSources, sources],
+  );
+  const groupedSources = useMemo(() => groupSources(selectedSources), [selectedSources]);
+  const distinctSourceCount = new Set(selectedSources.map((source) => source.document_id)).size;
+  const corpusCount = answer || latestAssistant ? String(distinctSourceCount) : '—';
+  const answerIsInsufficient =
+    answerHasInsufficientEvidence ||
+    answer?.status === 'no_evidence' ||
+    ((answer?.status === 'ok' || answer?.status === 'answered') &&
+      /evidence is insufficient/i.test(answer.answer ?? ''));
   const answerAlreadyInHistory =
     !!answer?.message_id && activeMessages.some((message) => message.id === answer.message_id);
+  const hiddenResolvedFailureIds = new Set<string>();
+  for (let i = 0; i < activeMessages.length; i += 1) {
+    const failed = activeMessages[i];
+    if (failed.role !== 'assistant' || failed.status !== 'model_unavailable') continue;
+    const failedQuestion = [...activeMessages.slice(0, i)]
+      .reverse()
+      .find((message) => message.role === 'user');
+    const retryQuestion = activeMessages[i + 1];
+    const retryAnswer = activeMessages[i + 2];
+    if (
+      failedQuestion &&
+      retryQuestion?.role === 'user' &&
+      retryQuestion.content === failedQuestion.content &&
+      retryAnswer?.role === 'assistant' &&
+      !['model_unavailable', 'no_evidence', 'error'].includes(retryAnswer.status ?? '')
+    ) {
+      hiddenResolvedFailureIds.add(failed.id);
+      hiddenResolvedFailureIds.add(retryQuestion.id);
+    }
+  }
+  const visibleMessages = activeMessages.filter((message) => !hiddenResolvedFailureIds.has(message.id));
   const filteredSessions = sessions.filter(
     (s) =>
       (!caseFilter || s.case_id === caseFilter) &&
       (!collection || s.collection_id === collection) &&
-      (!jurisdiction || s.jurisdiction === jurisdiction),
+      (!jurisdiction ||
+        s.jurisdiction === jurisdiction ||
+        cases.some((caseItem) => caseItem.id === s.case_id && caseItem.jurisdiction === jurisdiction) ||
+        documents.some(
+          (document) => document.case_id === s.case_id && document.jurisdiction === jurisdiction,
+        )),
   );
+  useEffect(() => {
+    if (!selected?.case_id || selected.jurisdiction) return;
+    const sessionJurisdiction = documents.find(
+      (document) => document.case_id === selected.case_id,
+    )?.jurisdiction;
+    if (sessionJurisdiction) setJurisdiction(sessionJurisdiction);
+  }, [documents, selected?.case_id, selected?.id, selected?.jurisdiction]);
   const openSaved = async (item: { item_id: string; item_type: string }) => {
     if (item.item_type === 'research_item') {
       const session = sessions.find((candidate) => candidate.id === item.item_id);
@@ -244,7 +443,11 @@ export default function ResearchPage() {
       try {
         const full = await researchApi.session(session.id);
         if (full.messages?.some((message) => message.id === item.item_id)) {
-          setSelected(full);
+          setSelected(await hydrateSession(full));
+          localStorage.setItem(ACTIVE_SESSION_KEY, full.id);
+          setCaseFilter(full.case_id ?? '');
+          setCollection(full.collection_id ?? '');
+          setJurisdiction(full.jurisdiction ?? '');
           setAnswer(null);
           setLexical([]);
           return;
@@ -394,81 +597,88 @@ export default function ResearchPage() {
               </span>
             </header>
             <div className="conversation-body" aria-live="polite">
-              {activeMessages.length
-                ? activeMessages.map((m, messageIndex) => (
-                    <article className={`turn ${m.role}`} key={m.id}>
-                      <div className="turn-label">
-                        {m.role === 'user' ? 'You' : 'TANTARA'}
-                        {m.role === 'assistant' && m.status && (
-                          <span className={`status-chip ${m.status}`}>{m.status.replaceAll('_', ' ')}</span>
-                        )}
-                      </div>
-                      {m.role === 'assistant' && m.status === 'model_unavailable' ? (
-                        <div className="state-callout unavailable">
-                          <strong>Model unavailable</strong>
-                          <p>
-                            The model is unreachable. Retry, or use evidence-only mode with the documents
-                            shown.
-                          </p>
-                          <button
-                            onClick={() =>
-                              void ask(
-                                activeMessages
-                                  .slice(0, messageIndex)
-                                  .reverse()
-                                  .find((message) => message.role === 'user')?.content ?? draft,
-                              )
-                            }
-                          >
-                            <RefreshCw size={14} /> Retry
-                          </button>
+              {visibleMessages.length
+                ? visibleMessages.map((m) => {
+                    const messageIndex = activeMessages.indexOf(m);
+                    return (
+                      <article className={`turn ${m.role}`} key={m.id}>
+                        <div className="turn-label">
+                          {m.role === 'user' ? 'You' : 'TANTARA'}
+                          {m.role === 'assistant' && m.status && (
+                            <span className="status-chip" data-status={m.status}>
+                              {/evidence is insufficient/i.test(m.content)
+                                ? 'Insufficient evidence — excerpts only'
+                                : answerStatusLabel(m.status)}
+                            </span>
+                          )}
                         </div>
-                      ) : m.role === 'assistant' && m.status === 'no_evidence' ? (
-                        <div className="state-callout no-evidence">
-                          <strong>Insufficient evidence in your library</strong>
-                          <p>
-                            No supporting documents were found. Upload a document, widen the research scope,
-                            or rephrase your question.
-                          </p>
-                          <Link href="/documents">Upload a document</Link>
-                        </div>
-                      ) : m.role === 'assistant' && m.status === 'embedding_unavailable' ? (
-                        <div className="state-callout lexical-state">
-                          <strong>Embeddings unavailable</strong>
-                          <p>Only lexical results were available; no grounded answer is shown.</p>
-                        </div>
-                      ) : m.role === 'assistant' && /evidence is insufficient/i.test(m.content) ? (
-                        <div className="state-callout no-evidence model-insufficient">
-                          <strong>Evidence is insufficient</strong>
-                          <AnswerText text={m.content} citations={m.citations ?? []} />
-                          <p>
-                            Review the retrieved excerpts below; no conclusion was generated from this
-                            evidence.
-                          </p>
-                        </div>
-                      ) : m.role === 'assistant' ? (
-                        <AnswerText
-                          text={m.content}
-                          citations={answer?.message_id === m.id ? sources : (m.citations ?? [])}
-                        />
-                      ) : (
-                        <p>{m.content}</p>
-                      )}
-                      {m.role === 'assistant' &&
-                        !['model_unavailable', 'no_evidence', 'embedding_unavailable', 'error'].includes(
-                          m.status ?? '',
-                        ) && (
-                          <div className="turn-actions">
-                            <button onClick={() => void navigator.clipboard.writeText(m.content)}>
-                              <Copy size={13} /> Copy
-                            </button>
-                            <button onClick={() => void save(m.id)}>
-                              <Bookmark size={13} /> Save
+                        {m.role === 'assistant' && m.status === 'model_unavailable' ? (
+                          <div className="state-callout unavailable">
+                            <strong>Model unavailable</strong>
+                            <p>
+                              The model is unreachable. Retry to try the answer again; retrieved documents
+                              remain available.
+                            </p>
+                            <button
+                              onClick={() =>
+                                void ask(
+                                  activeMessages
+                                    .slice(0, messageIndex)
+                                    .reverse()
+                                    .find((message) => message.role === 'user')?.content ?? draft,
+                                )
+                              }
+                            >
+                              <RefreshCw size={14} /> Retry
                             </button>
                           </div>
+                        ) : m.role === 'assistant' && m.status === 'no_evidence' ? (
+                          <div className="state-callout no-evidence">
+                            <strong>Insufficient evidence in your library</strong>
+                            <p>
+                              No supporting documents were found. Upload a document, widen the research scope,
+                              or rephrase your question.
+                            </p>
+                            <Link href="/documents">Upload a document</Link>
+                          </div>
+                        ) : m.role === 'assistant' && m.status === 'embedding_unavailable' ? (
+                          <div className="state-callout lexical-state">
+                            <strong>Embeddings unavailable</strong>
+                            <p>Only lexical results were available; no grounded answer is shown.</p>
+                          </div>
+                        ) : m.role === 'assistant' && /evidence is insufficient/i.test(m.content) ? (
+                          <div className="state-callout no-evidence model-insufficient">
+                            <strong>Evidence is insufficient</strong>
+                            <AnswerText text={m.content} citations={[]} />
+                            <p>
+                              Review the retrieved excerpts below; no conclusion was generated from this
+                              evidence.
+                            </p>
+                          </div>
+                        ) : m.role === 'assistant' ? (
+                          <AnswerText
+                            text={m.content}
+                            citations={answer?.message_id === m.id ? sources : (m.citations ?? [])}
+                          />
+                        ) : (
+                          <p>{m.content}</p>
                         )}
-                    </article>
-                  ))
+                        {m.role === 'assistant' &&
+                          !['model_unavailable', 'no_evidence', 'embedding_unavailable', 'error'].includes(
+                            m.status ?? '',
+                          ) && (
+                            <div className="turn-actions">
+                              <button onClick={() => void navigator.clipboard.writeText(m.content)}>
+                                <Copy size={13} /> Copy
+                              </button>
+                              <button onClick={() => void save(m.id)}>
+                                <Bookmark size={13} /> Save
+                              </button>
+                            </div>
+                          )}
+                      </article>
+                    );
+                  })
                 : !answer && (
                     <div className="welcome-state">
                       <div className="welcome-spark">
@@ -477,15 +687,14 @@ export default function ResearchPage() {
                       <h3>What are you researching?</h3>
                       <p>Ask about a legal principle, a clause, or an issue in your documents.</p>
                       <div className="suggestion-row">
-                        {[
-                          'What does my library say about arbitral tribunal appointment?',
-                          'Find documents about seat of arbitration',
-                        ].map((q) => (
-                          <button key={q} onClick={() => void ask(q)}>
-                            {q}
-                            <ArrowRight size={13} />
-                          </button>
-                        ))}
+                        {['What is the seat of arbitration?', 'Find documents about seat of arbitration'].map(
+                          (q) => (
+                            <button key={q} onClick={() => void ask(q)}>
+                              {q}
+                              <ArrowRight size={13} />
+                            </button>
+                          ),
+                        )}
                       </div>
                     </div>
                   )}
@@ -493,15 +702,20 @@ export default function ResearchPage() {
                 <article className="turn assistant">
                   <div className="turn-label">
                     TANTARA{' '}
-                    <span className={`status-chip ${answer.status}`}>
-                      {answer.status === 'ok' ? 'answered' : answer.status.replaceAll('_', ' ')}
+                    <span className="status-chip" data-status={answer.status}>
+                      {answer.answer_basis === 'case_record'
+                        ? 'From the case record'
+                        : answerIsInsufficient
+                          ? 'Insufficient evidence — excerpts only'
+                          : answerStatusLabel(answer.status)}
                     </span>
                   </div>
                   {answer.status === 'model_unavailable' ? (
                     <div className="state-callout unavailable">
                       <strong>Model unavailable</strong>
                       <p>
-                        The model is unreachable. Retry, or use evidence-only mode with the documents shown.
+                        The model is unreachable. Retry to try the answer again; retrieved documents remain
+                        available.
                       </p>
                       <button onClick={() => void ask(draft)}>
                         <RefreshCw size={14} /> Retry
@@ -509,12 +723,26 @@ export default function ResearchPage() {
                     </div>
                   ) : answerIsInsufficient ? (
                     <div className="state-callout no-evidence model-insufficient">
-                      <strong>Evidence is insufficient</strong>
-                      <AnswerText text={answer.answer || ''} citations={sources} />
+                      <strong>
+                        {answer.status === 'no_evidence'
+                          ? 'Insufficient evidence in your library'
+                          : 'Evidence is insufficient'}
+                      </strong>
+                      {!answerHasInsufficientEvidence && answer.answer && (
+                        <AnswerText text={answer.answer} citations={[]} />
+                      )}
                       <p>
-                        Review the retrieved excerpts below; no conclusion was generated from this evidence.
+                        {answerHasInsufficientEvidence
+                          ? 'No supporting excerpts were found. Upload a document, widen the scope, or rephrase the question.'
+                          : 'Review the retrieved excerpts below; no conclusion was generated from this evidence.'}
                       </p>
+                      {answer.status === 'no_evidence' && <Link href="/documents">Upload a document</Link>}
                     </div>
+                  ) : answer.answer_basis === 'case_record' ? (
+                    <>
+                      <CaseRecordAnswer answer={answer} />
+                      <ConflictNotices conflicts={answer.conflicts ?? []} sources={sources} />
+                    </>
                   ) : answer.status === 'no_evidence' ? (
                     <div className="state-callout no-evidence">
                       <strong>Insufficient evidence in your library</strong>
@@ -552,7 +780,8 @@ export default function ResearchPage() {
                   ) : (
                     <>
                       <AnswerText text={answer.answer || ''} citations={sources} />
-                      {answer.disclaimer && (
+                      <ConflictNotices conflicts={answer.conflicts ?? []} sources={sources} />
+                      {answer.disclaimer && answer.answer_basis !== 'case_record' && (
                         <small className="disclaimer">AI-generated — review before relying on it.</small>
                       )}
                       <div className="turn-actions">
@@ -664,33 +893,28 @@ export default function ResearchPage() {
             )}
             {selectedSources.length ? (
               <div className="source-list">
-                {selectedSources.map((source, i) => (
-                  <article className="source-item" key={`${source.chunk_id}-${i}`}>
+                {groupedSources.map((group) => (
+                  <article className="source-item" key={group.documentId}>
                     <div className="source-top">
-                      <span className="source-index">{i + 1}</span>
                       <div>
-                        <strong>{source.document_title}</strong>
-                        <small>
-                          Page {source.page_number} · {source.chunk_id}
-                        </small>
+                        <strong>{group.title}</strong>
+                        <PageLinks sources={group.pages.flatMap((page) => page.sources)} />
                       </div>
                     </div>
-                    <p>“{source.excerpt}”</p>
-                    <div className="source-bottom">
-                      <span>
-                        Relevance{' '}
-                        <b>
-                          {scoreOf(source) == null || !Number.isFinite(scoreOf(source))
-                            ? '—'
-                            : scoreOf(source)?.toFixed(2)}
-                        </b>
-                      </span>
-                      <a
-                        href={documentPageUrl(source.document_id, source.page_number, source.chunk_id)}
-                        aria-label={`Open ${source.document_title} at page ${source.page_number}`}
-                      >
-                        Open excerpt <ArrowDown size={13} />
-                      </a>
+                    {group.excerptGroups.map((excerptGroup) => (
+                      <div className="source-excerpt" key={excerptGroup.excerpt}>
+                        <p>“{excerptGroup.excerpt}”</p>
+                        <PageLinks sources={excerptGroup.sources} />
+                      </div>
+                    ))}
+                    <div className="source-relevance">
+                      {group.pages.map((page) => (
+                        <span key={page.page}>
+                          Rank {page.rank} · Relevance{' '}
+                          <b>{page.bestScore == null ? '—' : page.bestScore.toFixed(2)}</b> · relative to this
+                          query
+                        </span>
+                      ))}
                     </div>
                   </article>
                 ))}
