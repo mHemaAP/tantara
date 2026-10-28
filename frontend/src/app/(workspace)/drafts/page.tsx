@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Sparkles } from 'lucide-react';
 import { draftsApi, type Row } from '@/features/drafts/api';
 import '@/features/drafts/styles.css';
@@ -141,10 +140,8 @@ export default function DraftsPage() {
     [saving, setSaving] = useState(false),
     [showDiff, setShowDiff] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'Draft' | 'Review' | 'Sources' | 'History'>('Draft');
-  const [navigation, setNavigation] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    setNavigation(document.querySelector<HTMLElement>('.sidebar .nav'));
     draftsApi
       .templates()
       .then((r) => {
@@ -349,16 +346,6 @@ export default function DraftsPage() {
 
   return (
     <main className="drafts">
-      {navigation &&
-        createPortal(
-          <a
-            href="/drafts"
-            onClick={() => document.querySelector<HTMLButtonElement>('.sidebar-backdrop')?.click()}
-          >
-            AI Drafts
-          </a>,
-          navigation,
-        )}
       <header className="drafts-head">
         <div>
           <h1>AI Case Drafts</h1>
