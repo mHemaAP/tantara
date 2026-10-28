@@ -80,6 +80,26 @@ def test_generated_method_inventory_covers_every_openapi_operation():
     assert generated_section == module.render_method_matrix().split("## Method-level expansion\n", 1)[1]
 
 
+def test_runtime_openapi_operation_ids_are_unique_without_duplicate_warning(client, caplog):
+    import logging
+
+    from app.main import app
+
+    app.openapi_schema = None
+    with caplog.at_level(logging.WARNING):
+        response = client.get("/openapi.json")
+    assert response.status_code == 200
+    operations = [
+        operation
+        for path in response.json()["paths"].values()
+        for method, operation in path.items()
+        if method.lower() in {"get", "post", "put", "patch", "delete"}
+    ]
+    operation_ids = [operation["operationId"] for operation in operations]
+    assert len(operation_ids) == len(set(operation_ids))
+    assert "Duplicate Operation ID" not in caplog.text
+
+
 def test_all_openapi_mutation_bodies_return_validation_envelope(client):
     schema = _openapi()
     owner = _auth(client)
@@ -126,12 +146,19 @@ def test_workspace_datetimes_accept_offsets_and_serialize_with_workspace_offset(
     created = client.post(
         "/api/v1/tasks",
         headers=headers,
-        json={"title": "Offset preserving deadline", "due_at": "2026-10-27T10:00:00+05:30", "case_id": case["id"]},
+        json={
+            "title": "Offset preserving deadline",
+            "due_at": "2026-10-27T10:00:00+05:30",
+            "case_id": case["id"],
+        },
     )
     assert created.status_code == 200, created.text
     assert created.json()["due_at"] == "2026-10-27T10:00:00+05:30"
     task_list = client.get("/api/v1/tasks?page_size=100", headers=headers).json()["items"]
-    assert next(task for task in task_list if task["id"] == created.json()["id"])["due_at"] == "2026-10-27T10:00:00+05:30"
+    assert (
+        next(task for task in task_list if task["id"] == created.json()["id"])["due_at"]
+        == "2026-10-27T10:00:00+05:30"
+    )
 
     hearing = client.post(
         "/api/v1/hearings",
@@ -141,7 +168,10 @@ def test_workspace_datetimes_accept_offsets_and_serialize_with_workspace_offset(
     assert hearing.status_code == 200, hearing.text
     assert hearing.json()["at"] == "2026-10-27T10:00:00+05:30"
     hearing_list = client.get("/api/v1/hearings?page_size=100", headers=headers).json()["items"]
-    assert next(row for row in hearing_list if row["id"] == hearing.json()["id"])["at"] == "2026-10-27T10:00:00+05:30"
+    assert (
+        next(row for row in hearing_list if row["id"] == hearing.json()["id"])["at"]
+        == "2026-10-27T10:00:00+05:30"
+    )
 
     utc_created = client.post(
         "/api/v1/tasks",
