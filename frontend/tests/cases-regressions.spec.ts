@@ -4,6 +4,13 @@ import { matterStatusClass } from "../src/features/cases/status";
 import { displayClientStatus } from "../src/features/clients/status";
 import { test as browserTest, expect as browserExpect } from "@playwright/test";
 const base = `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8112"}/api/v1`;
+async function apiReady() {
+  try {
+    return (await fetch(`${base}/health`)).ok;
+  } catch {
+    return false;
+  }
+}
 
 test("tasks partition into exclusive workspace-timezone groups including undated open work", () => {
   const now = new Date("2026-10-27T09:00:00Z"); // 14:30 in Asia/Kolkata
@@ -110,24 +117,27 @@ browserTest(
     const hearings = (await hearingsResponse.json()).items as Array<{
       case_id?: string;
       at: string;
+      title?: string;
     }>;
     browserExpect(hearings.length).toBeGreaterThan(0);
-    const hearing = hearings
-      .filter((item) => new Date(item.at) >= new Date())
-      .find((item) => caseRows.some((row) => row.id === item.case_id));
+    const linkedCase = caseRows.find(
+      (row) =>
+        row.next_hearing_at &&
+        new Date(row.next_hearing_at).getTime() > Date.now() + 3 * 86400000,
+    );
     browserExpect(
-      hearing,
-      "seeded hearings should be linked to a listed case",
+      linkedCase,
+      "seeded API should have a future hearing far enough ahead to appear in the next calendar month",
     ).toBeTruthy();
-    const linkedCase = caseRows.find((row) => row.id === hearing!.case_id)!;
     const futureHearings = hearings
       .filter(
         (item) =>
-          item.case_id === linkedCase.id && new Date(item.at) >= new Date(),
+          item.case_id === linkedCase!.id && new Date(item.at) >= new Date(),
       )
       .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    const hearing = futureHearings[0];
     browserExpect(futureHearings.length).toBeGreaterThan(0);
-    browserExpect(linkedCase.next_hearing_at).toBe(futureHearings[0].at);
+    browserExpect(linkedCase!.next_hearing_at).toBe(hearing.at);
     for (const item of caseRows) {
       if (item.next_hearing_at)
         browserExpect(
@@ -141,21 +151,40 @@ browserTest(
     await page.goto("/cases");
     const row = page
       .getByRole("row")
-      .filter({ has: page.getByRole("link", { name: linkedCase.title }) });
+      .filter({ has: page.getByRole("link", { name: linkedCase!.title }) });
     await browserExpect(row).toContainText(
       new Intl.DateTimeFormat("en-IN", {
         day: "2-digit",
         month: "short",
         year: "numeric",
-      }).format(new Date(hearing!.at)),
+      }).format(new Date(hearing.at)),
     );
-    await page.goto(`/cases/${linkedCase.id}`);
+    await page.goto(`/cases/${linkedCase!.id}`);
     await browserExpect(page.locator(".data-list")).toContainText(
       new Intl.DateTimeFormat("en-IN", {
         day: "2-digit",
         month: "short",
         year: "numeric",
-      }).format(new Date(linkedCase.next_hearing_at!)),
+      }).format(new Date(linkedCase!.next_hearing_at!)),
+    );
+    await page.goto("/calendar");
+    await page.getByRole("button", { name: "Next period" }).click();
+    const selectedLabel = hearing.title || "Future case conference";
+    const eventButton = page
+      .getByRole("button", {
+        name: new RegExp(`View ${selectedLabel}`, "i"),
+      })
+      .first();
+    await browserExpect(eventButton).toBeVisible();
+    await eventButton.click();
+    const eventDetails = page.getByRole("dialog", { name: "Event details" });
+    await browserExpect(eventDetails).toContainText(linkedCase!.title);
+    await browserExpect(eventDetails).toContainText(
+      new Intl.DateTimeFormat("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).format(new Date(linkedCase!.next_hearing_at!)),
     );
   },
 );
@@ -192,5 +221,37 @@ browserTest(
     await page.goto("/clients");
     const row = page.getByRole("row").filter({ hasText: zero!.name });
     await browserExpect(row.locator("td").nth(2)).toHaveText("0");
+  },
+);
+
+browserTest(
+  "calendar labels all-day events without a time or raw event enums",
+  async ({ page, request }) => {
+    browserTest.skip(!(await apiReady()), "TANTARA API is not running");
+    const login = await request.post(`${base}/auth/login`, {
+      data: {
+        email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+        password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+      },
+    });
+    const token = (await login.json()).access_token;
+    await page.addInitScript((value) => {
+      localStorage.setItem("tantara_token", value as string);
+      document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+    }, token);
+    await page.goto("/calendar");
+    const allDayEvent = page
+      .getByRole("button", { name: /View All-day event/ })
+      .first();
+    await browserExpect(allDayEvent.locator("time")).toHaveCount(0);
+    await allDayEvent.click();
+    const details = page.getByRole("dialog", { name: "Event details" });
+    await browserExpect(details).toContainText("All-day");
+    await browserExpect(details).not.toContainText(
+      /\b\d{1,2}:\d{2}\b|\b(am|pm)\b/i,
+    );
+    await browserExpect(page.locator("body")).not.toContainText(
+      /all_day_event|first_hearing|hearing_completed/i,
+    );
   },
 );
