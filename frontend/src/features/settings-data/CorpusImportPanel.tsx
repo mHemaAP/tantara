@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api/client';
 
 type Manifest = Record<string, unknown>;
@@ -19,25 +19,46 @@ export function CorpusImportPanel() {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [busy, setBusy] = useState(false);
-  async function refresh() {
+  const pollCount = useRef(0);
+  const importStartedAt = useRef<number | null>(null);
+  const refresh = useCallback(async () => {
     try {
       const result = await api.get<Manifest>('/settings/data/import');
       setManifest(result);
       setError('');
-      const text = JSON.stringify(result).toLowerCase();
-      setPending(/"status"\s*:\s*"(running|pending|started|importing)/.test(text));
+      const status = String(result.status ?? '').toLowerCase();
+      const active = ['queued', 'running', 'pending', 'started', 'importing'].includes(status);
+      if (active) {
+        setPending(true);
+      } else if (status !== 'not_imported') {
+        const retrievedAt = Date.parse(String(result.retrieved_at ?? ''));
+        const hasFreshManifest = importStartedAt.current === null || retrievedAt > importStartedAt.current;
+        if (hasFreshManifest) {
+          importStartedAt.current = null;
+          setPending(false);
+          pollCount.current = 0;
+        }
+      }
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : 'Manifest unavailable');
     }
-  }
-  useEffect(() => {
-    void refresh();
   }, []);
   useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  useEffect(() => {
     if (!pending) return;
-    const timer = window.setInterval(() => void refresh(), 2500);
+    const timer = window.setInterval(() => {
+      pollCount.current += 1;
+      if (pollCount.current > 90) {
+        setPending(false);
+        setError('Import was accepted, but no terminal manifest was returned after 225 seconds.');
+        return;
+      }
+      void refresh();
+    }, 2500);
     return () => window.clearInterval(timer);
-  }, [pending]);
+  }, [pending, refresh]);
   async function start() {
     if (
       !window.confirm(
@@ -47,11 +68,14 @@ export function CorpusImportPanel() {
       return;
     setBusy(true);
     setError('');
+    const requestedAt = Date.now();
     try {
-      await api.post('/settings/data/import');
+      await api.post<{ status: string; process_id: number }>('/settings/data/import');
+      pollCount.current = 0;
+      importStartedAt.current = requestedAt;
       setPending(true);
-      await refresh();
     } catch (issue) {
+      importStartedAt.current = null;
       setError(issue instanceof Error ? issue.message : 'Import could not be started');
     } finally {
       setBusy(false);
@@ -75,6 +99,12 @@ export function CorpusImportPanel() {
       {pending && <p role="status">Import is in progress. Status refreshes automatically.</p>}
       <section>
         <h3>Corpus manifest</h3>
+        {manifest && (
+          <p>
+            Status: <strong>{show(manifest.status)}</strong>
+            {' · '}Source records: {records.length || '—'}
+          </p>
+        )}
         {manifest ? (
           records.length ? (
             records.map(([key, item]) => (
@@ -111,12 +141,18 @@ export function CorpusImportPanel() {
       <section>
         <h3>Storage and index</h3>
         <p>
-          Data directory: <code>{show(manifest?.data_dir ?? manifest?.tantara_data_dir)}</code>
+          Data directory:{' '}
+          <code>{show(manifest?.data_dir ?? manifest?.tantara_data_dir ?? 'Not reported by this API')}</code>
         </p>
-        <p>Index size: {show(manifest?.index_size ?? manifest?.index_size_bytes)}</p>
+        <p>
+          Index size: {show(manifest?.index_size ?? manifest?.index_size_bytes ?? 'Not reported by this API')}
+        </p>
         <p className="muted">
-          To rebuild the search index, run <code>python scripts/rebuild_index.py</code> from the repository
-          root.
+          To rebuild the index, run from the repository root:{' '}
+          <code>
+            TANTARA_DATA_DIR=/path/to/data DATABASE_URL=sqlite:////path/to/data/tantara.db
+            backend/.venv/bin/python scripts/rebuild_index.py
+          </code>
         </p>
       </section>
     </div>
