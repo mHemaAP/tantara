@@ -197,6 +197,8 @@ flowchart TB
 
 ## Validation
 
+Capture-script guard tests run from `frontend/` with `pnpm test:tools`.
+
 ```bash
 cd frontend
 pnpm lint
