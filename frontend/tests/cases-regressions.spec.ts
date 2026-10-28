@@ -319,6 +319,34 @@ browserTest('client case count zero is displayed as a real zero', async ({ page,
   await browserExpect(row.locator('td').nth(2)).toHaveText('0');
 });
 
+browserTest('client directory keeps every API row visible in mobile cards', async ({ page, request }) => {
+  const login = await request.post(`${base}/auth/login`, {
+    data: {
+      email: process.env.TANTARA_E2E_EMAIL || 'advocate@tantara.local',
+      password: process.env.TANTARA_E2E_PASSWORD || 'tantara-local',
+    },
+  });
+  browserExpect(login.ok()).toBeTruthy();
+  const token = (await login.json()).access_token;
+  await page.addInitScript((value) => {
+    localStorage.setItem('tantara_token', value as string);
+    document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+  }, token);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/clients');
+  const desktopRows = page.locator('.matter-table tbody tr');
+  await browserExpect(desktopRows).toHaveCount(7);
+  const rowCount = await desktopRows.count();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cards = page.locator('.matter-mobile-cards[aria-label="Clients"] .matter-mobile-case');
+  await browserExpect(cards).toHaveCount(rowCount);
+  await browserExpect(cards.first()).toBeVisible();
+  for (let index = 0; index < rowCount; index += 1) await browserExpect(cards.nth(index)).toBeVisible();
+  await browserExpect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+});
+
 browserTest(
   'calendar labels real event records as all day without a time or raw event enums',
   async ({ page, request }) => {
