@@ -262,4 +262,4 @@ def test_autofill_apply_parses_date_values_and_rejects_invalid_dates(client):
     )
     assert invalid.status_code == 422
     assert invalid.json()["error"]["code"] == "validation_error"
-    assert invalid.json()["error"]["details"][0]["loc"] == ["body", "fields", "limitation_date", "value"]
+    assert invalid.json()["error"]["details"]["details"][0]["loc"] == ["body", "fields", "limitation_date", "value"]
