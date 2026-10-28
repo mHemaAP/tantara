@@ -20,8 +20,10 @@ type Event = {
   starts_at?: string;
   date?: string;
   type?: string;
+  event_type?: string;
   case_title?: string;
   case_id?: string;
+  detail?: string;
   all_day?: boolean;
 };
 const eventLabels: Record<string, string> = {
@@ -32,16 +34,23 @@ const eventLabels: Record<string, string> = {
   hearing_completed: 'Hearing completed',
 };
 function eventLabel(event: Event) {
+  const title = (event.title || '').trim();
+  if (event.type === 'event') {
+    if (title && !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/i.test(title)) return title;
+    return eventLabels[event.event_type || ''] || 'Case event';
+  }
   return (
     eventLabels[event.type || ''] ||
-    eventLabels[event.title] ||
-    (event.title || 'Case event').replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    eventLabels[event.event_type || ''] ||
+    eventLabels[title] ||
+    (title || event.event_type || 'Case event').replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
   );
 }
 function isAllDay(event: Event) {
+  if (event.all_day !== undefined) return event.all_day;
   if (
-    event.all_day === true ||
     event.type === 'all_day_event' ||
+    event.event_type === 'all_day_event' ||
     event.type === 'event' ||
     event.title === 'all_day_event'
   )
@@ -71,6 +80,16 @@ function eventDate(event: Event) {
 function eventDayKey(event: Event) {
   const value = event.at || event.starts_at || event.date || '';
   return isAllDay(event) && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : workspaceDateKey(value, zone);
+}
+function eventCaseTitle(event: Event, caseTitles: Map<string, string>) {
+  return event.case_title || caseTitles.get(event.case_id || '') || '';
+}
+function eventAccessibleLabel(event: Event, caseTitles: Map<string, string>) {
+  const caseTitle = eventCaseTitle(event, caseTitles);
+  const parts = [`View ${eventLabel(event)}`];
+  if (caseTitle) parts.push(caseTitle);
+  parts.push(eventDayKey(event));
+  return parts.join(' · ');
 }
 function dayKey(day: Date) {
   return `${day.getUTCFullYear()}-${String(day.getUTCMonth() + 1).padStart(2, '0')}-${String(day.getUTCDate()).padStart(2, '0')}`;
@@ -220,7 +239,7 @@ export default function CalendarPage() {
                       className="calendar-agenda-row"
                       key={event.id}
                       onClick={() => setSelectedEvent(event)}
-                      aria-label={`View ${eventLabel(event)}`}
+                      aria-label={eventAccessibleLabel(event, caseTitles)}
                     >
                       {!isAllDay(event) && (
                         <time>
@@ -233,9 +252,7 @@ export default function CalendarPage() {
                       )}
                       <span>
                         {eventLabel(event)}
-                        {event.case_title || caseTitles.get(event.case_id || '')
-                          ? ` · ${event.case_title || caseTitles.get(event.case_id || '')}`
-                          : ''}
+                        {eventCaseTitle(event, caseTitles) ? ` · ${eventCaseTitle(event, caseTitles)}` : ''}
                       </span>
                     </button>
                   ))}
@@ -290,7 +307,7 @@ export default function CalendarPage() {
                       className="calendar-event"
                       key={event.id}
                       onClick={() => setSelectedEvent(event)}
-                      aria-label={`View ${eventLabel(event)}`}
+                      aria-label={eventAccessibleLabel(event, caseTitles)}
                     >
                       {!isAllDay(event) && (
                         <time>
@@ -303,6 +320,7 @@ export default function CalendarPage() {
                       )}
                       {!isAllDay(event) && ' '}
                       {eventLabel(event)}
+                      {eventCaseTitle(event, caseTitles) ? ` · ${eventCaseTitle(event, caseTitles)}` : ''}
                     </button>
                   ))}
                 </div>
@@ -320,7 +338,10 @@ export default function CalendarPage() {
               ×
             </button>
             <h2>{eventLabel(selectedEvent)}</h2>
-            <p>{selectedEvent.case_title || caseTitles.get(selectedEvent.case_id || '') || 'Case event'}</p>
+            <p>{eventCaseTitle(selectedEvent, caseTitles) || 'Case event'}</p>
+            {selectedEvent.detail && selectedEvent.detail !== selectedEvent.title && (
+              <p>{selectedEvent.detail}</p>
+            )}
             <p>
               {isAllDay(selectedEvent)
                 ? 'All day'
