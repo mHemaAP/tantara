@@ -19,8 +19,6 @@ type SearchHit = {
   text?: string;
   snippet?: string;
   retrieval_score?: number;
-  retreival_score?: number;
-  score?: number;
   document_type?: string;
 };
 type SearchResponse = { status?: string; items: SearchHit[]; total: number };
@@ -113,7 +111,7 @@ export default function SearchPage() {
                 confidence is shown separately for scanned-page text.
               </p>
               {hits.data.items.map((hit, index) => {
-                const relevance = hit.retrieval_score ?? hit.retreival_score ?? hit.score;
+                const relevance = hit.retrieval_score;
                 return (
                   <article className="search-hit card" key={`${hit.document_id}-${hit.page_number}-${index}`}>
                     <div className="search-hit-icon">
