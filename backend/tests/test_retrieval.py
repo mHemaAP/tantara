@@ -71,7 +71,7 @@ def test_retrieval_applies_case_owner_and_metadata_filters(client):
         files={
             "file": (
                 "retrieval.txt",
-                b"Distinct retrieval marker arbitration award in India.",
+                b"Distinct retrieval marker M4REFCODE-P2 arbitration award in India.",
                 "text/plain",
             )
         },
@@ -84,6 +84,28 @@ def test_retrieval_applies_case_owner_and_metadata_filters(client):
             break
         time.sleep(0.05)
     assert job["status"] == "ready"
+    plain_reference = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": "M4REFCODE", "page_size": 100},
+    )
+    hyphenated_reference = client.get(
+        "/api/v1/search/documents",
+        headers=headers,
+        params={"query": "M4REFCODE-P2", "page_size": 100},
+    )
+    assert plain_reference.status_code == hyphenated_reference.status_code == 200
+    plain_pairs = {
+        (item["document_id"], item["page_number"])
+        for item in plain_reference.json()["items"]
+        if item["document_id"] == did
+    }
+    hyphenated_pairs = {
+        (item["document_id"], item["page_number"])
+        for item in hyphenated_reference.json()["items"]
+        if item["document_id"] == did
+    }
+    assert plain_pairs and hyphenated_pairs == plain_pairs
 
     from app.db import session_scope
     from app.models import User
