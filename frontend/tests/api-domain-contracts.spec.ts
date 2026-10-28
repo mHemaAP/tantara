@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const base = `${process.env.TANTARA_API_BASE || 'http://127.0.0.1:8010'}/api/v1`;
+const base = `${process.env.TANTARA_API_ORIGIN || 'http://127.0.0.1:8010'}/api/v1`;
 
 test('calendar, task and client API contracts cover auth, validation, empty and pagination edges', async ({
   request,
