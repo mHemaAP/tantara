@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { documentPageUrl } from '../src/features/research/document-url';
-import type { ResearchSource } from '../src/features/research/api';
+import { normalizeResearchAnswer, type ResearchSource } from '../src/features/research/api';
 import {
   citationAccessibleLabel,
   answerStatusLabel,
@@ -192,7 +192,8 @@ test('citation formatter, source grouping, and human status labels stay readable
   expect(answerStatusLabel('ok')).toBe('Response returned · provenance unavailable');
   expect(answerStatusLabel('ok', 'model_generated')).toBe('Model response · review sources');
   expect(answerStatusLabel('model_unavailable')).toBe('Evidence only — model unavailable');
-  expect(answerStatusLabel('no_evidence')).toBe('No supporting excerpts');
+  expect(answerStatusLabel('no_evidence')).toBe('Insufficient evidence');
+  expect(answerStatusLabel('insufficient_evidence')).toBe('Insufficient evidence');
 });
 
 test.describe('Research Desk live API controls', () => {
@@ -270,8 +271,10 @@ test.describe('Research Desk live API controls', () => {
         .map((element) => `${element.tagName.toLowerCase()}.${element.className.toString()}`),
     );
     expect(outOfBounds).toEqual([]);
-    await expect(page.getByRole('option', { name: 'Collections unavailable' })).toBeAttached();
     const collectionSelect = page.getByLabel('Collection');
+    await expect(collectionSelect.getByRole('option', { name: 'Agreements & Contracts' })).toBeAttached();
+    await expect(collectionSelect.getByRole('option', { name: 'Awards & Authorities' })).toBeAttached();
+    await expect(collectionSelect.getByRole('option', { name: 'Pleadings & Evidence' })).toBeAttached();
     const collectionWidth = await collectionSelect.evaluate(
       (node) => (node as HTMLSelectElement).clientWidth,
     );
@@ -722,4 +725,15 @@ test.describe('Research Desk live API controls', () => {
       });
     }
   });
+});
+
+test('research answer normalization preserves the source status and canonicalizes both insufficient values', () => {
+  for (const raw_status of ['no_evidence', 'insufficient_evidence']) {
+    const normalized = normalizeResearchAnswer({
+      status: raw_status,
+      answer: 'No indexed excerpt directly answers this question.',
+    });
+    expect(normalized.status).toBe('insufficient_evidence');
+    expect(normalized.raw_status).toBe(raw_status);
+  }
 });
