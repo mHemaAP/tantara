@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(
         default=ROOT / "data", validation_alias=AliasChoices("TANTARA_DATA_DIR", "DATA_DIR")
     )
+    workspace_time_zone: str = Field(default="Asia/Kolkata", validation_alias="TANTARA_WORKSPACE_TIME_ZONE")
     ai_provider: str = "local"
     local_llm_base_url: str = Field(
         default="http://192.168.0.101:8080/v1",
