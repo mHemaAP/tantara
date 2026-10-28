@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
 const screenshots = '../docs/screenshots';
 
 async function signIn(request: APIRequestContext) {
@@ -108,6 +108,10 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   await captureMobile(page, 'documents-round5-library-mobile-390-real');
 
   await page.getByRole('button', { name: 'Open navigation' }).click();
+  await expect(sidebar).toHaveClass(/open/);
+  await expect
+    .poll(() => sidebar.evaluate((element) => element.getBoundingClientRect().x))
+    .toBeGreaterThanOrEqual(0);
   const drawerDocumentLink = page.getByRole('link', { name: 'Documents', exact: true });
   await expect(drawerDocumentLink).toBeVisible();
   const drawerBounds = await sidebar.boundingBox();
@@ -223,7 +227,10 @@ test('mobile library drawer, cards, viewer geometry, metadata, AI Read and page 
   await captureMobile(page, 'documents-round5-search-mobile-390-real');
 });
 
-test('mobile empty and model-unavailable states settle with navigation closed', async ({ page, request }) => {
+test('mobile empty and local extraction fallback settle with navigation closed', async ({
+  page,
+  request,
+}) => {
   test.setTimeout(180000);
   await page.setViewportSize({ width: 390, height: 844 });
   const token = await signIn(request);
@@ -231,6 +238,7 @@ test('mobile empty and model-unavailable states settle with navigation closed', 
   const documentsResponse = await request.get(`${apiUrl}/documents?page_size=100`, { headers });
   expect(documentsResponse.ok()).toBeTruthy();
   const documents = (await documentsResponse.json()).items as Array<{ id: string; filename: string }>;
+  const documentCount = documents.length;
   const seededDocument = documents.find((document) => document.filename === 'page-three-motion.pdf');
   expect(seededDocument).toBeTruthy();
   const sidebar = page.locator('.sidebar');
@@ -257,8 +265,8 @@ test('mobile empty and model-unavailable states settle with navigation closed', 
   await expect(page.locator('.documents-library-toolbar')).toContainText('0 matching documents');
   await captureMobile(page, 'documents-round5-empty-mobile-390-real');
   await page.getByRole('textbox', { name: 'Search documents' }).fill('');
-  await expect(page.locator('.documents-mobile-cards .document-card')).toHaveCount(8);
-  await expect(page.locator('.documents-library-toolbar')).toContainText('8 documents');
+  await expect(page.locator('.documents-mobile-cards .document-card')).toHaveCount(documentCount);
+  await expect(page.locator('.documents-library-toolbar')).toContainText(`${documentCount} documents`);
 
   const originalSettings = await request
     .get(`${apiUrl}/settings/ai`, { headers })
@@ -276,10 +284,12 @@ test('mobile empty and model-unavailable states settle with navigation closed', 
     await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
     await assertNavigationClosed();
     await page.getByRole('button', { name: 'Run document extraction' }).click();
-    await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible({ timeout: 60000 });
-    await expect(page.locator('.ai-read-field')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 60000 });
+    await expect(page.locator('.ai-read-field').first()).toBeVisible();
+    await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction');
+    await expect(page.locator('.ai-read-panel')).toContainText('candidate only');
     await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
-    await captureMobile(page, 'documents-round5-ai-read-unavailable-mobile-390-fixture');
+    await captureMobile(page, 'documents-round5-ai-read-unavailable-mobile-390-real');
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, {
       headers,
