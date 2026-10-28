@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api/client';
 import { endpoints } from '@/lib/api/endpoints';
-import { WORKSPACE_TIME_ZONE } from '@/lib/datetime';
+import { WORKSPACE_TIME_ZONE, workspaceDateTimeDisplay } from '@/lib/datetime';
 import { keys } from '@/lib/api/keys';
 import type { Summary, Activity, Upcoming, Case } from '@/lib/api/types';
 import { MattersCard } from '@/features/dashboard/matters';
@@ -299,7 +299,7 @@ export default function Dashboard() {
                     {x.title}
                     <small style={{ display: 'block', color: '#64748b', marginTop: 3 }}>
                       {x.actor || 'Workspace'} ·{' '}
-                      {new Date(x.at).toLocaleString('en-IN', { timeStyle: 'short', dateStyle: 'medium' })}
+                      {workspaceDateTimeDisplay(x.at)}
                     </small>
                   </span>
                 </div>
