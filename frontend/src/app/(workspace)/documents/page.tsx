@@ -15,7 +15,6 @@ import {
   Eye,
 } from 'lucide-react';
 import { documentsApi, type DocumentRecord, type IngestionJob } from '@/features/documents/api';
-import { WorkspaceModuleNav } from '@/features/documents/WorkspaceModuleNav';
 import { DocumentStatus } from '@/features/documents/DocumentStatus';
 import { PdfDocumentViewer } from '@/features/viewer/PdfDocumentViewer';
 import { api } from '@/lib/api/client';
@@ -142,7 +141,6 @@ export default function DocumentsPage() {
           accept=".pdf,.docx,.txt,.md"
           onChange={(event) => event.target.files && void uploadFiles(event.target.files)}
         />
-        <WorkspaceModuleNav />
       </header>
 
       <section
