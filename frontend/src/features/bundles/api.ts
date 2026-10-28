@@ -29,7 +29,13 @@ export type BundlePreview = {
   warnings: string[];
 };
 export type CaseOption = { id: string; title: string; reference_number?: string };
-export type DocumentOption = { id: string; title: string; page_count: number; case_id?: string; status?: string };
+export type DocumentOption = {
+  id: string;
+  title: string;
+  page_count: number;
+  case_id?: string;
+  status?: string;
+};
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
@@ -58,7 +64,10 @@ export const bundleApi = {
   preview: (id: string) => request<BundlePreview>(`/bundles/${encodeURIComponent(id)}/preview`),
   create: (body: { name: string; case_id: string; settings: Record<string, boolean> }) =>
     request<Bundle>('/bundles', { method: 'POST', body: JSON.stringify(body) }),
-  updateItems: (id: string, items: Array<Pick<BundleItem, 'document_id' | 'section' | 'order' | 'page_start' | 'page_end'>>) =>
+  updateItems: (
+    id: string,
+    items: Array<Pick<BundleItem, 'document_id' | 'section' | 'order' | 'page_start' | 'page_end'>>,
+  ) =>
     request<{ items: unknown[] }>(`/bundles/${encodeURIComponent(id)}/items`, {
       method: 'PUT',
       body: JSON.stringify({ items }),
