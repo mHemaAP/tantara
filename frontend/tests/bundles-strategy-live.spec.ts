@@ -4,6 +4,8 @@ import path from 'node:path';
 
 test.describe.configure({ mode: 'serial' });
 const apiUrl = process.env.TANTARA_API_URL ?? 'http://127.0.0.1:8116/api/v1';
+const apiHost = apiUrl.replace(/\/api\/v1\/?$/, '');
+const endpoint = (route: string) => `${apiHost}${route.startsWith('/api/v1') ? route : `/api/v1${route.startsWith('/') ? route : `/${route}`}`}`;
 const screenshots = path.resolve(process.cwd(), '../docs/screenshots');
 const credentials = {
   advocate: { email: 'advocate@tantara.local', password: 'tantara-local' },
@@ -22,13 +24,13 @@ let workflowBundleId = '';
 let originalAiSettings: Record<string, unknown> = {};
 
 async function login(email: string, password: string) {
-  const response = await api.post('/auth/login', { data: { email, password } });
+  const response = await api.post(endpoint('/auth/login'), { data: { email, password } });
   expect(response.status(), `login for ${email}`).toBe(200);
   return (await response.json()).access_token as string;
 }
 
 async function apiGet<T>(route: string, bearer = token): Promise<T> {
-  const response = await api.get(route, { headers: bearer ? { Authorization: `Bearer ${bearer}` } : {} });
+  const response = await api.get(endpoint(route), { headers: bearer ? { Authorization: `Bearer ${bearer}` } : {} });
   expect(response.ok(), `GET ${route}: ${await response.text()}`).toBeTruthy();
   return response.json() as Promise<T>;
 }
@@ -61,7 +63,7 @@ async function openBundleList(page: Page, bearer = token) {
 }
 
 test.beforeAll(async () => {
-  api = await playwrightRequest.newContext({ baseURL: apiUrl });
+  api = await playwrightRequest.newContext({ baseURL: apiHost });
   token = await login(credentials.advocate.email, credentials.advocate.password);
   researcherToken = await login(credentials.researcher.email, credentials.researcher.password);
   staffToken = await login(credentials.staff.email, credentials.staff.password);
@@ -83,20 +85,20 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (originalAiSettings.base_url) {
-    await api.patch('/settings/ai', { headers: { Authorization: `Bearer ${token}` }, data: originalAiSettings }).catch(() => undefined);
+    await api.patch(endpoint('/settings/ai'), { headers: { Authorization: `Bearer ${token}` }, data: originalAiSettings }).catch(() => undefined);
   }
   await api?.dispose();
 });
 
 test('bundle API validates request shape, owner scope, and page-range boundaries', async () => {
-  const missingName = await api.post('/bundles', { headers: { Authorization: `Bearer ${token}` }, data: { case_id: seededCaseId } });
+  const missingName = await api.post(endpoint('/bundles'), { headers: { Authorization: `Bearer ${token}` }, data: { case_id: seededCaseId } });
   expect(missingName.status()).toBe(422);
-  const extraField = await api.post('/bundles', { headers: { Authorization: `Bearer ${token}` }, data: { name: 'Invalid bundle', case_id: seededCaseId, description: 'forbidden' } });
+  const extraField = await api.post(endpoint('/bundles'), { headers: { Authorization: `Bearer ${token}` }, data: { name: 'Invalid bundle', case_id: seededCaseId, description: 'forbidden' } });
   expect(extraField.status()).toBe(422);
-  expect((await api.get(`/bundles/${seededBundleId}`)).status()).toBe(401);
-  expect((await api.get(`/bundles/${seededBundleId}`, { headers: { Authorization: `Bearer ${researcherToken}` } })).status()).toBe(404);
+  expect((await api.get(endpoint(`/bundles/${seededBundleId}`))).status()).toBe(401);
+  expect((await api.get(endpoint(`/bundles/${seededBundleId}`), { headers: { Authorization: `Bearer ${researcherToken}` } })).status()).toBe(404);
 
-  const create = await api.post('/bundles', { headers: { Authorization: `Bearer ${token}` }, data: { name: `Range edge cases ${Date.now()}`, case_id: seededCaseId, settings: {} } });
+  const create = await api.post(endpoint('/bundles'), { headers: { Authorization: `Bearer ${token}` }, data: { name: `Range edge cases ${Date.now()}`, case_id: seededCaseId, settings: {} } });
   expect(create.status()).toBe(200);
   const id = (await create.json()).id as string;
   const empty = await apiGet<{ total_pages: number; sections: unknown[] }>(`/bundles/${id}/preview`);
@@ -105,16 +107,16 @@ test('bundle API validates request shape, owner scope, and page-range boundaries
 
   const docs = await apiGet<{ items: Array<{ id: string; page_count: number }> }>(`/documents?case_id=${seededCaseId}&page_size=100`);
   const doc = docs.items.find((item) => item.page_count >= 2)!;
-  const fullRange = await api.put(`/bundles/${id}/items`, { headers: { Authorization: `Bearer ${token}` }, data: { items: [{ document_id: doc.id, section: 'Whole Document', order: 0, page_start: 1, page_end: doc.page_count }] } });
+  const fullRange = await api.put(endpoint(`/bundles/${id}/items`), { headers: { Authorization: `Bearer ${token}` }, data: { items: [{ document_id: doc.id, section: 'Whole Document', order: 0, page_start: 1, page_end: doc.page_count }] } });
   expect(fullRange.status()).toBe(200);
   let mapping = await apiGet<{ total_pages: number; sections: Array<{ items: Array<{ page_start: number; page_end: number; start_page: number; end_page: number }> }> }>(`/bundles/${id}/preview`);
   expect(mapping.sections[0].items[0]).toMatchObject({ page_start: 1, page_end: doc.page_count, start_page: 5, end_page: 4 + doc.page_count });
 
-  const firstPage = await api.put(`/bundles/${id}/items`, { headers: { Authorization: `Bearer ${token}` }, data: { items: [{ document_id: doc.id, section: 'Page One', order: 0, page_start: 1, page_end: 1 }] } });
+  const firstPage = await api.put(endpoint(`/bundles/${id}/items`), { headers: { Authorization: `Bearer ${token}` }, data: { items: [{ document_id: doc.id, section: 'Page One', order: 0, page_start: 1, page_end: 1 }] } });
   expect(firstPage.status()).toBe(200);
   mapping = await apiGet(`/bundles/${id}/preview`);
   expect(mapping.sections[0].items[0]).toMatchObject({ page_start: 1, page_end: 1, start_page: 5, end_page: 5 });
-  const invalidRange = await api.put(`/bundles/${id}/items`, { headers: { Authorization: `Bearer ${token}` }, data: { items: [{ document_id: doc.id, section: 'Page One', order: 0, page_start: 1, page_end: doc.page_count + 1 }] } });
+  const invalidRange = await api.put(endpoint(`/bundles/${id}/items`), { headers: { Authorization: `Bearer ${token}` }, data: { items: [{ document_id: doc.id, section: 'Page One', order: 0, page_start: 1, page_end: doc.page_count + 1 }] } });
   expect(invalidRange.status()).toBe(400);
   expect((await invalidRange.json()).detail).toContain('outside the source document');
 });
@@ -162,7 +164,7 @@ test('seeded bundle opens from its real API id, maps ranges, previews, and downl
   const buffers: Buffer[] = [];
   for await (const chunk of stream!) buffers.push(Buffer.from(chunk));
   expect(Buffer.concat(buffers).subarray(0, 5).toString()).toBe('%PDF-');
-  const direct = await api.get(seeded.download_url, { headers: { Authorization: `Bearer ${token}` } });
+  const direct = await api.get(endpoint(seeded.download_url), { headers: { Authorization: `Bearer ${token}` } });
   expect(direct.status()).toBe(200);
   expect((await direct.body()).subarray(0, 5).toString()).toBe('%PDF-');
 });
@@ -222,7 +224,7 @@ test('strategy shows source excerpts honestly, saves edits, creates a task, and 
   await page.setViewportSize({ width: 1440, height: 900 });
   const settings = await apiGet<Record<string, unknown>>('/settings/ai');
   originalAiSettings = { base_url: settings.base_url, model: settings.model, top_k: settings.top_k, temperature: settings.temperature };
-  const dead = await api.patch('/settings/ai', { headers: { Authorization: `Bearer ${token}` }, data: { ...originalAiSettings, base_url: 'http://127.0.0.1:59999/v1' } });
+  const dead = await api.patch(endpoint('/settings/ai'), { headers: { Authorization: `Bearer ${token}` }, data: { ...originalAiSettings, base_url: 'http://127.0.0.1:59999/v1' } });
   expect(dead.status()).toBe(200);
 
   await authenticatePage(page);
