@@ -71,9 +71,13 @@ test('login form validates and submits with Enter', async ({ page }) => {
   await email.fill('advocate@tantara.local');
   await page.getByRole('textbox', { name: 'Password' }).fill('tantara-local');
   const loginResponse = page.waitForResponse((response) => response.url().endsWith('/api/v1/auth/login'));
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Continue as Advocate' }).click();
   expect((await loginResponse).status()).toBe(200);
+  await navigation;
   await expect(page).toHaveURL(/dashboard/);
+  await expect(page.getByRole('button', { name: 'Account menu' })).toContainText('Workspace Advocate');
+  await expect(page.getByRole('button', { name: 'Account menu' })).toContainText('advocate@tantara.local');
 });
 test('settings profile form is editable and navigation marks current route', async ({ page }) => {
   await page.goto('/settings/profile');
