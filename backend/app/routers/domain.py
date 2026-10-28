@@ -1,7 +1,6 @@
 """Typed paginated CRUD routes for clients, cases, hearings, tasks, drafts, and bundles."""
 
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
@@ -24,9 +23,9 @@ from app.repositories.domain import (
 )
 from app.schemas import CREATE_SCHEMAS, PATCH_SCHEMAS
 from app.security import current_user
-from app.storage_paths import stored_path
 from app.services.audit import record
 from app.services.draft_versions import snapshot_draft
+from app.storage_paths import stored_path
 from app.timezone import to_workspace_iso, to_workspace_naive, workspace_now
 
 router = APIRouter(prefix="/api/v1")
@@ -177,7 +176,47 @@ def register_crud(path, cls):
                 for key in ("owner_id", "output_path", "stored_path", "text_content", "embedding_blob"):
                     item.pop(key, None)
                 if cls is FilingBundle:
-                    item["downloadable"] = item.get("status") == "ready"
+                    bundle_row = s.get(FilingBundle, item["id"])
+                    case_row = (
+                        s.scalar(select(Case).where(Case.id == bundle_row.case_id, Case.owner_id == user["id"]))
+                        if bundle_row and bundle_row.case_id
+                        else None
+                    )
+                    from app.routers.bundles import _items
+
+                    bundle_items = _items(s, bundle_row, user) if bundle_row else []
+                    sections = (
+                        s.scalars(
+                            select(BundleSection)
+                            .where(BundleSection.bundle_id == item["id"], BundleSection.owner_id == user["id"])
+                            .order_by(BundleSection.order)
+                        ).all()
+                        if bundle_row
+                        else []
+                    )
+                    section_titles = {
+                        section.title.strip()
+                        for section in sections
+                        if section.title and section.title.strip()
+                    }
+                    section_titles.update(
+                        entry["section"].strip()
+                        for entry in bundle_items
+                        if entry.get("section") and entry["section"].strip()
+                    )
+                    settings = item.get("settings") or {}
+                    front_pages = sum(
+                        settings.get(key, True) for key in ("cover_page", "index", "synopsis", "list_of_dates")
+                    )
+                    item["case_title"] = case_row.title if case_row else None
+                    item["section_count"] = len(section_titles)
+                    item["page_count"] = front_pages + sum(entry["pages"] for entry in bundle_items)
+                    try:
+                        output = stored_path("bundles", bundle_row.output_path) if bundle_row and bundle_row.output_path else None
+                    except ValueError:
+                        output = None
+                    item["downloadable"] = bool(output and output.is_file())
+                    item["file_size_bytes"] = output.stat().st_size if output and output.is_file() else None
                     item["download_url"] = (
                         f"/api/v1/bundles/{item['id']}/download" if item["downloadable"] else None
                     )
