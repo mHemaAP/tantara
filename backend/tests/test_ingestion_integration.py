@@ -1,10 +1,10 @@
 import io
 import time
-from pathlib import Path
 
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Document
+from app.storage_paths import stored_path
 
 
 def auth(client):
@@ -96,7 +96,7 @@ def test_corrupt_empty_retry_and_oversize_paths(client):
     assert failed["status"] == "failed" and failed["error"]
     with SessionLocal() as s:
         row = s.get(Document, did)
-        Path(row.stored_path).write_bytes(text_pdf("Repaired PDF retry has valid text."))
+        stored_path("uploads", row.stored_path).write_bytes(text_pdf("Repaired PDF retry has valid text."))
     retried = client.post(f"/api/v1/documents/{did}/retry", headers=headers)
     assert retried.status_code == 202
     assert wait_job(client, headers, did)["status"] == "ready"
