@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "@/lib/api/endpoints";
+import { api } from "@/lib/api/client";
 import * as Dialog from "@radix-ui/react-dialog";
 import Link from "next/link";
 import "../cases/styles.css";
@@ -34,6 +35,7 @@ export default function TasksPage() {
   const [notes, setNotes] = useState("");
   const [caseId, setCaseId] = useState("");
   const [editing, setEditing] = useState<Task | null>(null);
+  const [actionMenu, setActionMenu] = useState<string | null>(null);
   const [now] = useState(() => new Date());
   const qc = useQueryClient();
   const q = useQuery({
@@ -42,7 +44,10 @@ export default function TasksPage() {
   });
   const casesQuery = useQuery({
     queryKey: ["task-case-options"],
-    queryFn: () => endpoints.cases("?page_size=100"),
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; title: string }> }>(
+        "/cases?page_size=100",
+      ),
   });
   const [preview, setPreview] = useState(false);
   useEffect(
@@ -71,6 +76,11 @@ export default function TasksPage() {
     }
   };
   const items: Task[] = (q.data?.items || []) as Task[];
+  const cases = (casesQuery.data?.items || []) as Array<{
+    id: string;
+    title: string;
+  }>;
+  const caseTitles = new Map(cases.map((c) => [c.id, c.title]));
   const openTask = (task?: Task) => {
     setEditing(task || null);
     setTitle(task?.title || "");
@@ -168,13 +178,65 @@ export default function TasksPage() {
                             className="task-case"
                             href={`/cases/${task.case_id}`}
                           >
-                            {task.case_title || "Open linked case"}
+                            {task.case_title ||
+                              caseTitles.get(task.case_id) ||
+                              "Linked case"}
                           </Link>
                         ) : (
                           <span className="task-case muted">
                             No linked case
                           </span>
                         )}
+                        <div className="task-row-actions">
+                          <button
+                            className="matter-more"
+                            aria-label={`Actions for ${task.title}`}
+                            aria-expanded={actionMenu === task.id}
+                            onClick={() =>
+                              setActionMenu(
+                                actionMenu === task.id ? null : task.id,
+                              )
+                            }
+                          >
+                            ⋯
+                          </button>
+                          {actionMenu === task.id && (
+                            <div className="task-action-menu">
+                              <button
+                                disabled={preview}
+                                title={
+                                  preview
+                                    ? "Changes are disabled in read-only preview"
+                                    : "Edit task"
+                                }
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  openTask(task);
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                disabled={preview}
+                                title={
+                                  preview
+                                    ? "Changes are disabled in read-only preview"
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  setActionMenu(null);
+                                  void complete(task);
+                                }}
+                              >
+                                Mark{" "}
+                                {task.status === "done" ||
+                                task.status === "completed"
+                                  ? "open"
+                                  : "done"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))
                   : null}
