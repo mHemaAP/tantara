@@ -696,7 +696,15 @@ test.describe('Research Desk live API controls', () => {
       const failed = await answerQuestion(page, 'What is the seat of arbitration in the agreement?');
       expect(failed.status).toBe('model_unavailable');
       expect(failed.model ?? null).toBeNull();
-      expect(failed.citations ?? failed.sources ?? []).toEqual([]);
+      const supports = failed.citations ?? failed.sources ?? [];
+      expect(supports.length).toBeGreaterThan(0);
+      expect(failed.total).toBe(supports.length);
+      for (const support of supports) {
+        expect(support.document_id).toBeTruthy();
+        expect(support.document_title).toBeTruthy();
+        expect(support.page_number).toBeGreaterThan(0);
+        expect(support.chunk_id).toBeTruthy();
+      }
       expect(failed.answer ?? '').not.toMatch(/Mumbai|Chennai|governing law/i);
       await expect(page.getByText('Model unavailable', { exact: true })).toBeVisible();
       await expect(page.locator('.state-callout.no-evidence .answer-text')).toHaveCount(0);
