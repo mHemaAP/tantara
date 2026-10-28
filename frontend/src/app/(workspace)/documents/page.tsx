@@ -198,7 +198,7 @@ export default function DocumentsPage() {
         <div className="documents-library-toolbar">
           <div>
             <h2>Library</h2>
-            <span>{documents.data?.total ?? '—'} documents</span>
+            <span>{documents.isError ? '—' : (documents.data?.total ?? '—')} documents</span>
           </div>
           <div className="documents-toolbar-controls">
             <label className="documents-search">
