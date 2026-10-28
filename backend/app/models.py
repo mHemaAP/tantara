@@ -310,6 +310,9 @@ class CommunityPost(Owned, Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(String(16), default="discussion")
+    visibility: Mapped[str] = mapped_column(
+        String(16), default="private", server_default="private", nullable=False
+    )
     case_ref: Mapped[str | None] = mapped_column(ForeignKey("cases.id", ondelete="SET NULL"))
     tags: Mapped[list] = mapped_column(JSON, default=list)
     __table_args__ = (CheckConstraint("kind IN ('discussion','question')", name="ck_post_kind"),)
