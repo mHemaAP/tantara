@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api/client';
 import { endpoints } from '@/lib/api/endpoints';
+import { WORKSPACE_TIME_ZONE } from '@/lib/datetime';
 import { keys } from '@/lib/api/keys';
 import type { Summary, Activity, Upcoming, Case } from '@/lib/api/types';
 import { MattersCard } from '@/features/dashboard/matters';
@@ -107,11 +108,12 @@ export default function Dashboard() {
           <p className="subheading">
             {m?.today
               ? (() => {
-                  const d = new Date(`${m.today}T12:00:00+05:30`);
+                  const [year, month, day] = m.today.split('-').map(Number);
+                  const d = new Date(Date.UTC(year, month - 1, day, 12));
                   return Number.isNaN(d.valueOf())
                     ? m.today
                     : d.toLocaleDateString('en-GB', {
-                        timeZone: 'Asia/Kolkata',
+                        timeZone: WORKSPACE_TIME_ZONE,
                         weekday: 'long',
                         day: 'numeric',
                         month: 'long',
@@ -232,9 +234,7 @@ export default function Dashboard() {
             {answer && (
               <div className="result" style={{ background: '#ffffff18', padding: 12, borderRadius: 8 }}>
                 <strong>
-                  {answer.status === 'no_evidence' ||
-                  answer.status === 'insufficient_evidence' ||
-                  answer.answer_basis === 'insufficient_evidence'
+                  {answer.status === 'no_evidence'
                     ? 'Insufficient evidence'
                     : answer.status === 'model_unavailable'
                       ? 'Model unavailable'
