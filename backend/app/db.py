@@ -87,7 +87,7 @@ def init_db():
             session.add(
                 User(
                     id=str(uuid.uuid4()),
-                    name="Aarav Mehta",
+                    name="Workspace Advocate",
                     email="advocate@tantara.local",
                     password_hash=hash_password(get_settings().tantara_admin_password),
                     role="advocate",
