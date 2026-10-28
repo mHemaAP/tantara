@@ -488,8 +488,14 @@ export default function ResearchPage() {
     answerHasInsufficientEvidence ||
     ((answer?.status === 'ok' || answer?.status === 'answered') &&
       /evidence is insufficient/i.test(answer.answer ?? ''));
+  const answerHasLiveStateDetail =
+    answer?.raw_status === 'insufficient_evidence' ||
+    answer?.raw_status === 'model_unavailable' ||
+    answer?.answer_basis === 'insufficient_evidence';
   const answerAlreadyInHistory =
-    !!answer?.message_id && activeMessages.some((message) => message.id === answer.message_id);
+    !answerHasLiveStateDetail &&
+    !!answer?.message_id &&
+    activeMessages.some((message) => message.id === answer.message_id);
   const hiddenResolvedFailureIds = new Set<string>();
   for (let i = 0; i < activeMessages.length; i += 1) {
     const failed = activeMessages[i];
@@ -510,7 +516,11 @@ export default function ResearchPage() {
       hiddenResolvedFailureIds.add(retryQuestion.id);
     }
   }
-  const visibleMessages = activeMessages.filter((message) => !hiddenResolvedFailureIds.has(message.id));
+  const visibleMessages = activeMessages.filter(
+    (message) =>
+      !hiddenResolvedFailureIds.has(message.id) &&
+      !(answerHasLiveStateDetail && message.id === answer?.message_id),
+  );
   const filteredSessions = sessions.filter(
     (s) =>
       (!caseFilter || s.case_id === caseFilter) &&
