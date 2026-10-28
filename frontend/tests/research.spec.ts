@@ -734,6 +734,13 @@ test('research answer normalization preserves the source status and canonicalize
     expect(normalized.status).toBe('no_evidence');
     expect(normalized.raw_status).toBe(raw_status);
   }
+  const unavailable = normalizeResearchAnswer({
+    status: 'model_unavailable',
+    answer: 'The search could not be completed because the configured language model is unavailable.',
+    insufficient_evidence: true,
+  });
+  expect(unavailable.status).toBe('model_unavailable');
+  expect(unavailable.raw_status).toBe('model_unavailable');
 });
 
 test('strategy API normalization preserves raw status and canonicalizes no-evidence values', () => {
