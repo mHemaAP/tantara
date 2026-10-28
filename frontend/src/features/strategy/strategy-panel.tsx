@@ -236,7 +236,7 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
   };
 
   return (
-    <main className="strategy-page">
+    <div className="strategy-page">
       <header className="strategy-head">
         <div>
           <span className="strategy-kicker">CASE WORKSPACE · STRATEGY</span>
@@ -506,7 +506,7 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
         This analysis provides no outcome guarantees. Verify every authority, citation, and proposition before
         relying on it.
       </p>
-    </main>
+    </div>
   );
 }
 
