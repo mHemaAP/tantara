@@ -39,13 +39,40 @@ test('workspace navigation exposes all module routes and each route resolves', a
   await page.goto('/dashboard');
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
   const paths = await nav
-    .locator('a')
+    .getByRole('link')
     .evaluateAll((links) => links.map((link) => new URL((link as HTMLAnchorElement).href).pathname));
   for (const route of moduleRoutes) expect(paths).toContain(route);
   const appOrigin = new URL(page.url()).origin;
   for (const route of paths) {
     const response = await request.get(`${appOrigin}${route}`);
     expect(response?.status(), `${route} should resolve`).toBeLessThan(400);
+  }
+  for (const route of moduleRoutes) {
+    await page.goto(route, { waitUntil: 'domcontentloaded' });
+    await expect(nav).toBeVisible();
+    const visibleLinks = nav.getByRole('link');
+    await expect(visibleLinks).toHaveCount(14);
+    for (let index = 0; index < 14; index += 1) await expect(visibleLinks.nth(index)).toBeVisible();
+    const visiblePaths = await visibleLinks.evaluateAll((links) =>
+      links
+        .filter((link) => (link as HTMLElement).getClientRects().length > 0)
+        .map((link) => new URL((link as HTMLAnchorElement).href).pathname),
+    );
+    expect(new Set(visiblePaths).size, `${route} sidebar should not duplicate links`).toBe(14);
+    expect([...visiblePaths].sort(), `${route} should expose every module in the rail`).toEqual(
+      [...moduleRoutes].sort(),
+    );
+    const current = nav.locator('a[aria-current="page"]');
+    await expect(current, `${route} should have one current rail link`).toHaveCount(1);
+    await expect(current).toHaveAttribute('href', route);
+    if (route === '/documents') {
+      const documentsNav = page.getByRole('navigation', { name: 'Documents navigation' });
+      await expect(documentsNav).toBeVisible();
+      await expect(documentsNav.getByRole('link', { name: 'Documents', exact: true })).toHaveAttribute(
+        'aria-current',
+        'location',
+      );
+    }
   }
   for (const [route, label] of [
     ['/autofill', 'Smart Autofill'],
