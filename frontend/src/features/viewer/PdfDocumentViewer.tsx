@@ -49,9 +49,11 @@ export function PdfDocumentViewer({
           'pdfjs-dist/build/pdf.worker.min.mjs',
           import.meta.url,
         ).toString();
-        const base = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8010').replace(/\/$/, '');
+        const base = process.env.NEXT_PUBLIC_API_BASE_URL
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/$/, '')}/api/v1`
+          : '/api/v1';
         loadingTask = pdfjs.getDocument({
-          url: `${base}/api/v1/documents/${documentId}/file`,
+          url: `${base}/documents/${documentId}/file`,
           httpHeaders: authToken() ? { Authorization: `Bearer ${authToken()}` } : undefined,
           rangeChunkSize: 65536,
           disableAutoFetch: false,
