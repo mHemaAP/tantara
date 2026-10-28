@@ -1,27 +1,28 @@
 # Open issues and verification notes
 
-This ledger includes only findings that remain open or explicitly deferred. Earlier R22–R25 implementation findings are fixed in the current tree: document warnings accept string and `{page, warning}` forms; draft evidence anchors navigate from the editor; client detail uses the matter layout and renders available fields; and case form submissions omit blank optional fields and display server validation details inline.
+This ledger records only current product gaps or evidence gaps. The M4 fixes for duplicate module navigation, model-backed Research Desk synthesis, 405 error vocabulary, API readiness skips, mobile client visibility, nested client navigation, Strategy claim tolerance, timestamp display, and Autofill date validation have been implemented and covered by current tests. The full browser suite currently reports 109 passed and 0 skipped.
 
-## Current findings
+## Open findings
 
-| Finding | Current evidence | Follow-up |
+| Finding | Evidence | Follow-up |
 |---|---|---|
-| A duplicate frontend screenshot corpus still contains five 1440×1000 captures. | After removing the five root historical desktop captures and nine obsolete failure images, `frontend/docs/screenshots/` retains 96 files. Five are still 1440×1000: `calendar-empty.png`, `cases-desktop.png`, `cases-empty.png`, `clients-desktop.png`, and `clients-empty.png`. Of the remaining corpus, 67 filenames have no same-basename counterpart in `docs/screenshots/`. Root `README.md` has 28 image links and all resolve. | R32: defer broader cleanup until README/spec references can be preserved safely under root `docs/screenshots/`; no wholesale deletion or regeneration in this pass. |
-
-## Deferred
-
-| Finding | Evidence | Reason deferred |
-|---|---|---|
-| Case list cannot distinguish “no hearings” from “past hearings only.” | `frontend/src/features/cases/components/case-list.tsx:213-218` renders an em dash when `next_hearing_at` is absent. The case API supplies the next upcoming hearing only; it exposes no past-hearing/history indicator. | R6: defer a differentiated label until the API provides enough history to make the distinction accurately. The existing upcoming-only semantics remain unchanged. |
-
-## Closed observations
-
-- **R45 inline navigation:** the Documents page renders `WorkspaceModuleNav` inside its `documents-heading` (`frontend/src/app/(workspace)/documents/page.tsx:131-145`). It is a separately named `Documents navigation` region (`frontend/src/features/documents/WorkspaceModuleNav.tsx:31`), presented in the page header as inline navigation; it is not a second global sidebar. The prior duplicate-global-rail finding is closed.
-- **R22–R25:** the stale ledger findings were removed after verifying their implementations in the current source. See the source and regression tests rather than the obsolete line references from the prior ledger.
+| Screenshot evidence is split across duplicate tracked corpora. | `git ls-files docs/screenshots | wc -l` reports 109 images while `git ls-files frontend/docs/screenshots | wc -l` reports 96; `captures-fe7/` is also tracked. Several duplicate-era captures do not reflect the current 14-link rail, so they are not current product evidence. | Curate a single root `docs/screenshots/` corpus, migrate only current authenticated captures, update references, and remove obsolete duplicate copies in a dedicated evidence-cleanup pass. |
+| The timestamp suite does not compare one identical instant across Community and Dashboard. | `frontend/src/lib/datetime.ts` formats both modules with `WORKSPACE_TIME_ZONE`, and the Community browser test checks the workspace label, but no test feeds the same fixed instant to both rendered surfaces. | Add one deterministic browser assertion that renders the same offset-bearing instant in both components and compares the displayed wall-clock text. |
+| Cases cannot distinguish “no hearings” from “past hearings only.” | `frontend/src/features/cases/components/case-list.tsx` renders a dash when `next_hearing_at` is absent; the API intentionally returns upcoming hearings only and does not expose whether past hearings exist. | Keep current upcoming-only semantics. Revisit the wording if the API later supplies a past-hearing indicator; do not infer one in the UI. |
 
 ## Tooling and validation notes
 
-- **Style-contract helper authentication:** the external helper run at `http://127.0.0.1:3034/` reported `auth_present: false` and no login request. Its no-heading/font-none output is not authenticated evidence. Authenticated Playwright and comparison captures are separate evidence; the helper itself still needs authenticated setup to support route conclusions.
-- **Verifier strategy-write probe:** an earlier verifier request returned HTTP 405 because it did not exercise the route/method that writes strategy data. That result does not prove or disprove strategy authorization. Treat it as a tooling limitation; use the API domain contract test for authorization evidence.
-- **Former authorization skip (resolved):** the prior cross-user skip was replaced by the real cross-user authorization test in `frontend/tests/api-domain-contracts.spec.ts`. A temporary owner-filter removal caused that test to fail (`Expected: 404`, `Received: 200`); the filter was restored.
-- **Calendar hook warning (resolved):** the missing `cursorParts.month/year` dependency was corrected in `frontend/src/features/calendar/index.tsx`; current `pnpm lint` reports no ESLint warnings or errors.
+- The external style-contract helper previously reported `auth_present: false` and no login request. Its unauthenticated style output is not evidence about authenticated routes.
+- A former verifier strategy-write probe used the wrong HTTP method and returned 405; authorization is instead covered by `frontend/tests/api-domain-contracts.spec.ts`.
+- The previous authorization-test skip is removed. `frontend/tests/api-domain-contracts.spec.ts` now exercises a second seeded identity and exact ownership behavior.
+- The calendar hook dependency warning was corrected; `pnpm lint` reports no ESLint warnings or errors.
+
+## Recently verified closed findings
+
+- Documents and Search no longer render `WorkspaceModuleNav`; `rg -n 'documents-module-nav|WorkspaceModuleNav' frontend/src` returns no matches. The shell rail owns current-page navigation.
+- Research Desk returns numbered model synthesis only when each marker resolves to retrieved citations; invalid synthesis falls back to cited excerpts and unavailable-model responses remain honest.
+- 405 responses use `method_not_allowed`; error-envelope tests cover 401, 404, 405, 409, and 422.
+- Playwright API availability checks fail loudly rather than silently skipping. The suite ran against one seeded backend and frontend with 109 passed and no skips.
+- Client directory mobile cards match the desktop API row count; nested client profiles mark the Clients rail entry.
+- Strategy reliability probe: 10/10 model-backed generations; some runs omit invalid individual claims and disclose those omissions.
+- Autofill date application parses valid ISO dates and returns a validation envelope for malformed dates.
