@@ -506,7 +506,7 @@ test('strategy shows source excerpts honestly, saves edits, creates a task, and 
     headers: { Authorization: `Bearer ${token}` },
     data: { title: `Strategy source test ${Date.now()}`, status: 'active' },
   });
-  expect(createdCase.status()).toBe(200);
+  expect(createdCase.status()).toBe(201);
   strategyTestCaseId = (await createdCase.json()).id as string;
   const movedDocument = await api.patch(endpoint(`/documents/${seededDocId}`), {
     headers: { Authorization: `Bearer ${token}` },
