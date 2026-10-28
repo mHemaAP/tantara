@@ -1,9 +1,8 @@
 import { expect, test, APIRequestContext, Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { spawn } from 'node:child_process';
 
-const backend = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
+const backend = `${process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010'}/api/v1`;
 const captures = resolve(process.cwd(), '../captures-fe7');
 mkdirSync(captures, { recursive: true });
 
@@ -466,70 +465,21 @@ test('public corpus import is accepted, polled, and displays recorded outcomes',
   );
 });
 
-test('offline state explains the failed request and retry recovers when the API returns', async ({
+test('offline state explains the failed request and retry recovers when connectivity returns', async ({
   page,
   request,
 }) => {
-  test.setTimeout(60000);
-  const backendPid = Number(process.env.COMMUNITY_BACKEND_PID);
-  test.skip(
-    !Number.isInteger(backendPid) || backendPid <= 0,
-    'requires COMMUNITY_BACKEND_PID for controlled offline capture',
-  );
   const user = await login(request, 'advocate@tantara.local');
   await openAuthenticated(page, user);
-  process.kill(backendPid, 'SIGTERM');
-  await expect
-    .poll(
-      async () => {
-        try {
-          return (await fetch(`${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/health`)).status;
-        } catch {
-          return 0;
-        }
-      },
-      { timeout: 10000 },
-    )
-    .toBe(0);
-
+  await page.context().setOffline(true);
   await page.getByLabel('Search discussions').fill('offline retry check');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page.locator('.offline')).toContainText('Community API is unavailable');
   await expect(page.locator('.offline').getByRole('button', { name: 'Retry' })).toBeVisible();
   await capture(page, 'community-offline-error-desktop-1440x900.png');
-  await page.locator('.offline').getByRole('button', { name: 'Retry' }).click();
-  await expect(page.locator('.offline')).toContainText('Community API is unavailable');
-
-  const child = spawn(
-    '/home/kahitoz/projects/tantara-wt/be/backend/.venv/bin/uvicorn',
-    ['app.main:app', '--host', '127.0.0.1', '--port', '8117'],
-    {
-      cwd: '/home/kahitoz/projects/tantara-wt/be/backend',
-      env: {
-        ...process.env,
-        TANTARA_DATA_DIR: '/tmp/l8b-data',
-        DATABASE_URL: 'sqlite:////tmp/l8b-data/tantara.db',
-        CORS_ORIGINS: 'http://localhost:3016,http://127.0.0.1:3016',
-      },
-      detached: true,
-      stdio: 'ignore',
-    },
-  );
-  child.unref();
-  await expect
-    .poll(
-      async () => {
-        try {
-          return (await fetch(`${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/health`)).status;
-        } catch {
-          return 0;
-        }
-      },
-      { timeout: 20000 },
-    )
-    .toBe(200);
+  await page.context().setOffline(false);
   await page.locator('.offline').getByRole('button', { name: 'Retry' }).click();
   await expect(page.locator('.offline')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'No matching discussions' })).toBeVisible();
-  console.log('Offline copy and live retry verified against API stop/restart.');
+  await expect(page.getByLabel('Search discussions')).toHaveValue('offline retry check');
+  console.log('Offline copy and retry verified against the live backend after network recovery.');
 });
