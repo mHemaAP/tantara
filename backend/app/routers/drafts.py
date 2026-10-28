@@ -5,7 +5,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
@@ -15,6 +15,7 @@ from app.models import AppPreference, Case, Document, DocumentChunk, Draft, Draf
 from app.repositories.domain import get_owned, serialize
 from app.security import current_user
 from app.services.audit import record
+from app.services.draft_versions import snapshot_draft
 
 router = APIRouter(prefix="/api/v1", tags=["drafts"])
 TEMPLATES = [
@@ -44,7 +45,7 @@ class Generate(BaseModel):
 
 
 class VersionBody(BaseModel):
-    content_markdown: str
+    content_markdown: str | None = None
     change_note: str | None = None
 
 
@@ -75,10 +76,11 @@ def versions(
         stmt = select(DraftVersion).where(DraftVersion.draft_id == rid, DraftVersion.owner_id == user["id"])
         total = s.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = s.scalars(
-            stmt.order_by(DraftVersion.version_number).offset((page - 1) * page_size).limit(page_size)
+            stmt.order_by(DraftVersion.version_number.desc()).offset((page - 1) * page_size).limit(page_size)
         ).all()
+        items = [_serialize_version(row) for row in rows]
         return {
-            "items": [serialize(x) for x in rows],
+            "items": items,
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -94,21 +96,60 @@ def save_version(rid: str, payload: VersionBody, user=Depends(current_user)):
         draft = get_owned(s, Draft, rid, user["id"])
         if not draft:
             raise HTTPException(404, "Draft not found")
-        num = (
-            s.scalar(select(func.max(DraftVersion.version_number)).where(DraftVersion.draft_id == rid)) or 0
-        ) + 1
-        row = DraftVersion(
-            id=str(uuid.uuid4()),
-            owner_id=user["id"],
-            draft_id=rid,
-            version_number=num,
-            content_markdown=payload.content_markdown,
-            change_note=payload.change_note,
-        )
-        draft.content_markdown = payload.content_markdown
-        s.add(row)
+        row = snapshot_draft(s, draft, draft.content_markdown, payload.change_note)
+        if payload.content_markdown is not None:
+            draft.content_markdown = payload.content_markdown
         record(s, user["id"], "create", "draft_version", row.id)
-        return serialize(row)
+        return _serialize_version(row)
+
+
+def _serialize_version(row):
+    item = serialize(row)
+    if item.get("change_note") is None:
+        item.pop("change_note", None)
+    return item
+
+
+@router.get("/drafts/{rid}/versions/{vid}")
+def get_version(rid: str, vid: str, user=Depends(current_user)):
+    with SessionLocal() as s:
+        if not get_owned(s, Draft, rid, user["id"]):
+            raise HTTPException(404, "Draft not found")
+        row = s.scalar(
+            select(DraftVersion).where(
+                DraftVersion.id == vid,
+                DraftVersion.draft_id == rid,
+                DraftVersion.owner_id == user["id"],
+            )
+        )
+        if not row:
+            raise HTTPException(404, "Draft version not found")
+        return _serialize_version(row)
+
+
+@router.post("/drafts/{rid}/versions/{vid}/restore")
+def restore_version(rid: str, vid: str, user=Depends(current_user)):
+    with session_scope() as s:
+        draft = get_owned(s, Draft, rid, user["id"])
+        if not draft:
+            raise HTTPException(404, "Draft not found")
+        source = s.scalar(
+            select(DraftVersion).where(
+                DraftVersion.id == vid,
+                DraftVersion.draft_id == rid,
+                DraftVersion.owner_id == user["id"],
+            )
+        )
+        if not source:
+            raise HTTPException(404, "Draft version not found")
+        if user.get("role") == "researcher":
+            raise HTTPException(403, "This role is read-only")
+        if user.get("role") == "staff":
+            raise HTTPException(403, "This role cannot modify this resource")
+        snapshot_draft(s, draft, draft.content_markdown, f"Restored from version {source.version_number}")
+        draft.content_markdown = source.content_markdown
+        record(s, user["id"], "restore", "draft_version", source.id)
+        return serialize(draft)
 
 
 @router.post("/drafts/generate")
@@ -290,21 +331,17 @@ def regenerate(rid: str, payload: SectionBody, user=Depends(current_user)):
     )
     with session_scope() as s:
         draft = get_owned(s, Draft, rid, user["id"])
-        num = (
-            s.scalar(select(func.max(DraftVersion.version_number)).where(DraftVersion.draft_id == rid)) or 0
-        ) + 1
-        row = DraftVersion(
-            id=str(uuid.uuid4()),
-            owner_id=user["id"],
-            draft_id=rid,
-            version_number=num,
-            content_markdown=content,
-            change_note=f"Regenerated section: {payload.section_heading}",
+        row = snapshot_draft(
+            s, draft, draft.content_markdown, f"Regenerated section: {payload.section_heading}"
         )
         draft.content_markdown = content
-        s.add(row)
         record(s, user["id"], "generate", "draft_section", row.id)
-        return {"id": row.id, "version_number": num, "content_markdown": content, "review_required": True}
+        return {
+            "id": row.id,
+            "version_number": row.version_number,
+            "content_markdown": content,
+            "review_required": True,
+        }
 
 
 @router.get("/drafts/{rid}/export")
@@ -313,6 +350,16 @@ def export(rid: str, format: str = Query("docx", pattern="^(docx|pdf)$"), user=D
         d = get_owned(s, Draft, rid, user["id"])
     if not d:
         raise HTTPException(404, "Draft not found")
+    if not d.content_markdown.strip():
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": "conflict",
+                    "message": "Draft content is empty and cannot be exported",
+                }
+            },
+        )
     output = io.BytesIO()
     if format == "docx":
         from docx import Document as WordDoc
