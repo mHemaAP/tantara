@@ -22,9 +22,19 @@ class RetrievalService:
         jurisdiction: str | None = None,
         document_types: list[str] | None = None,
         case_ids: list[str] | None = None,
+        collection_id: str | None = None,
+        collection_ids: list[str] | None = None,
     ):
         results, _status = self.search_with_status(
-            question, owner_id, top_k, case_id, jurisdiction, document_types, case_ids
+            question,
+            owner_id,
+            top_k,
+            case_id,
+            jurisdiction,
+            document_types,
+            case_ids,
+            collection_id,
+            collection_ids,
         )
         return results
 
@@ -37,6 +47,8 @@ class RetrievalService:
         jurisdiction: str | None = None,
         document_types: list[str] | None = None,
         case_ids: list[str] | None = None,
+        collection_id: str | None = None,
+        collection_ids: list[str] | None = None,
     ):
         try:
             query_vector = embed_query(question)
@@ -53,6 +65,9 @@ class RetrievalService:
             clauses.append(Document.jurisdiction == jurisdiction)
         if document_types:
             clauses.append(Document.document_type.in_(document_types))
+        selected_collections = list(dict.fromkeys(collection_ids or ([collection_id] if collection_id else [])))
+        if selected_collections:
+            clauses.append(Document.collection_id.in_(selected_collections))
         with SessionLocal() as session:
             stmt = (
                 select(
@@ -92,6 +107,10 @@ class RetrievalService:
                 marks = ",".join(f":type_{i}" for i in range(len(document_types)))
                 where += f" AND d.document_type IN ({marks})"
                 params.update({f"type_{i}": v for i, v in enumerate(document_types)})
+            if selected_collections:
+                marks = ",".join(f":collection_{i}" for i in range(len(selected_collections)))
+                where += f" AND d.collection_id IN ({marks})"
+                params.update({f"collection_{i}": value for i, value in enumerate(selected_collections)})
             try:
                 lexical = (
                     session.execute(
