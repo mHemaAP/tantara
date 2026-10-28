@@ -1,6 +1,7 @@
 """Database-backed dashboard and calendar endpoints."""
 
 from datetime import date, datetime, timedelta
+from math import ceil
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -8,13 +9,14 @@ from sqlalchemy import func, select
 from app.db import SessionLocal
 from app.models import AuditEvent, Case, CaseEvent, Document, Draft, Hearing, Task
 from app.security import current_user
+from app.timezone import to_utc_iso, to_workspace_iso, to_workspace_naive, workspace_now
 
 router = APIRouter(prefix="/api/v1", tags=["dashboard", "calendar"])
 
 
 @router.get("/dashboard/summary")
 def dashboard(user=Depends(current_user)):
-    today = date.today()
+    today = workspace_now().date()
     week = datetime.combine(today + timedelta(days=7), datetime.min.time())
     with SessionLocal() as s:
 
@@ -58,7 +60,7 @@ def activity(user=Depends(current_user)):
             "actor": user["name"],
             "title": f"{r.action.title()} {r.object_type}",
             "case_id": None,
-            "at": r.created_at.isoformat(),
+            "at": to_utc_iso(r.created_at),
         }
         for r in rows
     ]
@@ -66,7 +68,9 @@ def activity(user=Depends(current_user)):
 
 @router.get("/dashboard/upcoming")
 def upcoming(days: int = Query(30, ge=1, le=365), user=Depends(current_user)):
-    start = datetime.now()
+    now = workspace_now()
+    today = now.date()
+    start = now.replace(tzinfo=None)
     end = start + timedelta(days=days)
     with SessionLocal() as s:
         hs = s.scalars(
@@ -91,8 +95,8 @@ def upcoming(days: int = Query(30, ge=1, le=365), user=Depends(current_user)):
                     "title": x.title,
                     "case_id": x.case_id,
                     "case_title": None,
-                    "at": x.at.isoformat(),
-                    "due_in_days": (x.at.date() - date.today()).days,
+                    "at": to_workspace_iso(x.at),
+                    "due_in_days": (x.at.date() - today).days,
                 }
                 for x in hs
             ]
@@ -103,8 +107,8 @@ def upcoming(days: int = Query(30, ge=1, le=365), user=Depends(current_user)):
                     "title": x.title,
                     "case_id": x.case_id,
                     "case_title": None,
-                    "at": x.due_at.isoformat(),
-                    "due_in_days": (x.due_at.date() - date.today()).days,
+                    "at": to_workspace_iso(x.due_at),
+                    "due_in_days": (x.due_at.date() - today).days,
                 }
                 for x in ts
                 if x.due_at
@@ -116,8 +120,8 @@ def upcoming(days: int = Query(30, ge=1, le=365), user=Depends(current_user)):
                     "title": x.type,
                     "case_id": x.case_id,
                     "case_title": None,
-                    "at": x.occurred_at.isoformat(),
-                    "due_in_days": (x.occurred_at.date() - date.today()).days,
+                    "at": to_workspace_iso(x.occurred_at),
+                    "due_in_days": (x.occurred_at.date() - today).days,
                 }
                 for x in events
             ]
@@ -137,8 +141,8 @@ def upcoming(days: int = Query(30, ge=1, le=365), user=Depends(current_user)):
                             "title": label,
                             "case_id": case.id,
                             "case_title": case.title,
-                            "at": at.isoformat(),
-                            "due_in_days": (at.date() - date.today()).days,
+                            "at": to_workspace_iso(at),
+                            "due_in_days": (at.date() - today).days,
                         }
                     )
     return sorted(out, key=lambda x: x["at"])
@@ -146,10 +150,16 @@ def upcoming(days: int = Query(30, ge=1, le=365), user=Depends(current_user)):
 
 @router.get("/calendar")
 def calendar(
-    from_: datetime | None = Query(None, alias="from"), to: datetime | None = None, user=Depends(current_user)
+    from_: datetime | None = Query(None, alias="from"),
+    to: datetime | None = None,
+    envelope: bool = False,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=100),
+    user=Depends(current_user),
 ):
-    start = from_ or datetime.min
-    end = to or datetime.max
+    """Return the legacy bare list by default; `envelope=true` opts into pagination metadata."""
+    start = to_workspace_naive(from_) if from_ else datetime.min
+    end = to_workspace_naive(to) if to else datetime.max
     with SessionLocal() as s:
         hs = s.scalars(
             select(Hearing).where(Hearing.owner_id == user["id"], Hearing.at >= start, Hearing.at <= end)
@@ -165,7 +175,7 @@ def calendar(
         cases = s.scalars(select(Case).where(Case.owner_id == user["id"])).all()
     items = (
         [
-            {"id": x.id, "type": "hearing", "title": x.title, "case_id": x.case_id, "at": x.at.isoformat()}
+            {"id": x.id, "type": "hearing", "title": x.title, "case_id": x.case_id, "at": to_workspace_iso(x.at)}
             for x in hs
         ]
         + [
@@ -174,7 +184,7 @@ def calendar(
                 "type": "deadline",
                 "title": x.title,
                 "case_id": x.case_id,
-                "at": x.due_at.isoformat(),
+                "at": to_workspace_iso(x.due_at),
             }
             for x in tasks
             if x.due_at
@@ -185,7 +195,7 @@ def calendar(
                 "type": "event",
                 "title": x.type,
                 "case_id": x.case_id,
-                "at": x.occurred_at.isoformat(),
+                "at": to_workspace_iso(x.occurred_at),
             }
             for x in events
         ]
@@ -204,7 +214,17 @@ def calendar(
                         "type": "event" if field == "filed_at" else "deadline",
                         "title": label,
                         "case_id": case.id,
-                        "at": at.isoformat(),
+                        "at": to_workspace_iso(at),
                     }
                 )
-    return sorted(items, key=lambda x: x["at"])
+    ordered = sorted(items, key=lambda x: x["at"])
+    if envelope:
+        total = len(ordered)
+        return {
+            "items": ordered[(page - 1) * page_size : page * page_size],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": ceil(total / page_size) if total else 0,
+        }
+    return ordered
