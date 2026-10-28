@@ -49,8 +49,18 @@ async function capture(page: Page, name: string, focusSelector?: string) {
     const header = await page.locator('.topbar').boundingBox();
     if (box && header && visibleHeading) {
       expect(visibleHeading.y).toBeGreaterThanOrEqual(header.y + header.height);
-      if (box.height <= (await page.evaluate(() => window.innerHeight)) - header.height)
-        expect(box.y + box.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
+      if (box.height <= (await page.evaluate(() => window.innerHeight)) - header.height) {
+        await focus.evaluate((element) => element.scrollIntoView({ block: 'end' }));
+        const alignedBox = await focus.boundingBox();
+        const alignedHeading = await focusHeading.boundingBox();
+        expect(alignedBox).toBeTruthy();
+        expect(alignedHeading).toBeTruthy();
+        if (alignedHeading) expect(alignedHeading.y).toBeGreaterThanOrEqual(header.y + header.height);
+        if (alignedBox)
+          expect(alignedBox.y + alignedBox.height).toBeLessThanOrEqual(
+            await page.evaluate(() => window.innerHeight),
+          );
+      }
     }
   } else await page.evaluate(() => window.scrollTo(0, 0));
   if ((await page.evaluate(() => window.innerWidth)) <= 500) {
