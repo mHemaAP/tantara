@@ -219,7 +219,8 @@ def test_strategy_keeps_valid_claims_when_one_source_page_is_wrong(client, monke
     assert result["case_theory"] == valid["text"]
     assert result["key_issues"] == ["Confirm Mumbai as the agreed seat."]
     assert result["validation_warnings"] == [
-        {"field": "key_issues", "index": 0, "reason": "citation_not_resolved"}
+        {"field": "key_issues", "index": 0, "reason": "citation_not_resolved"},
+        {"field": "legal_arguments", "index": None, "reason": "source_excerpt_fallback"},
     ]
     assert result["assertion_citations"]
     assert all(
