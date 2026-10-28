@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.config import get_settings
 from app.db import SessionLocal, init_db, session_scope
 from app.models import *
+from app.schemas import AskResponse
 from app.security import current_user
 from app.services.answer_grounding import (
     extract_field_value,
@@ -322,7 +323,7 @@ def llm_answer(question, hits, base_url=None, model=None, json_mode=False):
     return None
 
 
-@app.post("/api/v1/ai/ask")
+@app.post("/api/v1/ai/ask", response_model=AskResponse)
 def ask(req: Ask, user=Depends(current_user)):
     from app.routers.collections import validate_collection_ids
 
@@ -392,10 +393,8 @@ def ask(req: Ask, user=Depends(current_user)):
         if not model_answer:
             status = "model_unavailable"
             answer = UNAVAILABLE_ANSWER
-            supports = []
-            support_hits = []
             used_model = None
-            answer_basis = "insufficient_evidence"
+            answer_basis = "cited_excerpts"
         else:
             status = retrieval_status
             answer_basis = "cited_excerpts"
@@ -448,9 +447,7 @@ def ask(req: Ask, user=Depends(current_user)):
                 "chunk_id": hit["chunk_id"],
                 "page_number": hit["page_number"],
                 "excerpt": hit["snippet"],
-                "score": hit["score"],
-                "retreival_score": hit["score"],
-                "retrieval_score": hit["score"],
+                "retrieval_score": hit["retrieval_score"],
                 "source_type": hit["source_type"],
                 "jurisdiction": hit["jurisdiction"],
             }
@@ -497,7 +494,7 @@ def ask(req: Ask, user=Depends(current_user)):
                     chunk_id=c["chunk_id"],
                     page_number=c["page_number"],
                     excerpt=c["excerpt"],
-                    retrieval_score=c["retreival_score"],
+                    retrieval_score=c["retrieval_score"],
                 )
             )
         record(s, user["id"], "generate", "ai_answer", mid)
@@ -589,6 +586,6 @@ async def legacy_ingest(
     return await document_upload(file, title, document_type, jurisdiction, None, None, user)
 
 
-@app.post("/query")
+@app.post("/query", response_model=AskResponse)
 def legacy_query(req: Ask, user=Depends(current_user)):
     return ask(req, user)
