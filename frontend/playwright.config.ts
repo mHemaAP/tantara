@@ -8,7 +8,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      testIgnore: /documents-round4-mobile\.spec\.ts/,
+      testIgnore: /documents-round(4|5)-mobile\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3013',
@@ -17,7 +17,7 @@ export default defineConfig({
     },
     {
       name: 'mobile',
-      testMatch: /documents-round4-mobile\.spec\.ts/,
+      testMatch: /documents-round(4|5)-mobile\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3013',
