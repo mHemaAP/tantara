@@ -2,7 +2,7 @@
 export const openApiSnapshot = {
   openapi: '3.0.3',
   info: { title: 'TANTARA API', version: '1.0.0' },
-  servers: [{ url: 'http://127.0.0.1:8010/api/v1' }],
+  servers: [{ url: '/api/v1' }],
   paths: {
     '/auth/login': { post: { summary: 'Create local session' } },
     '/auth/me': { get: { summary: 'Current user' } },
