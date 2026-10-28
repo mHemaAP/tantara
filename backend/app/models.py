@@ -166,6 +166,13 @@ class Task(Owned, Base):
     )
 
 
+class KnowledgeCollection(Owned, Base):
+    __tablename__ = "knowledge_collections"
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_collection_owner_name"),)
+
+
 class Document(Owned, Base):
     __tablename__ = "documents"
     case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id", ondelete="SET NULL"), index=True)
@@ -187,6 +194,7 @@ class Document(Owned, Base):
     text_content: Mapped[str] = mapped_column(Text, default="")
     warnings: Mapped[list] = mapped_column(JSON, default=list)
     page_count: Mapped[int] = mapped_column(Integer, default=0)
+    collection_id: Mapped[str | None] = mapped_column(String(36), index=True)
     __table_args__ = (
         UniqueConstraint("owner_id", "content_hash", name="uq_document_owner_hash"),
         Index("ix_documents_owner_case_status", "owner_id", "case_id", "status"),
