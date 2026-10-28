@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Check, ClipboardList, Save, Sparkles } from 'lucide-react';
 import {
   strategyApi,
@@ -33,6 +33,8 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
   const [selectedCaseId, setSelectedCaseId] = useState(routeCaseId || params.get('case_id') || '');
   const [caseInfo, setCaseInfo] = useState<StrategyCase>();
   const [data, setData] = useState<StrategyData>();
+  const [loadingCase, setLoadingCase] = useState(Boolean(routeCaseId || params.get('case_id')));
+  const loadSequence = useRef(0);
   const [aiReachable, setAiReachable] = useState<boolean>();
   const [tab, setTab] = useState<StrategyTab>(
     strategyTabs.find((item) => item === params.get('tab')) ?? strategyTabs[0],
@@ -57,6 +59,8 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
 
   const loadCase = useCallback(async (id: string) => {
     if (!id) return;
+    const sequence = ++loadSequence.current;
+    setLoadingCase(true);
     setError('');
     setData(undefined);
     try {
@@ -67,6 +71,8 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
       setDirty(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Strategy data could not be loaded.');
+    } finally {
+      if (sequence === loadSequence.current) setLoadingCase(false);
     }
     try {
       const settings = await strategyApi.aiSettings();
@@ -239,7 +245,7 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
         <button
           className="strategy-generate"
           onClick={() => void generate()}
-          disabled={busy || !selectedCaseId}
+          disabled={busy || loadingCase || !selectedCaseId}
         >
           <Sparkles size={16} />
           {busy ? 'Working…' : 'Generate'}
