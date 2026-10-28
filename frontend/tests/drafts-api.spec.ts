@@ -24,6 +24,17 @@ async function expectValidation(response: Awaited<ReturnType<APIRequestContext['
   expect(body.error.message).toBeTruthy();
   expect(Array.isArray(body.error.details)).toBeTruthy();
 }
+function decode85(source: string) {
+  const text=source.replace(/\s|~>/g,'');const out:number[]=[];
+  for(let i=0;i<text.length;){if(text[i]==='z'){out.push(0,0,0,0);i++;continue;}const part=text.slice(i,i+5);i+=part.length;if(part.length<2)break;let n=0;for(const c of part.padEnd(5,'u'))n=n*85+(c.charCodeAt(0)-33);const b=Buffer.alloc(4);b.writeUInt32BE(n>>>0);out.push(...b.subarray(0,part.length-1));}return Buffer.from(out);
+}
+async function exportedText(format:'docx'|'pdf',bytes:Buffer) {
+  if(format==='docx'){
+    const {inflateRawSync}=await import('node:zlib');
+    for(let p=0;p+30<bytes.length;){if(bytes.readUInt32LE(p)!==0x04034b50)break;const method=bytes.readUInt16LE(p+8),size=bytes.readUInt32LE(p+18),nameSize=bytes.readUInt16LE(p+26),extra=bytes.readUInt16LE(p+28),name=bytes.subarray(p+30,p+30+nameSize).toString(),start=p+30+nameSize+extra,end=start+size;if(name==='word/document.xml')return(method===8?inflateRawSync(bytes.subarray(start,end)):bytes.subarray(start,end)).toString();p=end;}return'';
+  }
+  const {inflateSync}=await import('node:zlib');const raw=bytes.toString('latin1');const streams=[...raw.matchAll(/stream\r?\n([\s\S]*?)\r?\n?endstream/g)].map(m=>{try{return inflateSync(decode85(m[1])).toString('latin1')}catch{return m[1]}}).join('\n');return raw+'\n'+streams;
+}
 
 test.describe('real drafts and autofill HTTP contract', () => {
   test.describe.configure({ mode: 'serial' });
@@ -67,7 +78,7 @@ test.describe('real drafts and autofill HTTP contract', () => {
   });
 
   test('versions, restore-as-new-version, section regeneration, and both real exports work', async () => {
-    const create = await owner.post('drafts', { data: { title: 'Export with no versions', document_type: 'Statement of Claim', case_id: caseId, content_markdown: '# Initial draft\n\nEvidence remains reviewable.' } });
+    const create = await owner.post('drafts', { data: { title: 'Export with no versions', document_type: 'Statement of Claim', case_id: caseId, content_markdown: '# Initial draft\n\n[REVIEW: Verify the evidence before filing.]\n\nEMPTY CORPUS EXPORT REVIEW' } });
     expect(create.status()).toBe(200);
     const freshId = (await create.json()).id as string;
     const noVersions = await owner.get(`drafts/${freshId}/versions`);
@@ -76,10 +87,10 @@ test.describe('real drafts and autofill HTTP contract', () => {
     const emptyDocx = await owner.get(`drafts/${freshId}/export?format=docx`);
     expect(emptyDocx.status()).toBe(200);
     expect(emptyDocx.headers()['content-type']).toContain('officedocument.wordprocessingml.document');
-    expect((await emptyDocx.body()).byteLength).toBeGreaterThan(200);
+    const docxBytes=await emptyDocx.body();expect(docxBytes.byteLength).toBeGreaterThan(200);expect(docxBytes.subarray(0,4).toString()).toBe('PK\x03\x04');expect(await exportedText('docx',docxBytes)).toContain('[REVIEW:');
     const emptyPdf = await owner.get(`drafts/${freshId}/export?format=pdf`);
     expect(emptyPdf.status()).toBe(200);
-    expect((await emptyPdf.body()).byteLength).toBeGreaterThan(200);
+    const pdfBytes=await emptyPdf.body();expect(pdfBytes.byteLength).toBeGreaterThan(200);expect(pdfBytes.subarray(0,4).toString()).toBe('%PDF');expect(await exportedText('pdf',pdfBytes)).toContain('[REVIEW:');
 
     const badVersion = await owner.post(`drafts/${draftId}/versions`, { data: {} });
     await expectValidation(badVersion);
@@ -157,5 +168,20 @@ test.describe('real drafts and autofill HTTP contract', () => {
     expect([403, 404]).toContain(crossVersions.status());
     const crossVersionWrite = await researcher.post(`drafts/${draftId}/versions`, { data: { content_markdown: 'private' } });
     expect([403, 404]).toContain(crossVersionWrite.status());
+  });
+
+  test('records the live backend gaps for direct autofill and version restore routes', async () => {
+    const openapi = await owner.get(`${apiBase.replace(/\/api\/v1\/$/, '')}/openapi.json`);
+    expect(openapi.status()).toBe(200);
+    const paths = (await openapi.json()).paths as Record<string, Record<string, unknown>>;
+    expect(paths[`/api/v1/cases/{cid}/autofill`]?.post).toBeUndefined();
+    expect(paths[`/api/v1/drafts/{rid}/versions/{vid}/restore`]?.post).toBeUndefined();
+    const noDirectAutofill = await owner.post(`cases/${caseId}/autofill`, { data: { fields: [] } });
+    expect(noDirectAutofill.status()).toBe(405);
+    const versions = (await (await owner.get(`drafts/${draftId}/versions`)).json()).items as Array<Record<string, any>>;
+    const versionId = versions[0]?.id;
+    expect(versionId).toBeTruthy();
+    const noRestore = await owner.post(`drafts/${draftId}/versions/${versionId}/restore`, { data: {} });
+    expect(noRestore.status()).toBe(404);
   });
 });
