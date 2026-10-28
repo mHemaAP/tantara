@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api/client';
+import { calendarEventLabel } from './event-label';
 import {
   WORKSPACE_TIME_ZONE,
   calendarDateParts,
@@ -26,26 +27,6 @@ type Event = {
   detail?: string;
   all_day?: boolean;
 };
-const eventLabels: Record<string, string> = {
-  all_day_event: 'All day',
-  event: 'All day',
-  deadline: 'Deadline',
-  first_hearing: 'First hearing',
-  hearing_completed: 'Hearing completed',
-};
-function eventLabel(event: Event) {
-  const title = (event.title || '').trim();
-  if (event.type === 'event') {
-    if (title && !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/i.test(title)) return title;
-    return eventLabels[event.event_type || ''] || 'Case event';
-  }
-  return (
-    eventLabels[event.type || ''] ||
-    eventLabels[event.event_type || ''] ||
-    eventLabels[title] ||
-    (title || event.event_type || 'Case event').replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-  );
-}
 function isAllDay(event: Event) {
   if (event.all_day !== undefined) return event.all_day;
   if (
@@ -86,7 +67,7 @@ function eventCaseTitle(event: Event, caseTitles: Map<string, string>) {
 }
 function eventAccessibleLabel(event: Event, caseTitles: Map<string, string>) {
   const caseTitle = eventCaseTitle(event, caseTitles);
-  const parts = [`View ${eventLabel(event)}`];
+  const parts = [`View ${calendarEventLabel(event)}`];
   if (caseTitle) parts.push(caseTitle);
   parts.push(eventDayKey(event));
   return parts.join(' · ');
@@ -251,7 +232,7 @@ export default function CalendarPage() {
                         </time>
                       )}
                       <span>
-                        {eventLabel(event)}
+                        {calendarEventLabel(event)}
                         {eventCaseTitle(event, caseTitles) ? ` · ${eventCaseTitle(event, caseTitles)}` : ''}
                       </span>
                     </button>
@@ -319,7 +300,7 @@ export default function CalendarPage() {
                         </time>
                       )}
                       {!isAllDay(event) && ' '}
-                      {eventLabel(event)}
+                      {calendarEventLabel(event)}
                       {eventCaseTitle(event, caseTitles) ? ` · ${eventCaseTitle(event, caseTitles)}` : ''}
                     </button>
                   ))}
@@ -337,7 +318,7 @@ export default function CalendarPage() {
             >
               ×
             </button>
-            <h2>{eventLabel(selectedEvent)}</h2>
+            <h2>{calendarEventLabel(selectedEvent)}</h2>
             <p>{eventCaseTitle(selectedEvent, caseTitles) || 'Case event'}</p>
             {selectedEvent.detail && selectedEvent.detail !== selectedEvent.title && (
               <p>{selectedEvent.detail}</p>
