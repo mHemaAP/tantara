@@ -22,6 +22,7 @@ import { WORKSPACE_TIME_ZONE } from '@/lib/datetime';
 import { keys } from '@/lib/api/keys';
 import type { Summary, Activity, Upcoming, Case } from '@/lib/api/types';
 import { MattersCard } from '@/features/dashboard/matters';
+import { calendarEventLabel } from '@/features/calendar/event-label';
 import { collectionsApi } from '@/features/documents/api';
 function Offline({ retry }: { retry: () => void }) {
   return (
@@ -333,7 +334,8 @@ export default function Dashboard() {
                     <div>
                       <strong>{x.title}</strong>
                       <small style={{ display: 'block', color: '#64748b', marginTop: 3 }}>
-                        {x.case_title || x.type}
+                        {calendarEventLabel(x)}
+                        {x.case_title ? ` · ${x.case_title}` : ''}
                       </small>
                     </div>
                     <span className="right muted">
