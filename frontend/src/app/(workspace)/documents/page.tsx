@@ -125,7 +125,6 @@ export default function DocumentsPage() {
   const caseTitles = new Map((cases.data?.items ?? []).map((item) => [item.id, item.title]));
   return (
     <main className="documents-page">
-      <WorkspaceModuleNav />
       <header className="documents-heading">
         <div>
           <p className="documents-eyebrow">Workspace</p>
@@ -143,6 +142,7 @@ export default function DocumentsPage() {
           accept=".pdf,.docx,.txt,.md"
           onChange={(event) => event.target.files && void uploadFiles(event.target.files)}
         />
+        <WorkspaceModuleNav />
       </header>
 
       <section
