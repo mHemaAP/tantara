@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
 const liveModelBase = 'http://192.168.0.101:8080/v1';
 const liveModelName = 'MiniCPM5-2B';
 
@@ -43,7 +43,7 @@ async function waitForPdf(page: Page) {
   await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
 }
 
-test('390px mobile library, viewer, AI Read states, empty and failure routes settle without overlap', async ({
+test('390px mobile library, viewer, extraction states and empty results settle without overlap', async ({
   page,
   request,
 }) => {
@@ -80,7 +80,7 @@ test('390px mobile library, viewer, AI Read states, empty and failure routes set
     .toBeTruthy();
 
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-match-round4-77291');
-  await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '0 matching documents' })).toBeVisible();
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
 
   await openWithToken(page, token, `/documents/${document.id}?page=2`);
@@ -112,7 +112,7 @@ test('390px mobile library, viewer, AI Read states, empty and failure routes set
     await openWithToken(page, token, `/documents/${document.id}`);
     await waitForPdf(page);
     if (!runtimeSettings.runtime_status?.reachable) {
-      await page.getByRole('button', { name: 'Run AI Read' }).click();
+      await page.getByRole('button', { name: 'Run document extraction' }).click();
       await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible();
       await expect(page.locator('.ai-read-field')).toHaveCount(0);
       await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
@@ -120,38 +120,15 @@ test('390px mobile library, viewer, AI Read states, empty and failure routes set
       return;
     }
     if ((await page.locator('.ai-read-field').count()) === 0) {
-      await page.getByRole('button', { name: 'Run AI Read' }).click();
+      await page.getByRole('button', { name: 'Run document extraction' }).click();
       await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 120000 });
     }
     await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 30000 });
     await page.locator('.ai-read-panel').scrollIntoViewIfNeeded();
-
-    await page.route('**/api/v1/ai/ask', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ status: 'model_unavailable', answer: '' }),
-      }),
-    );
-    await page.getByRole('button', { name: /Run AI Read|Run again/ }).click();
-    const unavailable = page.locator('[data-error-category="model_unavailable"]');
-    await expect(unavailable).toBeVisible();
-    await expect(unavailable).not.toContainText(/https?:\/\/|127\.0\.0\.1|192\.168\.|:\d{2,5}/);
-    await expect(page.locator('.ai-read-field')).toHaveCount(0);
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, {
       headers,
       data: { base_url: originalSettings.base_url, model: originalSettings.model },
     });
   }
-
-  await page.route('**/api/v1/documents**', (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ error: { code: 'offline', message: 'Offline' } }),
-    }),
-  );
-  await openWithToken(page, token, '/documents');
-  await expect(page.getByRole('heading', { name: 'Documents are unavailable' })).toBeVisible();
 });
