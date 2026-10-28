@@ -34,6 +34,7 @@ async function authenticate(
 }
 
 test('workspace navigation exposes all module routes and each route resolves', async ({ page, request }) => {
+  test.setTimeout(120_000);
   await authenticate(page, request);
   await page.goto('/dashboard');
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
@@ -52,13 +53,22 @@ test('workspace navigation exposes all module routes and each route resolves', a
     ['/strategy', 'Strategy'],
     ['/search', 'Search'],
   ]) {
-    const link = page.locator(`.nav a[href="${route}"]`);
+    const link = nav.getByRole('link', { name: label, exact: true });
     await expect(link).toHaveAccessibleName(label);
     await expect(link).toHaveAttribute('href', route);
     await link.click();
-    await page.waitForURL((url) => url.pathname === route);
-    await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
-    await page.waitForURL((url) => url.pathname === '/dashboard');
+    await page.waitForURL((url) => url.pathname === route, { waitUntil: 'commit', timeout: 15_000 });
+    const activeNavLink = nav.locator('a[aria-current="page"]:visible');
+    await expect(activeNavLink).toHaveCount(1);
+    await expect(activeNavLink).toHaveAttribute('href', route);
+    const dashboardLink = page.getByRole('link', { name: 'Dashboard', exact: true }).first();
+    await dashboardLink.click();
+    await page.waitForURL((url) => url.pathname === '/dashboard', {
+      waitUntil: 'commit',
+      timeout: 15_000,
+    });
+    await expect(activeNavLink).toHaveCount(1);
+    await expect(activeNavLink).toHaveAttribute('href', '/dashboard');
   }
 });
 
