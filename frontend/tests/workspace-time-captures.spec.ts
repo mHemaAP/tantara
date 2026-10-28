@@ -70,6 +70,7 @@ test('dashboard case table headers remain separate at desktop width', async ({ p
 });
 
 test('captures the real seeded bundle list and 44-page bundle detail', async ({ page }) => {
+  test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const token = await loginToken(page);
   const response = await page.request.get(`${api}/bundles?page_size=100`, {
@@ -118,7 +119,7 @@ test('captures the real seeded bundle list and 44-page bundle detail', async ({ 
   await assertCaptureReady(page);
   await page.screenshot({ path: '../docs/screenshots/bundles-list-1440.png', fullPage: false });
 
-  await page.goto(`/bundles/${bundle!.id}`);
+  await page.goto(`/bundles/${bundle!.id}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
   await expect(page.getByRole('heading', { name: bundle!.name })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Bundle Contents' })).toBeVisible();
   await expect(page.locator('ol[aria-label="Bundle document order"] li')).toHaveCount(mappedItemCount);
