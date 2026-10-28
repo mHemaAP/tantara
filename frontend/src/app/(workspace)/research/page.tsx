@@ -27,8 +27,8 @@ import {
 } from '@/features/research/api';
 import {
   answerStatusLabel,
+  citationAccessibleLabel,
   citationLink,
-  citationLabel,
   groupSources,
   normalizeDocumentTitle,
 } from '@/features/research/presentation';
@@ -50,38 +50,41 @@ const formatHistoryDate = (value?: string) => {
 
 function AnswerText({ text, citations }: { text: string; citations: ResearchSource[] }) {
   const chunks = text.split(
-    /(\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\](?:\s+p\.\s*\d+)?)/gi,
+    /(\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\](?:\s+p\.\s*\d+)?|\[\d+\])/gi,
   );
-  const hasInlineRefs = chunks.some((chunk) =>
-    /^\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]/i.test(chunk),
-  );
+  const hasInlineRefs = chunks.some((chunk) => /^\[(?:[0-9a-f]{8}-|\d+\])/i.test(chunk));
   return (
     <div className="answer-text">
       <p className="answer-sentence">
         {chunks.map((chunk, index) => {
-          const ref = chunk.match(/^\[([0-9a-f-]{36})\](?:\s+p\.\s*(\d+))?$/i);
+          const ref = chunk.match(/^\[([0-9a-f-]{36}|\d+)\](?:\s+p\.\s*(\d+))?$/i);
           if (!ref) return chunk;
-          const citationIndex = citations.findIndex((source) => source.chunk_id === ref[1]);
+          const citationIndex = /^\d+$/.test(ref[1])
+            ? Number(ref[1]) - 1
+            : citations.findIndex(
+                (source) =>
+                  source.chunk_id === ref[1] || source.citation_ref?.replace(/[\[\]]/g, '') === ref[1],
+              );
           const source = citations[citationIndex];
           return source ? (
             <CitationAnchor
               key={`${source.chunk_id}-${index}`}
               source={source}
               className="answer-citation"
-              display={`${citationLabel(source.page_number)} [${citationIndex + 1}]`}
+              display={citationAccessibleLabel(source)}
             />
           ) : null;
         })}
       </p>
       {citations.length > 0 && !hasInlineRefs && (
         <div className="answer-citations" aria-label="Sources for this answer">
-          <span>Sources for this answer</span>
+          <span>Citations returned with this answer</span>
           {citations.map((source) => (
             <CitationAnchor
               key={`${source.document_id}-${source.page_number}-${source.chunk_id}`}
               source={source}
               className="answer-citation"
-              display={`${citationLabel(source.page_number)} [${citations.indexOf(source) + 1}]`}
+              display={citationAccessibleLabel(source)}
             />
           ))}
         </div>
@@ -101,14 +104,14 @@ function CitationAnchor({
 }) {
   const citation = citationLink(source);
   return (
-    <Link
+    <a
       className={className}
       href={citation.href}
-      aria-label={`Open ${normalizeDocumentTitle(source.document_title)} at page ${source.page_number}`}
+      aria-label={`Open ${citationAccessibleLabel(source)}`}
       data-chunk-id={citation.chunkId}
     >
       {display ?? citation.label}
-    </Link>
+    </a>
   );
 }
 
@@ -166,6 +169,62 @@ function PageLinks({ sources }: { sources: ResearchSource[] }) {
   );
 }
 
+function citedSources(text: string | undefined, sources: ResearchSource[]): ResearchSource[] {
+  if (!text) return [];
+  return sources.filter((source, index) => {
+    const reference = source.citation_ref?.trim();
+    if (reference && text.includes(reference)) return true;
+    if (text.includes(source.chunk_id)) return true;
+    return new RegExp(`\\[${index + 1}\\]`).test(text);
+  });
+}
+
+function SourceGroups({ groups }: { groups: ReturnType<typeof groupSources> }) {
+  return groups.map((group) => {
+    const seenQuotes = new Map<string, number>();
+    return (
+      <details className="source-item" key={group.documentId} open>
+        <summary>
+          <strong>{group.title}</strong>
+          <span>
+            {group.pages.length} {group.pages.length === 1 ? 'page' : 'pages'}
+          </span>
+        </summary>
+        <PageLinks sources={group.pages.map((page) => page.sources[0]).filter(Boolean)} />
+        {group.pages.map((page) => {
+          const best = [...page.sources].sort(
+            (a, b) => (scoreOf(b) ?? -Infinity) - (scoreOf(a) ?? -Infinity),
+          )[0];
+          if (!best) return null;
+          const repeatedOn = best.excerpt ? seenQuotes.get(best.excerpt) : undefined;
+          if (best.excerpt && repeatedOn == null) seenQuotes.set(best.excerpt, page.page);
+          return (
+            <div className="source-excerpt" key={page.page}>
+              <p>
+                <strong>Page {page.page}</strong>{' '}
+                {best.excerpt
+                  ? repeatedOn == null
+                    ? `“${best.excerpt}”`
+                    : `Same excerpt as page ${repeatedOn}.`
+                  : 'No excerpt was returned for this page.'}
+              </p>
+              <CitationAnchor
+                source={best}
+                className="page-chip"
+                display={`Open ${citationAccessibleLabel(best)}`}
+              />
+              <div className="source-relevance">
+                Rank {page.rank} · Relevance <b>{page.bestScore == null ? '—' : page.bestScore.toFixed(3)}</b>{' '}
+                · relative to this query
+              </div>
+            </div>
+          );
+        })}
+      </details>
+    );
+  });
+}
+
 async function hydrateSession(session: ResearchSession): Promise<ResearchSession> {
   const citedIds = new Set(
     session.messages?.flatMap(
@@ -217,6 +276,7 @@ export default function ResearchPage() {
   const [lexical, setLexical] = useState<ResearchSource[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [copiedTurnId, setCopiedTurnId] = useState('');
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -367,6 +427,15 @@ export default function ResearchPage() {
       setError(e instanceof Error ? e.message : 'Could not save this answer.');
     }
   };
+  const copyAnswer = async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTurnId(id);
+      window.setTimeout(() => setCopiedTurnId((current) => (current === id ? '' : current)), 1800);
+    } catch {
+      setError('Copy is unavailable in this browser. Select the answer text to copy it.');
+    }
+  };
 
   const activeMessages = selected?.messages ?? [];
   const latestAssistant = [...activeMessages].reverse().find((message) => message.role === 'assistant');
@@ -387,6 +456,19 @@ export default function ResearchPage() {
   const groupedSources = useMemo(() => groupSources(selectedSources), [selectedSources]);
   const distinctSourceCount = new Set(selectedSources.map((source) => source.document_id)).size;
   const corpusCount = answer || latestAssistant ? String(distinctSourceCount) : '—';
+  const answerTextForEvidence = answer?.answer ?? latestAssistant?.content;
+  const supportedChunkIds = answer?.supports?.map((support) => support.chunk_id);
+  const sourcesForAnswer = answer?.supports
+    ? selectedSources.filter((source) => supportedChunkIds?.includes(source.chunk_id))
+    : citedSources(answerTextForEvidence, selectedSources);
+  const otherRetrievedSources = selectedSources.filter(
+    (source) => !sourcesForAnswer.some((supported) => supported.chunk_id === source.chunk_id),
+  );
+  const supportedGroups = useMemo(() => groupSources(sourcesForAnswer), [sourcesForAnswer]);
+  const otherGroups = useMemo(() => groupSources(otherRetrievedSources), [otherRetrievedSources]);
+  const modelId = answer?.model?.model;
+  const generationKind = answer?.generation_kind ?? answer?.answer_kind;
+  const hasModelProvenance = generationKind === 'model_generated' && typeof modelId === 'string';
   const answerIsInsufficient =
     answerHasInsufficientEvidence ||
     answer?.status === 'no_evidence' ||
@@ -608,7 +690,11 @@ export default function ResearchPage() {
                             <span className="status-chip" data-status={m.status}>
                               {/evidence is insufficient/i.test(m.content)
                                 ? 'Insufficient evidence — excerpts only'
-                                : answerStatusLabel(m.status)}
+                                : answerStatusLabel(
+                                    m.status,
+                                    answer?.message_id === m.id ? answer.answer_kind : undefined,
+                                    answer?.message_id === m.id ? answer.generation_kind : undefined,
+                                  )}
                             </span>
                           )}
                         </div>
@@ -639,7 +725,7 @@ export default function ResearchPage() {
                               No supporting documents were found. Upload a document, widen the research scope,
                               or rephrase your question.
                             </p>
-                            <Link href="/documents">Upload a document</Link>
+                            <Link href="/research/documents">Upload a document</Link>
                           </div>
                         ) : m.role === 'assistant' && m.status === 'embedding_unavailable' ? (
                           <div className="state-callout lexical-state">
@@ -663,13 +749,18 @@ export default function ResearchPage() {
                         ) : (
                           <p>{m.content}</p>
                         )}
+                        {m.role === 'assistant' && answer?.message_id === m.id && hasModelProvenance && (
+                          <small className="answer-provenance" data-generation-kind={generationKind}>
+                            Model: {String(modelId)} · {String(generationKind)}
+                          </small>
+                        )}
                         {m.role === 'assistant' &&
                           !['model_unavailable', 'no_evidence', 'embedding_unavailable', 'error'].includes(
                             m.status ?? '',
                           ) && (
                             <div className="turn-actions">
-                              <button onClick={() => void navigator.clipboard.writeText(m.content)}>
-                                <Copy size={13} /> Copy
+                              <button onClick={() => void copyAnswer(m.id, m.content)}>
+                                <Copy size={13} /> {copiedTurnId === m.id ? 'Copied' : 'Copy'}
                               </button>
                               <button onClick={() => void save(m.id)}>
                                 <Bookmark size={13} /> Save
@@ -707,7 +798,7 @@ export default function ResearchPage() {
                         ? 'From the case record'
                         : answerIsInsufficient
                           ? 'Insufficient evidence — excerpts only'
-                          : answerStatusLabel(answer.status)}
+                          : answerStatusLabel(answer.status, answer.answer_kind, answer.generation_kind)}
                     </span>
                   </div>
                   {answer.status === 'model_unavailable' ? (
@@ -736,7 +827,9 @@ export default function ResearchPage() {
                           ? 'No supporting excerpts were found. Upload a document, widen the scope, or rephrase the question.'
                           : 'Review the retrieved excerpts below; no conclusion was generated from this evidence.'}
                       </p>
-                      {answer.status === 'no_evidence' && <Link href="/documents">Upload a document</Link>}
+                      {answer.status === 'no_evidence' && (
+                        <Link href="/research/documents">Upload a document</Link>
+                      )}
                     </div>
                   ) : answer.answer_basis === 'case_record' ? (
                     <>
@@ -750,7 +843,7 @@ export default function ResearchPage() {
                         No supporting documents were found for this question. Upload a document, widen the
                         research scope, or rephrase your question.
                       </p>
-                      <Link href="/documents">
+                      <Link href="/research/documents">
                         Upload a document <ArrowRight size={13} />
                       </Link>
                     </div>
@@ -781,18 +874,21 @@ export default function ResearchPage() {
                     <>
                       <AnswerText text={answer.answer || ''} citations={sources} />
                       <ConflictNotices conflicts={answer.conflicts ?? []} sources={sources} />
-                      {answer.disclaimer && answer.answer_basis !== 'case_record' && (
+                      {hasModelProvenance && (
+                        <small className="answer-provenance" data-generation-kind={generationKind}>
+                          Model: {String(modelId)} · {String(generationKind)}
+                        </small>
+                      )}
+                      {answer.disclaimer && hasModelProvenance && answer.answer_basis !== 'case_record' && (
                         <small className="disclaimer">AI-generated — review before relying on it.</small>
                       )}
                       <div className="turn-actions">
                         <button
                           onClick={() =>
-                            answer.message_id
-                              ? void navigator.clipboard.writeText(answer.answer ?? '')
-                              : undefined
+                            answer.message_id && void copyAnswer(answer.message_id, answer.answer ?? '')
                           }
                         >
-                          <Copy size={13} /> Copy
+                          <Copy size={13} /> {copiedTurnId === answer.message_id ? 'Copied' : 'Copy'}
                         </button>
                         <button onClick={() => void save(answer.message_id)}>
                           <Bookmark size={13} />
@@ -880,7 +976,9 @@ export default function ResearchPage() {
                   {answer && ['ok', 'answered'].includes(answer.status)
                     ? answerIsInsufficient
                       ? 'Retrieved evidence · no conclusion generated'
-                      : 'Sources used in this answer'
+                      : sourcesForAnswer.length
+                        ? 'Answer-linked excerpts and other retrieved material'
+                        : 'Retrieved excerpts · answer links unavailable'
                     : answer?.status === 'model_unavailable'
                       ? 'Lexical results · documents only'
                       : 'Available evidence'}
@@ -893,31 +991,23 @@ export default function ResearchPage() {
             )}
             {selectedSources.length ? (
               <div className="source-list">
-                {groupedSources.map((group) => (
-                  <article className="source-item" key={group.documentId}>
-                    <div className="source-top">
-                      <div>
-                        <strong>{group.title}</strong>
-                        <PageLinks sources={group.pages.flatMap((page) => page.sources)} />
-                      </div>
-                    </div>
-                    {group.excerptGroups.map((excerptGroup) => (
-                      <div className="source-excerpt" key={excerptGroup.excerpt}>
-                        <p>“{excerptGroup.excerpt}”</p>
-                        <PageLinks sources={excerptGroup.sources} />
-                      </div>
-                    ))}
-                    <div className="source-relevance">
-                      {group.pages.map((page) => (
-                        <span key={page.page}>
-                          Rank {page.rank} · Relevance{' '}
-                          <b>{page.bestScore == null ? '—' : page.bestScore.toFixed(2)}</b> · relative to this
-                          query
-                        </span>
-                      ))}
-                    </div>
-                  </article>
-                ))}
+                {sourcesForAnswer.length > 0 && (
+                  <section className="source-group" aria-label="Sources for this answer">
+                    <h3>Sources for this answer</h3>
+                    <SourceGroups groups={supportedGroups} />
+                  </section>
+                )}
+                {otherRetrievedSources.length > 0 && (
+                  <section className="source-group" aria-label="Other retrieved material">
+                    <h3>Other retrieved material</h3>
+                    {['ok', 'answered'].includes(answer?.status ?? '') && (
+                      <p className="source-reason">
+                        The API did not identify these excerpts as support for the answer.
+                      </p>
+                    )}
+                    <SourceGroups groups={answer ? otherGroups : groupedSources} />
+                  </section>
+                )}
               </div>
             ) : (
               answer?.status !== 'no_evidence' && (
@@ -928,7 +1018,9 @@ export default function ResearchPage() {
                 </div>
               )
             )}
-            <div className="source-footnote">Citations link to the original document page.</div>
+            <div className="source-footnote">
+              Citation links request the referenced page in the document viewer.
+            </div>
           </section>
         </aside>
       </div>
