@@ -297,7 +297,15 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
     await page.keyboard.insertText(uniquePhrase);
     const saveVersion = page.getByRole('button', { name: 'Save version' });
     await expect(saveVersion).toBeVisible();
+    await expect(editor).toContainText(uniquePhrase);
+    const saveRequest = page.waitForRequest(
+      (request) =>
+        new URL(request.url()).pathname === `/api/v1/drafts/${draftId}/versions` &&
+        request.method() === 'POST',
+    );
     await saveVersion.click();
+    const savedRequest = await saveRequest;
+    expect(savedRequest.postDataJSON().content_markdown).toContain(uniquePhrase);
     await expect(page.getByRole('status')).toContainText(/saved/i);
   }
   await page.reload();
