@@ -23,7 +23,7 @@ cd backend
 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
 
-The API prefix is `/api/v1`. Root `/health`, `/ingest/file`, and `/query` remain for legacy clients. The OpenAPI document is served at `/openapi.json`; `openapi.json` in this directory is the committed snapshot.
+The API prefix is `/api/v1`. Root `/health`, `/ingest/file`, and `/query` remain for legacy clients. The OpenAPI document is served at `/openapi.json`; `openapi.json` in this directory is the committed snapshot. `/api/v1/calendar` keeps its original bare-array default response for existing clients; append `?envelope=true` to receive `{items,total,page,page_size,pages}`.
 
 ## Configuration
 
