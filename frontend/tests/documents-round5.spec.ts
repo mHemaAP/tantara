@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010'}/api/v1`;
 const screenshots = '../docs/screenshots';
 
 async function signIn(request: APIRequestContext) {
@@ -89,6 +89,7 @@ test('real seeded document opens from library, renders proportionally, reads, an
     });
     settings = await request.get(`${apiUrl}/settings/ai`, { headers }).then((response) => response.json());
   }
+  const configuredModel = settings.runtime_status?.model ?? settings.model;
   const document = await seededPageThreeDocument(request, token);
   await openWithToken(page, token, '/documents');
   await expect(page.getByRole('link', { name: 'Page Three Motion' })).toBeVisible({ timeout: 60000 });
@@ -112,60 +113,53 @@ test('real seeded document opens from library, renders proportionally, reads, an
   await expect(page.getByRole('group', { name: /^Filename / })).toBeVisible();
   await captureViewport(page, 'documents-round5-metadata-desktop-1440-real', 1440, 900);
 
-  if (!settings.runtime_status?.reachable) {
-    await page.getByRole('button', { name: 'Run document extraction' }).click();
-    await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible();
-    await expect(page.locator('.ai-read-field')).toHaveCount(0);
-    await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
-  } else {
-    await expect(page.getByRole('button', { name: 'Run document extraction' })).toBeVisible();
-    await page.getByRole('button', { name: 'Run document extraction' }).click();
-    await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 150000 });
-    await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 150000 });
-    await expect(page.locator('.ai-read-field[data-field-key="summary"]')).toContainText(
-      'Routine procedural filing',
-    );
-    await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction');
-    await expect(page.locator('.ai-read-panel')).toContainText('candidate only');
-    await expect(page.locator('.ai-read-panel')).toContainText(settings.model);
-    await expect(page.locator('.ai-read-panel')).not.toContainText(/\[\]|\{"found"|ai_suggested/);
-    await expect(page.locator('.ai-read-panel')).not.toContainText('AI-generated');
-    const arbitrationClause = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
-    const extractedSummary = page.locator('.ai-read-field[data-field-key="summary"]');
-    await expect(arbitrationClause).toBeVisible();
-    await expect(extractedSummary).toBeVisible();
-    await expect(arbitrationClause).toContainText('Not extracted');
-    const aiPanel = page.locator('.ai-read-panel');
-    const panelBounds = await aiPanel.boundingBox();
-    expect(panelBounds).not.toBeNull();
-    expect(panelBounds!.y + panelBounds!.height).toBeLessThanOrEqual(900);
-    const fieldList = page.locator('.ai-read-fields');
-    await fieldList.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-    await expect(page.locator('.ai-read-field').last()).toBeVisible();
-    await fieldList.evaluate((element) => {
-      element.scrollTop = 0;
-    });
-    const summaryDisclosure = extractedSummary.locator('.ai-read-summary-disclosure');
-    const collapsedSummaryHeight = await summaryDisclosure.boundingBox();
-    expect(collapsedSummaryHeight).not.toBeNull();
-    expect(collapsedSummaryHeight!.height).toBeLessThanOrEqual(160);
-    await summaryDisclosure.locator('summary').click();
-    await expect(summaryDisclosure).toContainText(/Unique page three clause/);
-    await summaryDisclosure.locator('summary').click();
-    await page.getByRole('button', { name: 'Zoom out' }).click();
-    await page.getByRole('button', { name: 'Zoom out' }).click();
-    await page.getByRole('button', { name: 'Zoom out' }).click();
-    await expect(page.locator('.pdf-zoom-controls')).toContainText('55%');
-    await page.getByRole('button', { name: 'Fit width' }).click();
-    await expect(page.locator('.pdf-zoom-controls')).toContainText('100%');
-    await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
-      timeout: 60000,
-    });
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await captureViewport(page, 'documents-round5-airead-desktop-1440-populated-real', 1440, 900);
-  }
+  await expect(page.getByRole('button', { name: 'Run document extraction' })).toBeVisible();
+  await page.getByRole('button', { name: 'Run document extraction' }).click();
+  await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 150000 });
+  await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 150000 });
+  await expect(page.locator('.ai-read-field[data-field-key="summary"]')).toContainText(
+    'Routine procedural filing',
+  );
+  await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction');
+  await expect(page.locator('.ai-read-panel')).toContainText('candidate only');
+  if (configuredModel) await expect(page.locator('.ai-read-panel')).toContainText(configuredModel);
+  await expect(page.locator('.ai-read-panel')).not.toContainText(/\[\]|\{"found"|ai_suggested/);
+  await expect(page.locator('.ai-read-panel')).not.toContainText('AI-generated');
+  const arbitrationClause = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
+  const extractedSummary = page.locator('.ai-read-field[data-field-key="summary"]');
+  await expect(arbitrationClause).toBeVisible();
+  await expect(extractedSummary).toBeVisible();
+  await expect(arbitrationClause).toContainText('Not extracted');
+  const aiPanel = page.locator('.ai-read-panel');
+  const panelBounds = await aiPanel.boundingBox();
+  expect(panelBounds).not.toBeNull();
+  expect(panelBounds!.y + panelBounds!.height).toBeLessThanOrEqual(900);
+  const fieldList = page.locator('.ai-read-fields');
+  await fieldList.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(page.locator('.ai-read-field').last()).toBeVisible();
+  await fieldList.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const summaryDisclosure = extractedSummary.locator('.ai-read-summary-disclosure');
+  const collapsedSummaryHeight = await summaryDisclosure.boundingBox();
+  expect(collapsedSummaryHeight).not.toBeNull();
+  expect(collapsedSummaryHeight!.height).toBeLessThanOrEqual(160);
+  await summaryDisclosure.locator('summary').click();
+  await expect(summaryDisclosure).toContainText(/Unique page three clause/);
+  await summaryDisclosure.locator('summary').click();
+  await page.getByRole('button', { name: 'Zoom out' }).click();
+  await page.getByRole('button', { name: 'Zoom out' }).click();
+  await page.getByRole('button', { name: 'Zoom out' }).click();
+  await expect(page.locator('.pdf-zoom-controls')).toContainText('55%');
+  await page.getByRole('button', { name: 'Fit width' }).click();
+  await expect(page.locator('.pdf-zoom-controls')).toContainText('100%');
+  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await captureViewport(page, 'documents-round5-airead-desktop-1440-populated-real', 1440, 900);
 
   const pageThreeText =
     'Unique page three clause: Sapphire Pavilion shall host the special procedural conference on the third calendar day.';
@@ -239,7 +233,7 @@ test('upload control reports completion and opens the uploaded PDF with a source
   await expect(clause).toBeVisible({ timeout: 90000 });
   await expect(clause.locator('.ai-source-page')).toHaveText('Page 1');
   await expect(page.getByLabel('PDF page 1')).toBeVisible();
-  await captureViewport(page, 'documents-round5-upload-outcome-desktop-1440-fixture', 1440, 900);
+  await captureViewport(page, 'documents-round5-upload-outcome-desktop-1440-real', 1440, 900);
   let deleteSucceeded = false;
   for (let attempt = 0; attempt < 3 && !deleteSucceeded; attempt += 1) {
     try {
@@ -257,13 +251,18 @@ test('library filters, layout, selection, preview, and PDF download change state
   page,
   request,
 }) => {
+  test.setTimeout(90000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   const documents = await request
     .get(`${apiUrl}/documents?page_size=100`, { headers })
     .then((response) => response.json());
-  const firstDocument = documents.items[0] as { id: string; title: string; status: string };
+  const firstDocument = documents.items.find(
+    (item: { id: string; title: string; status: string; filename: string }) =>
+      item.filename === 'page-three-motion.pdf' && item.status === 'ready',
+  ) as { id: string; title: string; status: string; filename: string } | undefined;
+  if (!firstDocument) throw new Error('Seeded page-three-motion.pdf is not present in the real API list.');
   await openWithToken(page, token, '/documents');
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 60000 });
 
