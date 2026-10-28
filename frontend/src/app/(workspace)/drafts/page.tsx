@@ -103,6 +103,17 @@ const recognizedStructure = (value: string) => {
     /\b(we are asked to|we need to|we must|we should|let's examine|the question says|the chunks show|verified fields:|reviewed extraction candidates:|we have a bunch|this is an advocate review draft)\b/i;
   return !deliberation.test(text) && structured && body.split(/\s+/).filter(Boolean).length >= 20;
 };
+const editorMarkdown = (root: HTMLElement) =>
+  Array.from(root.children)
+    .map((element) => {
+      const text = (element as HTMLElement).innerText.trim();
+      if (!text) return '';
+      if (element.tagName === 'H1') return `# ${text}`;
+      if (element.tagName === 'H2') return `## ${text}`;
+      return text;
+    })
+    .filter(Boolean)
+    .join('\n\n');
 const versionLabel = (v: Row) =>
   v.version_number != null
     ? `Version ${v.version_number}`
@@ -245,7 +256,7 @@ export default function DraftsPage() {
     } catch (e: any) {
       setError(
         e.message === 'Failed to fetch'
-          ? 'Draft service unavailable at 127.0.0.1:8115. Check the private API and retry.'
+          ? 'Draft service is unavailable. Check your connection and retry.'
           : `Draft generation failed: ${e.message}`,
       );
       setStatus('');
@@ -258,9 +269,12 @@ export default function DraftsPage() {
     if (!draft?.id) return;
     setSaving(true);
     try {
-      if (!normalizeWhitespace(content)) throw new Error('Draft content cannot be blank.');
+      const editor = document.querySelector<HTMLElement>('.draft-editor');
+      const latestContent = normalizeWhitespace(editor ? editorMarkdown(editor) : content);
+      if (!latestContent) throw new Error('Draft content cannot be blank.');
+      setContent(latestContent);
       const r = await draftsApi.save(String(draft.id), {
-        content_markdown: normalizeWhitespace(content),
+        content_markdown: latestContent,
         change_note: 'Saved from drafting workspace',
       });
       const v = await draftsApi.versions(String(draft.id));
@@ -275,12 +289,7 @@ export default function DraftsPage() {
   const exportFile = async (format: 'docx' | 'pdf') => {
     if (!draft?.id) return;
     try {
-      const base = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8115').replace(/\/$/, '');
-      const resp = await fetch(`${base}/api/v1/drafts/${draft.id}/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('tantara_token') ?? ''}` },
-      });
-      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-      const blob = await resp.blob(),
+      const blob = await draftsApi.export(String(draft.id), format),
         url = URL.createObjectURL(blob),
         a = document.createElement('a');
       a.href = url;
@@ -644,7 +653,7 @@ export default function DraftsPage() {
                       className="draft-editor"
                       contentEditable
                       suppressContentEditableWarning
-                      onInput={(e) => setContent(e.currentTarget.innerText)}
+                      onInput={(e) => setContent(editorMarkdown(e.currentTarget))}
                       dangerouslySetInnerHTML={{
                         __html: safeHtml(
                           normalizeWhitespace(
