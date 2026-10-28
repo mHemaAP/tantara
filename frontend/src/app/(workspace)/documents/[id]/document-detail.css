@@ -218,6 +218,21 @@
   white-space: pre-wrap;
 }
 
+.ai-read-summary-disclosure > summary {
+  max-height: 5.4em;
+  overflow: hidden;
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.ai-read-summary-disclosure[open] > summary {
+  max-height: none;
+}
+
+.ai-read-summary-disclosure > div {
+  margin-top: 8px;
+}
+
 .ai-read-value ul {
   margin: 0;
   padding-left: 18px;
