@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { endpoints } from '@/lib/api/endpoints';
 import { api, authToken, isReadOnlyPreview } from '@/lib/api/client';
 import { keys } from '@/lib/api/keys';
+import { CorpusImportPanel } from '@/features/settings-data/CorpusImportPanel';
 import {
   User,
   Building2,
@@ -203,7 +204,7 @@ export default function SettingsSection() {
   const query = useQuery({
     queryKey: keys.settings(section),
     queryFn: () => endpoints.settings(section),
-    enabled: !!labels[section],
+    enabled: !!labels[section] && section !== 'data-import',
   });
   const status = useQuery({
     queryKey: ['ai', 'status'],
@@ -464,29 +465,7 @@ function SpecialSettings({
         </button>
       </div>
     );
-  if (section === 'data-import')
-    return (
-      <div>
-        <p className="muted">Import public legal materials into the local workspace.</p>
-        <button
-          className="primary"
-          disabled={busy || preview}
-          title={preview ? 'Sign in to start an import' : ''}
-          onClick={() => void trigger('/settings/data/import')}
-        >
-          <Upload size={15} />
-          {busy ? 'Starting…' : 'Start corpus import'}
-        </button>
-        <dl className="data-list" style={{ marginTop: 20 }}>
-          {Object.entries(data).map(([k, v]) => (
-            <div key={k}>
-              <dt>{k.replaceAll('_', ' ')}</dt>
-              <dd>{typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    );
+  if (section === 'data-import') return <CorpusImportPanel />;
   if (section === 'security')
     return (
       <div>
