@@ -43,6 +43,19 @@ The live AI settings endpoint reported the model reachable. Tests branch on that
 
 The real viewer and AI Read captures show the seeded demo document **`page-three-motion.pdf`**, 5 pages, SHA-256 **`ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6`**. The Page 3 citation resolves to: “Unique page three clause: Sapphire Pavilion shall host the special procedural conference on the third calendar day.” The text appears in the page text layer after clicking the Page 3 citation.
 
+| Viewer capture | Visible page | Document identity |
+|---|---:|---|
+| `documents-round5-viewer-desktop-1440-real.png` | 1 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-round5-viewer-mobile-390-real.png` | 1 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-viewer-page2-desktop-1440-real.png` | 2 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-viewer-page2-mobile-390-real.png` | 2 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-round5-metadata-desktop-1440-real.png` | 1 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-round5-metadata-mobile-390-real.png` | 1 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-round5-airead-desktop-1440-populated-real.png` | 1 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-round5-airead-mobile-390-populated-real.png` | 1 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-round5-citation-page3-desktop-1440-real.png` | 3 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+| `documents-round5-citation-page3-mobile-390-real.png` | 3 of 5 | `page-three-motion.pdf`; SHA-256 `ab7f8914425ba71199556afddc6c2947a171234ff3c56ec8d4102a56da2559a6` |
+
 Desktop captures (1440×900):
 
 - `docs/screenshots/documents-round5-viewer-desktop-1440-real.png` — rendered page and toolbar.
