@@ -15,6 +15,27 @@ type Event = {
   case_id?: string;
   all_day?: boolean;
 };
+const eventLabels: Record<string, string> = {
+  all_day_event: "All-day event",
+  first_hearing: "First hearing",
+  hearing_completed: "Hearing completed",
+};
+function eventLabel(event: Event) {
+  return (
+    eventLabels[event.type || ""] ||
+    eventLabels[event.title] ||
+    (event.title || "Case event")
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+function isAllDay(event: Event) {
+  return (
+    event.all_day === true ||
+    event.type === "all_day_event" ||
+    event.title === "all_day_event"
+  );
+}
 const zone = "Asia/Kolkata";
 function todayInZone() {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -55,6 +76,8 @@ function eventList(data: unknown): Event[] {
 export default function CalendarPage() {
   const [cursor, setCursor] = useState(() => todayInZone());
   const [view, setView] = useState<"Month" | "Week" | "Agenda">("Month");
+  const [agendaPage, setAgendaPage] = useState(0);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   useEffect(() => {
     if (window.matchMedia("(max-width: 650px)").matches) setView("Agenda");
   }, []);
@@ -93,7 +116,18 @@ export default function CalendarPage() {
         `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
       ),
   });
+  const casesQuery = useQuery({
+    queryKey: ["calendar-case-titles"],
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; title: string }> }>(
+        "/cases?page_size=100",
+      ),
+  });
   const events = eventList(q.data);
+  const caseTitles = new Map(
+    (casesQuery.data?.items || []).map((item) => [item.id, item.title]),
+  );
+  useEffect(() => setAgendaPage(0), [cursor, view]);
   const days = useMemo(
     () =>
       view === "Week"
@@ -141,6 +175,9 @@ export default function CalendarPage() {
     );
   const displayEvents = (day: Date) =>
     events.filter((event) => localKey(eventDate(event)) === localKey(day));
+  const datedDays = days.filter((day) => displayEvents(day).length > 0);
+  const agendaPages = Math.max(1, Math.ceil(datedDays.length / 7));
+  const visibleAgendaDays = datedDays.slice(agendaPage * 7, agendaPage * 7 + 7);
   const heading =
     view === "Week"
       ? `${firstDay.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: zone })} – ${new Date(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate() + 6).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: zone })}`
@@ -202,41 +239,67 @@ export default function CalendarPage() {
           <div className="matter-skeleton" />
         ) : view === "Agenda" ? (
           <div className="calendar-agenda" data-calendar-agenda-settled="true">
-            {days.flatMap((day) => {
+            {visibleAgendaDays.map((day) => {
               const dated = displayEvents(day);
-              return dated.length
-                ? [
-                    <section key={localKey(day)}>
-                      <h2>
-                        {day.toLocaleDateString("en-IN", {
-                          weekday: "long",
-                          day: "numeric",
-                          month: "long",
-                          timeZone: zone,
-                        })}
-                      </h2>
-                      {dated.map((event) => (
-                        <div className="calendar-agenda-row" key={event.id}>
-                          <time>
-                            {event.all_day
-                              ? "All day"
-                              : eventDate(event).toLocaleTimeString("en-IN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  timeZone: zone,
-                                })}
-                          </time>
-                          <span>
-                            {event.title}
-                            {event.case_title ? ` · ${event.case_title}` : ""}
-                          </span>
-                        </div>
-                      ))}
-                    </section>,
-                  ]
-                : [];
+              return (
+                <section key={localKey(day)}>
+                  <h2>
+                    {day.toLocaleDateString("en-IN", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                      timeZone: zone,
+                    })}
+                  </h2>
+                  {dated.map((event) => (
+                    <button
+                      className="calendar-agenda-row"
+                      key={event.id}
+                      onClick={() => setSelectedEvent(event)}
+                      aria-label={`View ${isAllDay(event) ? "All-day event" : eventLabel(event)}`}
+                    >
+                      {!isAllDay(event) && (
+                        <time>
+                          {eventDate(event).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: zone,
+                          })}
+                        </time>
+                      )}
+                      <span>
+                        {eventLabel(event)}
+                        {event.case_title || caseTitles.get(event.case_id || "")
+                          ? ` · ${event.case_title || caseTitles.get(event.case_id || "")}`
+                          : ""}
+                      </span>
+                    </button>
+                  ))}
+                </section>
+              );
             })}
             {events.length === 0 && <p>No events in this period</p>}
+            {datedDays.length > 7 && (
+              <nav className="calendar-agenda-pages" aria-label="Agenda pages">
+                <button
+                  disabled={agendaPage === 0}
+                  onClick={() => setAgendaPage((p) => p - 1)}
+                >
+                  Previous days
+                </button>
+                <span>
+                  Days {agendaPage * 7 + 1}–
+                  {Math.min((agendaPage + 1) * 7, datedDays.length)} of{" "}
+                  {datedDays.length}
+                </span>
+                <button
+                  disabled={agendaPage + 1 >= agendaPages}
+                  onClick={() => setAgendaPage((p) => p + 1)}
+                >
+                  Next days
+                </button>
+              </nav>
+            )}
           </div>
         ) : (
           <div className="calendar-grid" data-view={view}>
@@ -270,22 +333,58 @@ export default function CalendarPage() {
                     {isToday && <small>Today</small>}
                   </span>
                   {displayEvents(day).map((event) => (
-                    <div className="calendar-event" key={event.id}>
-                      <time>
-                        {event.all_day
-                          ? "All day"
-                          : eventDate(event).toLocaleTimeString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              timeZone: zone,
-                            })}
-                      </time>{" "}
-                      {event.title}
-                    </div>
+                    <button
+                      className="calendar-event"
+                      key={event.id}
+                      onClick={() => setSelectedEvent(event)}
+                      aria-label={`View ${isAllDay(event) ? "All-day event" : eventLabel(event)}`}
+                    >
+                      {!isAllDay(event) && (
+                        <time>
+                          {eventDate(event).toLocaleTimeString("en-IN", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: zone,
+                          })}
+                        </time>
+                      )}
+                      {!isAllDay(event) && " "}
+                      {eventLabel(event)}
+                    </button>
                   ))}
                 </div>
               );
             })}
+          </div>
+        )}
+        {selectedEvent && (
+          <div
+            className="calendar-event-detail"
+            role="dialog"
+            aria-label="Event details"
+          >
+            <button
+              className="calendar-event-close"
+              aria-label="Close event details"
+              onClick={() => setSelectedEvent(null)}
+            >
+              ×
+            </button>
+            <h2>{eventLabel(selectedEvent)}</h2>
+            <p>
+              {selectedEvent.case_title ||
+                caseTitles.get(selectedEvent.case_id || "") ||
+                "Case event"}
+            </p>
+            <p>
+              {isAllDay(selectedEvent)
+                ? "All-day"
+                : eventDate(selectedEvent).toLocaleString("en-IN", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                    timeZone: zone,
+                  })}
+            </p>
           </div>
         )}
       </div>
