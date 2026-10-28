@@ -1,34 +1,34 @@
-"use client";
-import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { ApiError } from "@/lib/api/client";
-import { casesApi } from "@/features/cases/api";
-import { RefreshCw } from "lucide-react";
-import { StrategyPanel } from "@/features/cases/components/strategy";
-import "@/features/cases/styles.css";
+'use client';
+import Link from 'next/link';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { ApiError } from '@/lib/api/client';
+import { casesApi } from '@/features/cases/api';
+import { RefreshCw } from 'lucide-react';
+import { StrategyPanel } from '@/features/cases/components/strategy';
+import '@/features/cases/styles.css';
 
 const tabs = [
-  "Overview",
-  "Timeline",
-  "Parties",
-  "Documents",
-  "Research",
-  "Drafts",
-  "Hearings",
-  "Tasks",
-  "Notes",
-  "Strategy",
-  "Activity log",
+  'Overview',
+  'Timeline',
+  'Parties',
+  'Documents',
+  'Research',
+  'Drafts',
+  'Hearings',
+  'Tasks',
+  'Notes',
+  'Strategy',
+  'Activity log',
 ];
 type RecordValue = Record<string, unknown>;
 function listFrom(value: unknown): RecordValue[] {
   if (Array.isArray(value)) return value as RecordValue[];
   if (
     value &&
-    typeof value === "object" &&
-    "items" in value &&
+    typeof value === 'object' &&
+    'items' in value &&
     Array.isArray((value as { items: unknown }).items)
   )
     return (value as { items: RecordValue[] }).items;
@@ -40,14 +40,12 @@ function Records({
   fields,
   onEdit,
   onRemove,
-  readOnly = false,
 }: {
   title: string;
   rows: RecordValue[];
   fields: Array<[string, string]>;
   onEdit?: (row: RecordValue) => void;
   onRemove?: (row: RecordValue) => void;
-  readOnly?: boolean;
 }) {
   return (
     <section>
@@ -56,54 +54,24 @@ function Records({
         <div className="case-record-list">
           {rows.map((row, index) => (
             <article key={String(row.id || index)}>
-              <strong>
-                {String(
-                  row.title ||
-                    row.name ||
-                    row.event_type ||
-                    row.action ||
-                    title,
-                )}
-              </strong>
+              <strong>{String(row.title || row.name || row.event_type || row.action || title)}</strong>
               <dl>
                 {fields.map(([key, label]) => (
                   <div key={key}>
                     <dt>{label}</dt>
-                    <dd>
-                      {row[key] == null || row[key] === ""
-                        ? "—"
-                        : String(row[key])}
-                    </dd>
+                    <dd>{row[key] == null || row[key] === '' ? '—' : String(row[key])}</dd>
                   </div>
                 ))}
               </dl>
               {(onEdit || onRemove) && (
                 <div className="case-record-actions">
                   {onEdit && (
-                    <button
-                      type="button"
-                      disabled={readOnly}
-                      title={
-                        readOnly
-                          ? "Changes are disabled in read-only preview"
-                          : undefined
-                      }
-                      onClick={() => onEdit(row)}
-                    >
+                    <button type="button" onClick={() => onEdit(row)}>
                       Edit
                     </button>
                   )}
                   {onRemove && (
-                    <button
-                      type="button"
-                      disabled={readOnly}
-                      title={
-                        readOnly
-                          ? "Changes are disabled in read-only preview"
-                          : undefined
-                      }
-                      onClick={() => onRemove(row)}
-                    >
+                    <button type="button" onClick={() => onRemove(row)}>
                       Delete
                     </button>
                   )}
@@ -113,9 +81,7 @@ function Records({
           ))}
         </div>
       ) : (
-        <p className="matter-empty case-inline-empty">
-          No {title.toLowerCase()} recorded for this case.
-        </p>
+        <p className="matter-empty case-inline-empty">No {title.toLowerCase()} recorded for this case.</p>
       )}
     </section>
   );
@@ -125,25 +91,20 @@ export default function CaseDetailPage() {
   const router = useRouter();
   const params = useSearchParams();
   const queryClient = useQueryClient();
-  const [editor, setEditor] = useState("");
-  const [editorTitle, setEditorTitle] = useState("");
-  const [editorDate, setEditorDate] = useState("");
-  const [editorBody, setEditorBody] = useState("");
-  const [editorRole, setEditorRole] = useState("counsel");
+  const [editor, setEditor] = useState('');
+  const [editorTitle, setEditorTitle] = useState('');
+  const [editorDate, setEditorDate] = useState('');
+  const [editorBody, setEditorBody] = useState('');
+  const [editorRole, setEditorRole] = useState('counsel');
   const [saving, setSaving] = useState(false);
-  const [recordId, setRecordId] = useState("");
-  const [preview, setPreview] = useState(false);
-  useEffect(
-    () => setPreview(localStorage.getItem("tantara_preview") === "true"),
-    [],
-  );
-  const tab = params.get("tab") || "Overview";
+  const [recordId, setRecordId] = useState('');
+  const tab = params.get('tab') || 'Overview';
   const c = useQuery({
-    queryKey: ["case", id],
+    queryKey: ['case', id],
     queryFn: () => casesApi.get(id),
   });
   const overview = useQuery({
-    queryKey: ["case-overview", id],
+    queryKey: ['case-overview', id],
     queryFn: () => casesApi.overview(id),
     enabled: !c.isLoading && !c.isError,
   });
@@ -156,17 +117,14 @@ export default function CaseDetailPage() {
     Drafts: () => casesApi.drafts(id),
   };
   const payload = useQuery({
-    queryKey: ["case-tab", id, tab],
+    queryKey: ['case-tab', id, tab],
     queryFn: keyed[tab] || (() => Promise.resolve(null)),
     enabled: !!keyed[tab] && !!c.data,
   });
   if (c.isLoading)
     return (
       <section className="matter-wrap">
-        <div
-          className="matter-card matter-skeleton"
-          aria-label="Loading case"
-        />
+        <div className="matter-card matter-skeleton" aria-label="Loading case" />
       </section>
     );
   if (c.isError) {
@@ -174,11 +132,11 @@ export default function CaseDetailPage() {
     return (
       <section className="matter-wrap">
         <div className="matter-card matter-not-found">
-          <h1>{missing ? "Case not found" : "Case is unavailable"}</h1>
+          <h1>{missing ? 'Case not found' : 'Case is unavailable'}</h1>
           <p>
             {missing
-              ? "This case may have been removed or you may not have access."
-              : "The case could not be loaded. Check the workspace connection and retry."}
+              ? 'This case may have been removed or you may not have access.'
+              : 'The case could not be loaded. Check the workspace connection and retry.'}
           </p>
           <button className="matter-action" onClick={() => void c.refetch()}>
             <RefreshCw size={14} /> Retry
@@ -191,9 +149,10 @@ export default function CaseDetailPage() {
   const item = c.data!;
   const over = (overview.data || {}) as RecordValue;
   const people = listFrom(over.participants);
-  const facts = [...Object.entries(item), ...Object.entries(over)].reduce<
-    Record<string, unknown>
-  >((a, [k, v]) => ((a[k] = v), a), {});
+  const facts = [...Object.entries(item), ...Object.entries(over)].reduce<Record<string, unknown>>(
+    (a, [k, v]) => ((a[k] = v), a),
+    {},
+  );
   const setTab = (name: string) =>
     router.replace(`/cases/${id}?tab=${encodeURIComponent(name)}`, {
       scroll: false,
@@ -201,10 +160,9 @@ export default function CaseDetailPage() {
   const rows = listFrom(payload.data);
   const createRecord = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (localStorage.getItem("tantara_preview") === "true") return;
     setSaving(true);
     try {
-      if (editor === "Timeline") {
+      if (editor === 'Timeline') {
         const value = {
           type: editorTitle,
           occurred_at: editorDate,
@@ -213,7 +171,7 @@ export default function CaseDetailPage() {
         if (recordId) await casesApi.updateEvent(id, recordId, value);
         else await casesApi.addEvent(id, value);
       }
-      if (editor === "Hearings") {
+      if (editor === 'Hearings') {
         const value = {
           case_id: id,
           title: editorTitle,
@@ -223,7 +181,7 @@ export default function CaseDetailPage() {
         if (recordId) await casesApi.updateHearing(recordId, value);
         else await casesApi.addHearing(value);
       }
-      if (editor === "Notes") {
+      if (editor === 'Notes') {
         const value = {
           case_id: id,
           title: editorTitle,
@@ -232,7 +190,7 @@ export default function CaseDetailPage() {
         if (recordId) await casesApi.updateNote(recordId, value);
         else await casesApi.addNote(value);
       }
-      if (editor === "Parties") {
+      if (editor === 'Parties') {
         const value = {
           name: editorTitle,
           party_role: editorRole,
@@ -242,54 +200,42 @@ export default function CaseDetailPage() {
         else await casesApi.addParticipant(id, value);
       }
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["case-tab", id, editor] }),
-        queryClient.invalidateQueries({ queryKey: ["case-overview", id] }),
-        queryClient.invalidateQueries({ queryKey: ["case", id] }),
+        queryClient.invalidateQueries({ queryKey: ['case-tab', id, editor] }),
+        queryClient.invalidateQueries({ queryKey: ['case-overview', id] }),
+        queryClient.invalidateQueries({ queryKey: ['case', id] }),
       ]);
-      setEditor("");
-      setRecordId("");
-      setEditorTitle("");
-      setEditorDate("");
-      setEditorBody("");
+      setEditor('');
+      setRecordId('');
+      setEditorTitle('');
+      setEditorDate('');
+      setEditorBody('');
     } catch (error) {
-      window.alert(
-        error instanceof Error ? error.message : "Unable to save record",
-      );
+      window.alert(error instanceof Error ? error.message : 'Unable to save record');
     } finally {
       setSaving(false);
     }
   };
   const editRecord = (section: string, row: RecordValue) => {
-    setRecordId(String(row.id || ""));
+    setRecordId(String(row.id || ''));
     setEditor(section);
-    setEditorTitle(String(row.title || row.type || row.name || ""));
-    setEditorDate(String(row.at || row.occurred_at || "").slice(0, 16));
-    setEditorBody(
-      String(row.body || row.detail || row.notes || row.organization || ""),
-    );
-    setEditorRole(String(row.party_role || "counsel"));
+    setEditorTitle(String(row.title || row.type || row.name || ''));
+    setEditorDate(String(row.at || row.occurred_at || '').slice(0, 16));
+    setEditorBody(String(row.body || row.detail || row.notes || row.organization || ''));
+    setEditorRole(String(row.party_role || 'counsel'));
   };
   const deleteRecord = async (section: string, row: RecordValue) => {
-    if (localStorage.getItem("tantara_preview") === "true") return;
-    if (
-      !window.confirm(`Delete “${String(row.title || row.name || section)}”?`)
-    )
-      return;
+    if (!window.confirm(`Delete “${String(row.title || row.name || section)}”?`)) return;
     try {
-      if (section === "Timeline")
-        await casesApi.removeEvent(id, String(row.id));
-      if (section === "Hearings") await casesApi.removeHearing(String(row.id));
-      if (section === "Parties")
-        await casesApi.removeParticipant(id, String(row.id));
-      if (section === "Notes") await casesApi.removeNote(String(row.id));
+      if (section === 'Timeline') await casesApi.removeEvent(id, String(row.id));
+      if (section === 'Hearings') await casesApi.removeHearing(String(row.id));
+      if (section === 'Parties') await casesApi.removeParticipant(id, String(row.id));
+      if (section === 'Notes') await casesApi.removeNote(String(row.id));
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["case-tab", id, section] }),
-        queryClient.invalidateQueries({ queryKey: ["case-overview", id] }),
+        queryClient.invalidateQueries({ queryKey: ['case-tab', id, section] }),
+        queryClient.invalidateQueries({ queryKey: ['case-overview', id] }),
       ]);
     } catch (error) {
-      window.alert(
-        error instanceof Error ? error.message : "Unable to delete record",
-      );
+      window.alert(error instanceof Error ? error.message : 'Unable to delete record');
     }
   };
   return (
@@ -301,9 +247,8 @@ export default function CaseDetailPage() {
         <div>
           <h1 className="matter-title">{item.title}</h1>
           <p className="subheading">
-            {item.reference_number || "No reference"} ·{" "}
-            {item.status || "Status unavailable"} ·{" "}
-            {item.forum || item.institution || "Institution unavailable"}
+            {item.reference_number || 'No reference'} · {item.status || 'Status unavailable'} ·{' '}
+            {item.forum || item.institution || 'Institution unavailable'}
           </p>
         </div>
         <Link className="matter-action" href={`/cases/${id}/edit`}>
@@ -315,8 +260,8 @@ export default function CaseDetailPage() {
           <button
             type="button"
             key={name}
-            className={tab === name ? "active" : ""}
-            aria-current={tab === name ? "page" : undefined}
+            className={tab === name ? 'active' : ''}
+            aria-current={tab === name ? 'page' : undefined}
             onClick={() => setTab(name)}
           >
             {name}
@@ -324,53 +269,46 @@ export default function CaseDetailPage() {
         ))}
       </nav>
       <section className="matter-card case-detail-panel">
-        {tab === "Overview" ? (
+        {tab === 'Overview' ? (
           <div className="grid dashboard-columns">
             <div>
               <h2>Case overview</h2>
               <dl className="data-list">
                 {[
-                  ["Case title", facts.title],
-                  ["Reference number", facts.reference_number],
-                  ["Claimant", facts.claimant],
-                  ["Respondent", facts.respondent],
-                  ["Institution", facts.forum || facts.institution],
-                  ["Seat", facts.seat],
-                  ["Governing law", facts.governing_law],
-                  ["Status", facts.status],
+                  ['Case title', facts.title],
+                  ['Reference number', facts.reference_number],
+                  ['Claimant', facts.claimant],
+                  ['Respondent', facts.respondent],
+                  ['Institution', facts.forum || facts.institution],
+                  ['Seat', facts.seat],
+                  ['Governing law', facts.governing_law],
+                  ['Status', facts.status],
                   [
-                    "Claim amount",
+                    'Claim amount',
                     facts.claim_amount !== undefined
-                      ? new Intl.NumberFormat("en-IN", {
-                          style: "currency",
-                          currency: String(facts.claim_currency || "INR"),
+                      ? new Intl.NumberFormat('en-IN', {
+                          style: 'currency',
+                          currency: String(facts.claim_currency || 'INR'),
                           maximumFractionDigits: 2,
                         }).format(Number(facts.claim_amount))
                       : undefined,
                   ],
+                  ['Arbitration agreement', facts.arbitration_agreement_details],
+                  ['Description', facts.description],
                   [
-                    "Arbitration agreement",
-                    facts.arbitration_agreement_details,
-                  ],
-                  ["Description", facts.description],
-                  [
-                    "Next hearing",
+                    'Next hearing',
                     facts.next_hearing_at
-                      ? new Date(
-                          String(facts.next_hearing_at),
-                        ).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
+                      ? new Date(String(facts.next_hearing_at)).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
                         })
                       : undefined,
                   ],
                 ].map(([label, value]) => (
                   <div key={String(label)}>
                     <dt>{String(label)}</dt>
-                    <dd>
-                      {value == null || value === "" ? "—" : String(value)}
-                    </dd>
+                    <dd>{value == null || value === '' ? '—' : String(value)}</dd>
                   </div>
                 ))}
               </dl>
@@ -379,8 +317,8 @@ export default function CaseDetailPage() {
                   title="Parties"
                   rows={people}
                   fields={[
-                    ["party_role", "Role"],
-                    ["email", "Email"],
+                    ['party_role', 'Role'],
+                    ['email', 'Email'],
                   ]}
                 />
               )}
@@ -388,177 +326,147 @@ export default function CaseDetailPage() {
             <div>
               <h2>Quick actions</h2>
               <p>
-                <Link href={`/calendar?case_id=${encodeURIComponent(id)}`}>
-                  Open calendar for this case
-                </Link>
+                <Link href={`/calendar?case_id=${encodeURIComponent(id)}`}>Open calendar for this case</Link>
               </p>
               <p>
-                <Link href={`/tasks?case_id=${encodeURIComponent(id)}`}>
-                  Open tasks for this case
-                </Link>
+                <Link href={`/tasks?case_id=${encodeURIComponent(id)}`}>Open tasks for this case</Link>
               </p>
               <p>
-                Documents: {String(over.documents_count ?? "—")} · Drafts:{" "}
-                {String(over.drafts_count ?? "—")}
+                Documents: {String(over.documents_count ?? '—')} · Drafts: {String(over.drafts_count ?? '—')}
               </p>
             </div>
           </div>
-        ) : tab === "Strategy" ? (
+        ) : tab === 'Strategy' ? (
           <StrategyPanel id={id} />
-        ) : tab === "Timeline" ? (
+        ) : tab === 'Timeline' ? (
           <Records
             title="Timeline events"
             rows={rows}
             fields={[
-              ["type", "Type"],
-              ["detail", "Details"],
-              ["occurred_at", "Date"],
+              ['type', 'Type'],
+              ['detail', 'Details'],
+              ['occurred_at', 'Date'],
             ]}
-            onEdit={(row) => editRecord("Timeline", row)}
-            onRemove={(row) => void deleteRecord("Timeline", row)}
-            readOnly={preview}
+            onEdit={(row) => editRecord('Timeline', row)}
+            onRemove={(row) => void deleteRecord('Timeline', row)}
           />
-        ) : tab === "Hearings" ? (
+        ) : tab === 'Hearings' ? (
           <Records
             title="Hearings"
             rows={rows}
             fields={[
-              ["at", "Date and time"],
-              ["forum", "Institution"],
-              ["venue", "Location"],
-              ["status", "Status"],
+              ['at', 'Date and time'],
+              ['forum', 'Institution'],
+              ['venue', 'Location'],
+              ['status', 'Status'],
             ]}
-            onEdit={(row) => editRecord("Hearings", row)}
-            onRemove={(row) => void deleteRecord("Hearings", row)}
-            readOnly={preview}
+            onEdit={(row) => editRecord('Hearings', row)}
+            onRemove={(row) => void deleteRecord('Hearings', row)}
           />
-        ) : tab === "Tasks" ? (
+        ) : tab === 'Tasks' ? (
           <Records
             title="Tasks"
             rows={rows}
             fields={[
-              ["due_at", "Due"],
-              ["status", "Status"],
-              ["priority", "Priority"],
+              ['due_at', 'Due'],
+              ['status', 'Status'],
+              ['priority', 'Priority'],
             ]}
           />
-        ) : tab === "Parties" ? (
+        ) : tab === 'Parties' ? (
           <Records
             title="Parties and participants"
             rows={people}
             fields={[
-              ["party_role", "Role"],
-              ["email", "Email"],
-              ["organization", "Organization"],
+              ['party_role', 'Role'],
+              ['email', 'Email'],
+              ['organization', 'Organization'],
             ]}
-            onEdit={(row) => editRecord("Parties", row)}
-            onRemove={(row) => void deleteRecord("Parties", row)}
-            readOnly={preview}
+            onEdit={(row) => editRecord('Parties', row)}
+            onRemove={(row) => void deleteRecord('Parties', row)}
           />
-        ) : tab === "Documents" ? (
+        ) : tab === 'Documents' ? (
           <Records
             title="Documents"
             rows={rows}
             fields={[
-              ["document_type", "Type"],
-              ["created_at", "Added"],
+              ['document_type', 'Type'],
+              ['created_at', 'Added'],
             ]}
           />
-        ) : tab === "Drafts" ? (
+        ) : tab === 'Drafts' ? (
           <Records
             title="Drafts"
             rows={rows}
             fields={[
-              ["document_type", "Type"],
-              ["status", "Status"],
-              ["updated_at", "Updated"],
+              ['document_type', 'Type'],
+              ['status', 'Status'],
+              ['updated_at', 'Updated'],
             ]}
           />
-        ) : tab === "Notes" ? (
+        ) : tab === 'Notes' ? (
           <Records
             title="Notes"
             rows={rows}
             fields={[
-              ["body", "Note"],
-              ["kind", "Type"],
-              ["created_at", "Added"],
+              ['body', 'Note'],
+              ['kind', 'Type'],
+              ['created_at', 'Added'],
             ]}
-            onEdit={(row) => editRecord("Notes", row)}
-            onRemove={(row) => void deleteRecord("Notes", row)}
-            readOnly={preview}
+            onEdit={(row) => editRecord('Notes', row)}
+            onRemove={(row) => void deleteRecord('Notes', row)}
           />
-        ) : tab === "Activity log" ? (
+        ) : tab === 'Activity log' ? (
           <div className="matter-unavailable">
             <h2>Activity log</h2>
-            <p>
-              The API does not expose an audit or case activity listing
-              endpoint.
-            </p>
+            <p>The API does not expose an audit or case activity listing endpoint.</p>
           </div>
         ) : (
           <div className="matter-unavailable">
             <h2>{tab}</h2>
             <p>
-              {tab === "Research"
-                ? "The API does not expose case-linked saved research records."
-                : "The case resource is not available."}
+              {tab === 'Research'
+                ? 'The API does not expose case-linked saved research records.'
+                : 'The case resource is not available.'}
             </p>
           </div>
         )}
-        {["Timeline", "Hearings", "Parties", "Notes"].includes(tab) && (
+        {['Timeline', 'Hearings', 'Parties', 'Notes'].includes(tab) && (
           <div className="case-record-editor-wrap">
             {editor !== tab ? (
-              <button
-                className="matter-action"
-                disabled={preview}
-                title={
-                  preview
-                    ? "Changes are disabled in read-only preview"
-                    : undefined
-                }
-                onClick={() => setEditor(tab)}
-              >
-                {tab === "Timeline"
-                  ? "Add event"
-                  : tab === "Hearings"
-                    ? "Add hearing"
-                    : tab === "Parties"
-                      ? "Add participant"
-                      : "Add note"}
+              <button className="matter-action" onClick={() => setEditor(tab)}>
+                {tab === 'Timeline'
+                  ? 'Add event'
+                  : tab === 'Hearings'
+                    ? 'Add hearing'
+                    : tab === 'Parties'
+                      ? 'Add participant'
+                      : 'Add note'}
               </button>
             ) : (
               <form className="case-record-editor" onSubmit={createRecord}>
                 <h3>
-                  {tab === "Timeline"
-                    ? "New timeline event"
-                    : tab === "Hearings"
-                      ? "New hearing"
-                      : tab === "Parties"
-                        ? "New participant"
-                        : "New note"}
+                  {tab === 'Timeline'
+                    ? 'New timeline event'
+                    : tab === 'Hearings'
+                      ? 'New hearing'
+                      : tab === 'Parties'
+                        ? 'New participant'
+                        : 'New note'}
                 </h3>
                 <label>
-                  {tab === "Parties" ? "Name" : "Title"}
+                  {tab === 'Parties' ? 'Name' : 'Title'}
                   <input
                     required
                     value={editorTitle}
                     onChange={(event) => setEditorTitle(event.target.value)}
                   />
                 </label>
-                {tab === "Parties" && (
+                {tab === 'Parties' && (
                   <label>
                     Role
-                    <select
-                      value={editorRole}
-                      onChange={(event) => setEditorRole(event.target.value)}
-                    >
-                      {[
-                        "claimant",
-                        "respondent",
-                        "arbitrator",
-                        "counsel",
-                        "witness",
-                      ].map((role) => (
+                    <select value={editorRole} onChange={(event) => setEditorRole(event.target.value)}>
+                      {['claimant', 'respondent', 'arbitrator', 'counsel', 'witness'].map((role) => (
                         <option key={role} value={role}>
                           {role}
                         </option>
@@ -566,7 +474,7 @@ export default function CaseDetailPage() {
                     </select>
                   </label>
                 )}
-                {(tab === "Timeline" || tab === "Hearings") && (
+                {(tab === 'Timeline' || tab === 'Hearings') && (
                   <label>
                     Date and time
                     <input
@@ -578,45 +486,29 @@ export default function CaseDetailPage() {
                   </label>
                 )}
                 <label>
-                  {tab === "Parties"
-                    ? "Organization"
-                    : tab === "Notes"
-                      ? "Note"
-                      : "Details"}
-                  <textarea
-                    value={editorBody}
-                    onChange={(event) => setEditorBody(event.target.value)}
-                  />
+                  {tab === 'Parties' ? 'Organization' : tab === 'Notes' ? 'Note' : 'Details'}
+                  <textarea value={editorBody} onChange={(event) => setEditorBody(event.target.value)} />
                 </label>
                 <div className="matter-dialog-actions">
-                  <button type="button" onClick={() => setEditor("")}>
+                  <button type="button" onClick={() => setEditor('')}>
                     Cancel
                   </button>
-                  <button
-                    className="matter-action"
-                    disabled={saving || preview}
-                    title={
-                      preview
-                        ? "Changes are disabled in read-only preview"
-                        : undefined
-                    }
-                  >
-                    {saving ? "Saving…" : "Save"}
+                  <button className="matter-action" disabled={saving}>
+                    {saving ? 'Saving…' : 'Save'}
                   </button>
                 </div>
               </form>
             )}
           </div>
         )}
-        {tab !== "Overview" &&
-          tab !== "Strategy" &&
-          tab !== "Notes" &&
-          tab !== "Activity log" &&
-          !["Documents", "Drafts", "Research"].includes(tab) &&
+        {tab !== 'Overview' &&
+          tab !== 'Strategy' &&
+          tab !== 'Notes' &&
+          tab !== 'Activity log' &&
+          !['Documents', 'Drafts', 'Research'].includes(tab) &&
           payload.isError && (
             <div className="matter-error">
-              {tab} could not be loaded.{" "}
-              <button onClick={() => void payload.refetch()}>Retry</button>
+              {tab} could not be loaded. <button onClick={() => void payload.refetch()}>Retry</button>
             </div>
           )}
       </section>
