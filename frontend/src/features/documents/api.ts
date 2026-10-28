@@ -29,6 +29,10 @@ export type IngestionJob = {
   chars?: number;
   error?: string;
 };
+export type ExtractionRecord = Record<
+  string,
+  { value: unknown; provenance?: string; source?: string; review_required?: boolean }
+>;
 
 export const documentsApi = {
   list: (params = '') =>
@@ -38,8 +42,13 @@ export const documentsApi = {
   remove: (id: string) => api.del(`/documents/${id}`),
   patch: (id: string, body: Partial<DocumentRecord>) => api.patch<DocumentRecord>(`/documents/${id}`, body),
   retry: (id: string) => api.post(`/documents/${id}/retry`),
-  aiRead: (id: string) => api.post(`/documents/${id}/ai-read`),
-  aiStatus: () => api.get<{ base_url: string; model: string }>('/settings/ai'),
+  aiRead: (id: string) => api.post<{ status: string; fields: ExtractionRecord }>(`/documents/${id}/ai-read`),
+  aiStatus: () =>
+    api.get<{
+      base_url?: string;
+      model?: string;
+      runtime_status?: { model?: string; reachable?: boolean };
+    }>('/settings/ai'),
   askForReadiness: (question: string, caseId?: string) =>
     api.post<{ status: string; answer?: string }>('/ai/ask', { question, top_k: 5, case_id: caseId }),
   upload(file: File, onProgress: (value: number) => void): Promise<{ document_id: string; status: string }> {
