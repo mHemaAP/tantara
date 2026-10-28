@@ -85,6 +85,11 @@ export default function BundleDetailPage() {
     setError('');
     setSuccess('');
     try {
+      const nextSections = [...new Set([...sectionOrder, ...next.map((item) => item.section)])];
+      if (nextSections.length !== sectionOrder.length) {
+        await bundleApi.updateSections(id, nextSections.map((title, order) => ({ title, order })));
+        setSectionOrder(nextSections);
+      }
       await bundleApi.updateItems(id, next.map((item, order) => ({
         document_id: item.document_id,
         section: item.section,
