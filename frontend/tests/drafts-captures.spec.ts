@@ -1,6 +1,6 @@
 import { expect, request, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiOrigin = (process.env.TANTARA_API_BASE ?? 'http://127.0.0.1:8010').replace(/\/$/, '');
+const apiOrigin = (process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010').replace(/\/$/, '');
 const apiV1 = `${apiOrigin}/api/v1`;
 const shots = 'docs/screenshots';
 const desktop = { width: 1440, height: 900 };
