@@ -279,7 +279,6 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
       data: { content_markdown: currentDraft.content_markdown, change_note: 'Initial saved snapshot' },
     });
     expect(firstSnapshot.status()).toBe(200);
-    await page.reload();
   }
   const beforeEdit = await api.get(`${apiV1}/drafts/${draftId}/versions`, { headers });
   const initialVersions = (await beforeEdit.json()).items as Array<Record<string, any>>;
@@ -287,36 +286,53 @@ test('captures live seeded drafts and autofill states at desktop and mobile size
   const originalEditorContent = (await (await api.get(`${apiV1}/drafts/${draftId}`, { headers })).json())
     .content_markdown as string;
   const uniquePhrase = 'COUNSEL REVIEW PHRASE LUNA 2026';
+  let savedRequestUrl = '';
+  let savedVersionResponse: Record<string, any> | undefined;
   editor = page.locator('.draft-editor');
-  if (await editor.count()) {
-    await page.getByRole('tab', { name: 'Draft', exact: true }).click();
-    await expect(editor).toBeVisible();
-    await editor.click();
-    await page.keyboard.press('ControlOrMeta+End');
-    await page.keyboard.press('Enter');
-    await page.keyboard.insertText(uniquePhrase);
-    const saveVersion = page.getByRole('button', { name: 'Save version' });
-    await expect(saveVersion).toBeVisible();
-    await expect(editor).toContainText(uniquePhrase);
-    const saveRequest = page.waitForRequest(
-      (request) =>
-        new URL(request.url()).pathname === `/api/v1/drafts/${draftId}/versions` &&
-        request.method() === 'POST',
-    );
-    await saveVersion.click();
-    const savedRequest = await saveRequest;
-    expect(savedRequest.postDataJSON().content_markdown).toContain(uniquePhrase);
-    await expect(page.getByRole('status')).toContainText(/saved/i);
-  }
+  await expect(editor, `draft editor should be ready at ${page.url()}`).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('tab', { name: 'Draft', exact: true }).click();
+  await expect(editor).toBeVisible();
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.insertText(uniquePhrase);
+  const saveVersion = page.getByRole('button', { name: 'Save version' });
+  await expect(saveVersion).toBeVisible();
+  await expect(editor).toContainText(uniquePhrase);
+  const saveRequest = page.waitForRequest(
+    (request) =>
+      new URL(request.url()).pathname === `/api/v1/drafts/${draftId}/versions` &&
+      request.method() === 'POST',
+  );
+  const saveResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === `/api/v1/drafts/${draftId}/versions` &&
+      response.request().method() === 'POST',
+  );
+  await saveVersion.click();
+  const savedRequest = await saveRequest;
+  savedRequestUrl = savedRequest.url();
+  expect(savedRequest.postDataJSON().content_markdown).toContain(uniquePhrase);
+  const savedResponse = await saveResponse;
+  const responseText = await savedResponse.text();
+  expect(savedResponse.status(), responseText).toBe(200);
+  savedVersionResponse = JSON.parse(responseText);
+  await expect(page.getByRole('status')).toContainText(/saved/i);
   await page.reload();
-  if (await page.locator('.draft-editor').count())
-    await expect(page.locator('.draft-editor')).toContainText(uniquePhrase);
+  await expect(editor, `draft editor should reload at ${page.url()}`).toBeVisible({ timeout: 60_000 });
+  await expect(editor).toContainText(uniquePhrase);
   const reloaded = await api.get(`${apiV1}/drafts/${draftId}`, { headers });
-  expect((await reloaded.json()).content_markdown).toContain(uniquePhrase);
+  const reloadedDraft = await reloaded.json();
+  expect(
+    reloadedDraft.content_markdown,
+    `draft ${draftId} after save; API ${new URL(apiOrigin).origin}; request ${savedRequestUrl}; version ${JSON.stringify(savedVersionResponse)}`,
+  ).toContain(uniquePhrase);
   const savedVersions = (await (await api.get(`${apiV1}/drafts/${draftId}/versions`, { headers })).json())
     .items as Array<Record<string, any>>;
   expect(savedVersions.length).toBeGreaterThan(initialVersions.length);
   expect(savedVersions.length).toBeGreaterThanOrEqual(2);
+  expect(savedVersionResponse?.version_number).toEqual(savedVersions[0]?.version_number);
+  expect(savedVersions[0]?.id).toBe(savedVersionResponse?.id);
   if (generatedVersionId) expect(savedVersions.some((v) => v.id === generatedVersionId)).toBeTruthy();
   await page.getByRole('tab', { name: 'History', exact: true }).click();
   await expect(page.locator('.draft-version-row').first()).toContainText('Current');
