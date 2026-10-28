@@ -9,7 +9,6 @@ import '@/features/documents/documents.css';
 import '@/features/search/search.css';
 import { documentHref } from '@/features/documents/links';
 import { collectionsApi } from '@/features/documents/api';
-import { WorkspaceModuleNav } from '@/features/documents/WorkspaceModuleNav';
 
 type SearchHit = {
   document_id: string;
@@ -39,7 +38,6 @@ export default function SearchPage() {
   });
   return (
     <main className="documents-page search-page">
-      <WorkspaceModuleNav />
       <header className="documents-heading">
         <div>
           <p className="documents-eyebrow">Research desk</p>
