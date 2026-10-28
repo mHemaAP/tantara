@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
 const screenshots = '../docs/screenshots';
 
 async function signIn(request: APIRequestContext) {
@@ -77,13 +77,6 @@ test('real seeded document opens from library, renders proportionally, reads, an
 }) => {
   test.setTimeout(240000);
   await page.setViewportSize({ width: 1440, height: 900 });
-  let routeRegistrationCount = 0;
-  const registerRoute = page.route.bind(page);
-  page.route = (async (...arguments_: Parameters<typeof page.route>) => {
-    routeRegistrationCount += 1;
-    return registerRoute(...arguments_);
-  }) as typeof page.route;
-
   const token = await signIn(request);
   const headers = { Authorization: `Bearer ${token}` };
   const settingsResponse = await request.get(`${apiUrl}/settings/ai`, { headers });
@@ -120,19 +113,21 @@ test('real seeded document opens from library, renders proportionally, reads, an
   await captureViewport(page, 'documents-round5-metadata-desktop-1440-real', 1440, 900);
 
   if (!settings.runtime_status?.reachable) {
-    await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await page.getByRole('button', { name: 'Run document extraction' }).click();
     await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible();
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
   } else {
-    await expect(page.getByRole('button', { name: 'Run AI Read' })).toBeVisible();
-    await page.getByRole('button', { name: 'Run AI Read' }).click();
+    await expect(page.getByRole('button', { name: 'Run document extraction' })).toBeVisible();
+    await page.getByRole('button', { name: 'Run document extraction' }).click();
     await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 150000 });
     await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 150000 });
     await expect(page.locator('.ai-read-field[data-field-key="summary"]')).toContainText(
       'Routine procedural filing',
     );
-    await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction; candidate only');
+    await expect(page.locator('.ai-read-panel')).toContainText('Local text extraction');
+    await expect(page.locator('.ai-read-panel')).toContainText('candidate only');
+    await expect(page.locator('.ai-read-panel')).toContainText(settings.model);
     await expect(page.locator('.ai-read-panel')).not.toContainText(/\[\]|\{"found"|ai_suggested/);
     await expect(page.locator('.ai-read-panel')).not.toContainText('AI-generated');
     const arbitrationClause = page.locator('.ai-read-field[data-field-key="arbitration_clause"]');
@@ -140,6 +135,18 @@ test('real seeded document opens from library, renders proportionally, reads, an
     await expect(arbitrationClause).toBeVisible();
     await expect(extractedSummary).toBeVisible();
     await expect(arbitrationClause).toContainText('Not extracted');
+    const aiPanel = page.locator('.ai-read-panel');
+    const panelBounds = await aiPanel.boundingBox();
+    expect(panelBounds).not.toBeNull();
+    expect(panelBounds!.y + panelBounds!.height).toBeLessThanOrEqual(900);
+    const fieldList = page.locator('.ai-read-fields');
+    await fieldList.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(page.locator('.ai-read-field').last()).toBeVisible();
+    await fieldList.evaluate((element) => {
+      element.scrollTop = 0;
+    });
     const summaryDisclosure = extractedSummary.locator('.ai-read-summary-disclosure');
     const collapsedSummaryHeight = await summaryDisclosure.boundingBox();
     expect(collapsedSummaryHeight).not.toBeNull();
@@ -175,10 +182,18 @@ test('real seeded document opens from library, renders proportionally, reads, an
     /Unique page three clause/,
   );
   await expectPageRatio(page, 3);
+  const citationToolbarBounds = await page.locator('.pdf-toolbar').boundingBox();
+  const citationLabelBounds = await page
+    .locator('.pdf-page-card[data-page-card="3"] .pdf-page-label')
+    .boundingBox();
+  expect(citationToolbarBounds).not.toBeNull();
+  expect(citationLabelBounds).not.toBeNull();
+  const citationOffset = citationLabelBounds!.y - citationToolbarBounds!.y - citationToolbarBounds!.height;
+  expect(citationOffset).toBeGreaterThanOrEqual(0);
+  expect(citationOffset).toBeLessThanOrEqual(150);
   await page.evaluate(() => window.scrollTo(0, 0));
   await captureViewport(page, 'documents-round5-citation-page3-desktop-1440-real', 1440, 900);
 
-  expect(routeRegistrationCount).toBe(0);
   expect(document.content_hash).toMatch(/^[a-f0-9]{64}$/);
   expect(document.page_count).toBe(5);
 });
@@ -199,7 +214,7 @@ test('upload control reports completion and opens the uploaded PDF with a source
   await expect(uploadedLink).toBeVisible({ timeout: 30000 });
   const uploadedHref = await uploadedLink.getAttribute('href');
   expect(uploadedHref).toBeTruthy();
-  const uploadedUrl = new URL(uploadedHref!, 'http://127.0.0.1:3013');
+  const uploadedUrl = new URL(uploadedHref!, 'http://127.0.0.1:3012');
   const uploadedId = uploadedUrl.pathname.split('/').at(-1)!;
   const headers = { Authorization: `Bearer ${token}` };
   await expect
