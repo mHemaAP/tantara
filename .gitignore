@@ -47,3 +47,6 @@ pids/
 .DS_Store
 .idea/
 .vscode/
+
+AGENTS.md
+INSTRUCTION.md
