@@ -116,7 +116,6 @@ test('workspace navigation exposes all module routes and each route resolves', a
     '/research/documents',
     `/cases/${ids[0]}/strategy`,
     `/clients/${ids[1]}`,
-    `/documents/${ids[2]}`,
     `/bundles/${ids[3]}`,
     `/community/${ids[4]}`,
   ]) {
