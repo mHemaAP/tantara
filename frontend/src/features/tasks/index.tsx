@@ -7,6 +7,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import Link from 'next/link';
 import '../cases/styles.css';
 import { taskGroup } from './grouping';
+import { WORKSPACE_TIME_ZONE, workspaceDateTimeInput, workspaceDateTimeIso } from '@/lib/datetime';
 
 type Task = {
   id: string;
@@ -19,6 +20,16 @@ type Task = {
   case_title?: string;
 };
 const groups = ['Overdue', 'Today', 'This week', 'Later', 'No due date', 'Done'];
+function taskDueLabel(value: string) {
+  const input = workspaceDateTimeInput(value);
+  const date = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeZone: WORKSPACE_TIME_ZONE });
+  if (input.endsWith('T00:00')) return `${date.format(new Date(value))} · Deadline`;
+  return new Intl.DateTimeFormat('en-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: WORKSPACE_TIME_ZONE,
+  }).format(new Date(value));
+}
 export default function TasksPage() {
   const [show, setShow] = useState(false);
   const [title, setTitle] = useState('');
@@ -66,7 +77,7 @@ export default function TasksPage() {
   const openTask = (task?: Task) => {
     setEditing(task || null);
     setTitle(task?.title || '');
-    setDue(task?.due_at?.slice(0, 16) || '');
+    setDue(workspaceDateTimeInput(task?.due_at));
     setPriority(task?.priority || 'medium');
     setStatus(task?.status || 'todo');
     setNotes(task?.notes || '');
@@ -116,13 +127,7 @@ export default function TasksPage() {
                           {task.title}
                         </button>
                         <span className="task-due">
-                          {task.due_at
-                            ? new Intl.DateTimeFormat('en-IN', {
-                                dateStyle: 'medium',
-                                timeStyle: 'short',
-                                timeZone: 'Asia/Kolkata',
-                              }).format(new Date(task.due_at))
-                            : 'No due date'}
+                          {task.due_at ? taskDueLabel(task.due_at) : 'No due date'}
                           {name === 'Overdue' ? ' · Overdue' : ''}
                         </span>
                         <span
@@ -188,7 +193,7 @@ export default function TasksPage() {
                 try {
                   const payload = {
                     title,
-                    due_at: due || null,
+                    due_at: due ? workspaceDateTimeIso(due) : null,
                     status,
                     priority,
                     notes,
