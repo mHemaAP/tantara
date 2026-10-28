@@ -1,5 +1,7 @@
 'use client';
 
+import { workspaceDateTimeDisplay } from '@/lib/datetime';
+
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -477,7 +479,7 @@ export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
             {dirty
               ? 'Unsaved changes'
               : savedAt
-                ? `Version saved ${new Date(savedAt).toLocaleString()}`
+                ? `Version saved ${workspaceDateTimeDisplay(savedAt)}`
                 : 'No saved version'}
           </span>
           <button
