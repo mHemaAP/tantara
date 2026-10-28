@@ -388,7 +388,7 @@ def main():
         if root is None:
             root = User(
                 id=str(uuid.uuid4()),
-                name="Aarav Mehta",
+                name="Workspace Advocate",
                 email="advocate@tantara.local",
                 password_hash=hash_password(s.tantara_admin_password),
                 role="advocate",
@@ -559,7 +559,7 @@ def main():
                     id=str(uuid.uuid4()),
                     owner_id=owner,
                     case_id=cid,
-                    name="Aarav Mehta",
+                    name="Workspace Advocate",
                     party_role="counsel",
                     organization="TANTARA",
                     is_demo=True,
@@ -586,7 +586,7 @@ def main():
                     due_at=due,
                     priority=("high" if i % 3 == 0 else "medium"),
                     status="todo",
-                    assignee="Aarav Mehta",
+                    assignee="Workspace Advocate",
                     is_demo=True,
                 )
             )
@@ -668,7 +668,7 @@ def main():
                         due_at=None,
                         priority="medium",
                         status="todo",
-                        assignee="Aarav Mehta",
+                        assignee="Workspace Advocate",
                         is_demo=True,
                     )
                 )
@@ -918,7 +918,7 @@ def main():
                 )
     from app.routers.bundles import generate as generate_bundle
 
-    generated = generate_bundle(bundle_id, {"id": owner, "role": "advocate", "name": "Aarav Mehta"})
+    generated = generate_bundle(bundle_id, {"id": owner, "role": "advocate", "name": "Workspace Advocate"})
     with session_scope() as db:
         session = db.get(ResearchSession, session_id)
         db.add(
