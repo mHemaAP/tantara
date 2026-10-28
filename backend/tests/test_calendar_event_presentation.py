@@ -11,7 +11,7 @@ def test_calendar_event_keeps_type_and_presents_case_context(client):
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     case_title = "Northstar evidence review matter"
     case = client.post("/api/v1/cases", headers=headers, json={"title": case_title})
-    assert case.status_code == 200, case.text
+    assert case.status_code == 201, case.text
     case_id = case.json()["id"]
 
     day = workspace_now().date() + timedelta(days=1)
