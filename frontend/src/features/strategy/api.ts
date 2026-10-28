@@ -1,0 +1,5 @@
+import { api } from '@/lib/api/client';
+export type StrategyCitation={citation_ref?:string;document_id?:string;document_title?:string;chunk_id?:string;page_number?:number;excerpt?:string};
+export type StrategyBlock={id?:string;title?:string;content?:string;text?:string;citations?:StrategyCitation[];supported?:boolean;status?:string;items?:Array<{text:string;citations?:StrategyCitation[];supported?:boolean}>};
+export type StrategyData={status?:string;version_at?:string;updated_at?:string;tabs?:Record<string,StrategyBlock[]>;blocks?:StrategyBlock[];sections?:Record<string,unknown>;supported_count?:number;hypothesis_count?:number;runtime_status?:{reachable?:boolean;message?:string};message?:string};
+export const strategyApi={get:(id:string)=>api.get<StrategyData>(`/cases/${id}/strategy`),generate:(id:string)=>api.post<StrategyData>(`/cases/${id}/strategy/generate`),save:(id:string,body:unknown)=>api.put<StrategyData>(`/cases/${id}/strategy`,body),createTask:(body:unknown)=>api.post<unknown>('/tasks',body)};
