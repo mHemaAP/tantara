@@ -141,6 +141,7 @@ export function PdfDocumentViewer({
             `[data-text-page="${currentPage}"]`,
           );
           if (!canvas || !textContainer) return;
+          canvas.dataset.rendered = 'false';
           const pageProxy = await pdf.getPage(currentPage);
           const viewport = pageProxy.getViewport({ scale });
           const pixelRatio = window.devicePixelRatio || 1;
@@ -168,6 +169,7 @@ export function PdfDocumentViewer({
             viewport,
           });
           await textLayer.render();
+          canvas.dataset.rendered = 'true';
         }),
       );
       if (!cancelled && searchParams.has('page')) {
