@@ -34,6 +34,8 @@ NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8113 TANTARA_API_BASE_URL=http://127.0
 
 The viewer date values continue to come from API fields `created_at` and `processed_at`. Search relevance remains labelled as a fusion rank score, not confidence. The configured model identifier is read from `GET /api/v1/settings/ai` (`model`); the base URL is not shown in user-facing content.
 
+The L4f code and test commits were pushed at `488bbfee05a2fec1ff8f0a65bd1810da850ec07f`; this report's final gate update is a separate single-file commit after that push.
+
 ## Round 5 findings and proof
 
 | Finding | Change | Test or capture |
