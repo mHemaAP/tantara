@@ -52,7 +52,11 @@ export default function BundlesPage() {
     setSaving(true);
     setError('');
     try {
-      const bundle = await bundleApi.create({ name: name.trim(), case_id: caseId, settings: defaultSettings });
+      const bundle = await bundleApi.create({
+        name: name.trim(),
+        case_id: caseId,
+        settings: defaultSettings,
+      });
       window.location.assign(`/bundles/${bundle.id}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create this bundle.');
@@ -74,19 +78,32 @@ export default function BundlesPage() {
         </button>
       </header>
 
-      {error && <div className="bundle-notice" role="alert">{error}</div>}
+      {error && (
+        <div className="bundle-notice" role="alert">
+          {error}
+        </div>
+      )}
       {showCreate && (
         <form className="bundle-card bundle-create-form" onSubmit={(event) => void createBundle(event)}>
           <h2>Create a filing bundle</h2>
           <div className="bundle-create-fields">
             <label>
               <span>Bundle name</span>
-              <input value={name} onChange={(event) => setName(event.target.value)} required maxLength={300} />
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+                maxLength={300}
+              />
             </label>
             <label>
               <span>Case</span>
               <select value={caseId} onChange={(event) => setCaseId(event.target.value)} required>
-                {cases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                {cases.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
@@ -98,18 +115,31 @@ export default function BundlesPage() {
 
       <section className="bundle-card bundle-list-card" aria-labelledby="bundle-list-title">
         <div className="bundle-list-heading">
-          <div><span className="bundle-step">YOUR WORKSPACE</span><h2 id="bundle-list-title">Saved bundles</h2></div>
+          <div>
+            <span className="bundle-step">YOUR WORKSPACE</span>
+            <h2 id="bundle-list-title">Saved bundles</h2>
+          </div>
           {!loading && <span className="bundle-count">{bundles.length} bundles</span>}
         </div>
         {loading ? (
-          <div className="bundle-load-state" role="status">Loading bundles…</div>
+          <div className="bundle-load-state" role="status">
+            Loading bundles…
+          </div>
         ) : bundles.length ? (
           <div className="bundle-list">
             {bundles.map((bundle) => (
               <Link className="bundle-list-row" href={`/bundles/${bundle.id}`} key={bundle.id}>
-                <span className="bundle-list-icon"><FileText size={19} /></span>
-                <span className="bundle-list-name"><strong>{bundle.name}</strong><small>{new Date(bundle.created_at).toLocaleDateString()}</small></span>
-                <span className="bundle-list-meta"><span className={`bundle-status-pill status-${bundle.status}`}>{bundle.status}</span><small>{bundle.sectionCount} sections</small></span>
+                <span className="bundle-list-icon">
+                  <FileText size={19} />
+                </span>
+                <span className="bundle-list-name">
+                  <strong>{bundle.name}</strong>
+                  <small>{new Date(bundle.created_at).toLocaleDateString()}</small>
+                </span>
+                <span className="bundle-list-meta">
+                  <span className={`bundle-status-pill status-${bundle.status}`}>{bundle.status}</span>
+                  <small>{bundle.sectionCount} sections</small>
+                </span>
                 <ArrowRight size={17} className="bundle-list-arrow" />
               </Link>
             ))}
@@ -119,7 +149,9 @@ export default function BundlesPage() {
             <FileText size={27} />
             <strong>No filing bundles yet</strong>
             <span>Create a bundle, select a case, and add documents to prepare a paperbook.</span>
-            <button className="bundle-primary" onClick={() => setShowCreate(true)}><Plus size={15} /> Create your first bundle</button>
+            <button className="bundle-primary" onClick={() => setShowCreate(true)}>
+              <Plus size={15} /> Create your first bundle
+            </button>
           </div>
         )}
       </section>
