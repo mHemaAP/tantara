@@ -61,7 +61,12 @@ async function assertAuthenticatedAndSettled(page: Page) {
 
 async function capture(page: Page, filename: string) {
   await assertAuthenticatedAndSettled(page);
-  expect(browserErrors.get(page) ?? [], `browser console errors before ${filename}`).toEqual([]);
+  const errors = browserErrors.get(page) ?? [];
+  const expectedRangeRejection = filename.includes('range-error')
+    ? errors.filter((message) => message.includes('status of 400 (Bad Request)'))
+    : [];
+  expect(expectedRangeRejection.length, `expected the live backend's range rejection for ${filename}`).toBe(filename.includes('range-error') ? 1 : 0);
+  expect(errors.filter((message) => !expectedRangeRejection.includes(message)), `unexpected browser console errors before ${filename}`).toEqual([]);
   fs.mkdirSync(screenshots, { recursive: true });
   await page.screenshot({ path: path.join(screenshots, filename), fullPage: true, animations: 'disabled' });
 }
