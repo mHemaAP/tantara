@@ -15,7 +15,22 @@ The mandatory Step 0 cleanup was completed first. Nine pending `target-crops/*.p
 | Failure categories were collapsed | Moved failure classification and copy into `ai-read-errors.ts`; authentication, embedding, extraction, response-loading, and model-unavailable outcomes have distinct categories and messages. | `ai-read-errors.spec.ts` covers each category. |
 | Test route interception violated the new hard gate | Removed route handlers from `frontend/tests/`; screenshot helper is now a no-op compatibility hook and captures must use the real API. The old forced offline/no-evidence interception cases were removed because those states cannot be induced against a running real backend without interception. | `rg 'page\\.route|route\\(' frontend/tests` returns no matches. This removes those intercepted UI failure scenarios from E2E coverage; that is a remaining gap. |
 
-The build and lint/type checks passed on this worktree. `pnpm format:check` is not defined in this branch's unchanged `package.json`; direct `pnpm exec prettier --check` over the documents, search, viewer, and test files passed. `pnpm exec playwright test --list` discovered 30 tests. The full E2E run and new captures are **not verified**: at the time of the gate, `127.0.0.1:3012` was already listening from `/home/kahitoz/projects/tantara-wt/fe2`, and I did not take over another worktree's server. Prior Round 5's 35/35 result is not a result for these Round 6 changes.
+The build and lint/type checks passed on this worktree. `pnpm format:check` is not defined in this branch's unchanged `package.json`; direct Prettier check over the documents, search, viewer, and test files passed. `pnpm exec playwright test --list` discovered 30 tests. The full E2E command failed before any test ran because `127.0.0.1:3012` was already listening from `/home/kahitoz/projects/tantara-wt/fe2`; I did not attach to or stop that server. No Round 6 screenshots were generated; the existing Round 5 captures remain in `frontend/docs/screenshots/`. Prior Round 5's 35/35 result is not a result for these Round 6 changes.
+
+Exact gate results:
+
+```text
+pnpm format                                         passed
+pnpm lint                                           passed; no ESLint warnings or errors
+pnpm exec prettier --check 'src/app/(workspace)/documents/page.tsx' 'src/app/(workspace)/documents/[id]/page.tsx' 'src/app/(workspace)/documents/[id]/document-detail.css' 'src/app/(workspace)/search/page.tsx' 'src/features/documents/WorkspaceModuleNav.tsx' 'src/features/documents/ai-read-errors.ts' 'src/features/documents/documents.css' 'src/features/viewer/PdfDocumentViewer.tsx' 'tests/**/*.spec.ts' 'tests/api-fixtures.mjs' 'playwright.config.ts'
+  passed
+pnpm format:check                                   unavailable; no such package script
+pnpm exec tsc --noEmit                              passed
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8113 pnpm build  passed
+pnpm exec playwright test --list                    30 tests discovered
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8113 TANTARA_API_BASE_URL=http://127.0.0.1:8113 TANTARA_WEB_URL=http://127.0.0.1:3012 CI=1 pnpm exec playwright test
+  failed before test discovery: http://127.0.0.1:3012 is already used
+```
 
 The viewer date values continue to come from API fields `created_at` and `processed_at`. Search relevance remains labelled as a fusion rank score, not confidence. The configured model identifier is read from `GET /api/v1/settings/ai` (`model`); the base URL is not shown in user-facing content.
 
