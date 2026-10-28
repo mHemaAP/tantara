@@ -280,7 +280,7 @@ test('library filters, layout, selection, preview, and PDF download change state
   await selectedCheckbox.uncheck();
   await expect(page.getByText('1 selected')).toHaveCount(0);
   const firstRow = page.locator('.documents-table tbody tr').filter({ has: titleLink }).first();
-  await firstRow.click();
+  await firstRow.locator('td').nth(1).click();
   await expect(firstRow).toHaveClass(/previewed/);
   const previewCanvas = page.locator('.document-preview-pane canvas').first();
   await expect(previewCanvas).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
