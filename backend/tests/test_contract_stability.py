@@ -120,6 +120,72 @@ def test_all_openapi_paginated_get_routes_validate_page_bounds(client):
         assert set(response.json().get("error", {})) >= {"code", "message", "details"}
 
 
+def test_workspace_datetimes_accept_offsets_and_serialize_with_workspace_offset(client):
+    headers = _auth(client)
+    case = client.post("/api/v1/cases", headers=headers, json={"title": "Offset serializer case"}).json()
+    created = client.post(
+        "/api/v1/tasks",
+        headers=headers,
+        json={"title": "Offset preserving deadline", "due_at": "2026-10-27T10:00:00+05:30", "case_id": case["id"]},
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["due_at"] == "2026-10-27T10:00:00+05:30"
+    task_list = client.get("/api/v1/tasks?page_size=100", headers=headers).json()["items"]
+    assert next(task for task in task_list if task["id"] == created.json()["id"])["due_at"] == "2026-10-27T10:00:00+05:30"
+
+    hearing = client.post(
+        "/api/v1/hearings",
+        headers=headers,
+        json={"title": "Offset preserving hearing", "at": "2026-10-27T10:00:00+05:30", "case_id": case["id"]},
+    )
+    assert hearing.status_code == 200, hearing.text
+    assert hearing.json()["at"] == "2026-10-27T10:00:00+05:30"
+    hearing_list = client.get("/api/v1/hearings?page_size=100", headers=headers).json()["items"]
+    assert next(row for row in hearing_list if row["id"] == hearing.json()["id"])["at"] == "2026-10-27T10:00:00+05:30"
+
+    utc_created = client.post(
+        "/api/v1/tasks",
+        headers=headers,
+        json={"title": "UTC instant becomes workspace wall time", "due_at": "2026-10-27T04:30:00Z"},
+    )
+    assert utc_created.status_code == 200, utc_created.text
+    assert utc_created.json()["due_at"] == "2026-10-27T10:00:00+05:30"
+
+    calendar = client.get(
+        "/api/v1/calendar",
+        headers=headers,
+        params={"from": "2026-10-27T00:00:00+05:30", "to": "2026-10-28T00:00:00+05:30"},
+    )
+    assert calendar.status_code == 200, calendar.text
+    assert isinstance(calendar.json(), list)
+    assert any(item["at"] == "2026-10-27T10:00:00+05:30" for item in calendar.json())
+    enveloped = client.get(
+        "/api/v1/calendar",
+        headers=headers,
+        params={"from": "2026-10-27T00:00:00+05:30", "to": "2026-10-28T00:00:00+05:30", "envelope": True},
+    )
+    assert enveloped.status_code == 200, enveloped.text
+    assert set(enveloped.json()) == {"items", "total", "page", "page_size", "pages"}
+    assert enveloped.json()["total"] == len(enveloped.json()["items"])
+
+
+def test_workspace_timezone_setting_controls_datetime_offsets(monkeypatch):
+    from datetime import datetime
+
+    from app.config import get_settings
+    from app.timezone import to_workspace_iso, to_workspace_naive
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("TANTARA_WORKSPACE_TIME_ZONE", "America/New_York")
+    try:
+        instant = datetime.fromisoformat("2026-01-15T15:00:00+00:00")
+        wall_time = to_workspace_naive(instant)
+        assert wall_time == datetime(2026, 1, 15, 10, 0)
+        assert to_workspace_iso(wall_time) == "2026-01-15T10:00:00-05:00"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_health_legacy_ingest_and_query_shapes_remain_available(client):
     health = client.get("/health")
     assert health.status_code == 200
