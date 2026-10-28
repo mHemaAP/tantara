@@ -9,6 +9,7 @@ export type ResearchSource = {
   excerpt: string;
   retrieval_score?: number;
   retreival_score?: number;
+  score?: number;
 };
 
 export type ResearchAnswer = {
@@ -18,6 +19,22 @@ export type ResearchAnswer = {
   sources?: ResearchSource[];
   follow_ups?: string[];
   disclaimer?: string;
+  model?: Record<string, unknown> | null;
+  answer_basis?: 'cited_excerpts' | 'case_record' | 'insufficient_evidence' | string;
+  supports?: Array<{
+    chunk_id: string;
+    document_id: string;
+    page_number: number;
+    quote: string;
+  }>;
+  context_fields?: Array<{ field: string; value: string; source: string }>;
+  conflicts?: Array<{
+    field: string;
+    case_value: string;
+    excerpt_chunk_id: string;
+    page_number: number;
+  }>;
+  insufficient_evidence?: boolean;
   research_session_id?: string;
   message_id?: string;
   meta?: Record<string, unknown>;
@@ -46,7 +63,14 @@ export const researchApi = {
   createSession: (title: string) => api.post<ResearchSession>('/ai/sessions', { title }),
   saved: () =>
     api.get<{ items: Array<{ id: string; item_id: string; item_type: string }> }>('/ai/saved?page_size=100'),
-  cases: () => api.get<{ items: Array<{ id: string; title: string }> }>('/cases?page_size=100'),
+  cases: () =>
+    api.get<{ items: Array<{ id: string; title: string; jurisdiction?: string }> }>('/cases?page_size=100'),
+  documents: () =>
+    api.get<{
+      items: Array<{ id: string; case_id?: string; jurisdiction?: string; collection_id?: string }>;
+    }>('/documents?page_size=100'),
+  document: (id: string) =>
+    api.get<{ id: string; title?: string; filename?: string }>(`/documents/${encodeURIComponent(id)}`),
   collections: () =>
     api.get<{ items?: Array<{ id: string; name: string }> } | Array<{ id: string; name: string }>>(
       '/meta/collections',
