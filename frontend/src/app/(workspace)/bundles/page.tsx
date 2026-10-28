@@ -6,8 +6,18 @@ import { ArrowRight, FileText, Plus } from 'lucide-react';
 import { bundleApi, type Bundle, type CaseOption } from '@/features/bundles/api';
 import '@/features/bundles/bundles.css';
 
-type ListedBundle = Bundle & { sectionCount: number };
+type ListedBundle = Bundle;
 const defaultSettings = { cover_page: true, index: true, synopsis: true, list_of_dates: true };
+function formatFileSize(bytes?: number | null) {
+  if (bytes == null) return 'Not generated';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function formatUpdated(value?: string) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
 
 export default function BundlesPage() {
   const [bundles, setBundles] = useState<ListedBundle[]>([]);
@@ -24,17 +34,7 @@ export default function BundlesPage() {
     setError('');
     try {
       const [bundleResult, caseResult] = await Promise.all([bundleApi.list(), bundleApi.cases()]);
-      const withSections = await Promise.all(
-        bundleResult.items.map(async (bundle) => {
-          try {
-            const preview = await bundleApi.preview(bundle.id);
-            return { ...bundle, sectionCount: preview.sections.length };
-          } catch {
-            return { ...bundle, sectionCount: 0 };
-          }
-        }),
-      );
-      setBundles(withSections);
+      setBundles(bundleResult.items);
       setCases(caseResult.items);
       setCaseId((current) => current || caseResult.items[0]?.id || '');
     } catch (cause) {
@@ -119,7 +119,11 @@ export default function BundlesPage() {
             <span className="bundle-step">YOUR WORKSPACE</span>
             <h2 id="bundle-list-title">Saved bundles</h2>
           </div>
-          {!loading && <span className="bundle-count">{bundles.length} bundles</span>}
+            {!loading && (
+              <span className="bundle-count">
+                {bundles.length} {bundles.length === 1 ? 'bundle' : 'bundles'}
+              </span>
+            )}
         </div>
         {loading ? (
           <div className="bundle-load-state" role="status">
@@ -134,11 +138,17 @@ export default function BundlesPage() {
                 </span>
                 <span className="bundle-list-name">
                   <strong>{bundle.name}</strong>
-                  <small>{new Date(bundle.created_at).toLocaleDateString()}</small>
+                  <small>{bundle.case_title || 'Unassigned case'}</small>
+                  <small>
+                    {bundle.page_count ?? 0} pages · {formatFileSize(bundle.file_size_bytes)} · Updated{' '}
+                    {formatUpdated(bundle.updated_at)}
+                  </small>
                 </span>
                 <span className="bundle-list-meta">
                   <span className={`bundle-status-pill status-${bundle.status}`}>{bundle.status}</span>
-                  <small>{bundle.sectionCount} sections</small>
+                  <small>
+                    {bundle.section_count ?? 0} {(bundle.section_count ?? 0) === 1 ? 'section' : 'sections'}
+                  </small>
                 </span>
                 <ArrowRight size={17} className="bundle-list-arrow" />
               </Link>
