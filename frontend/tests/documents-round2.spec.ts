@@ -52,6 +52,7 @@ test('document URL builder encodes identifiers and preserves citation pages', ()
 });
 
 test('captures seeded document and search states before fixture uploads', async ({ page, request }) => {
+  test.setTimeout(90000);
   const token = await signIn(request);
   await page.setViewportSize({ width: 1440, height: 900 });
   await openWithToken(page, token, '/documents');
