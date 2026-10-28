@@ -18,7 +18,7 @@ def test_reciprocal_rank_fusion_prefers_consensus_and_real_rows():
     }
     hits = fuse_rankings(rows, ["both", "fts"], ["both", "faiss"], top_k=3)
     assert [x["chunk_id"] for x in hits] == ["both", "fts", "faiss"]
-    assert all(x["score"] > 0 for x in hits)
+    assert all(x["retrieval_score"] > 0 for x in hits)
     assert hits[0]["page_number"] == 1
 
 
