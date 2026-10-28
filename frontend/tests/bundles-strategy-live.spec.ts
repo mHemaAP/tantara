@@ -118,7 +118,8 @@ test('bundle API validates request shape, owner scope, and page-range boundaries
   expect(mapping.sections[0].items[0]).toMatchObject({ page_start: 1, page_end: 1, start_page: 5, end_page: 5 });
   const invalidRange = await api.put(endpoint(`/bundles/${id}/items`), { headers: { Authorization: `Bearer ${token}` }, data: { items: [{ document_id: doc.id, section: 'Page One', order: 0, page_start: 1, page_end: doc.page_count + 1 }] } });
   expect(invalidRange.status()).toBe(400);
-  expect((await invalidRange.json()).detail).toContain('outside the source document');
+  const rangeError = await invalidRange.json();
+  expect(rangeError.error?.message ?? rangeError.detail).toContain('outside the source document');
 });
 
 test('staff sees the real empty bundle state and module navigation is available on desktop and mobile', async ({ page }) => {
