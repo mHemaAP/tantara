@@ -347,7 +347,7 @@ export default function DraftsPage() {
   const institutionItems = institutions.map(textOf).filter(Boolean);
 
   return (
-    <main className="drafts">
+    <div className="drafts">
       <header className="drafts-head">
         <div>
           <h1>AI Case Drafts</h1>
@@ -787,6 +787,6 @@ export default function DraftsPage() {
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 }
