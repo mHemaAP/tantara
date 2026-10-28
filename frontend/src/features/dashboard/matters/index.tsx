@@ -1,5 +1,5 @@
-"use client";
-import { CaseList } from "@/features/cases/components/case-list";
+'use client';
+import { CaseList } from '@/features/cases/components/case-list';
 export function MattersCard() {
   return (
     <div style={{ marginTop: 15 }}>
