@@ -387,7 +387,7 @@ def test_document_draft_bundle_ai_and_community_subresources_are_owner_scoped(cl
     related_case = client.post(
         "/api/v1/cases", headers=owner, json={"title": "Client relation", "client_id": client_record["id"]}
     )
-    assert related_case.status_code == 200
+    assert related_case.status_code == 201
     case_list = client.get(f"/api/v1/clients/{client_record['id']}/cases", headers=owner).json()
     assert set(case_list) >= {"items", "total", "page", "page_size", "pages"}
     assert any(item["id"] == related_case.json()["id"] for item in case_list["items"])
