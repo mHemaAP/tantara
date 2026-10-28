@@ -94,6 +94,57 @@ test('real API workflow persists client, case, party, hearing and task', async (
       headers,
     });
     expect(participants.ok()).toBeTruthy();
+
+    await page.goto(`/cases/${caseId}`);
+    const caseTabs = page.getByRole('tablist', { name: 'Case sections' });
+    const overviewTab = caseTabs.getByRole('tab', { name: 'Overview' });
+    const casePanel = page.getByRole('tabpanel');
+    const casePanelId = (await casePanel.getAttribute('id'))!;
+    const overviewTabId = (await overviewTab.getAttribute('id'))!;
+    await expect(overviewTab).toHaveAttribute('aria-controls', casePanelId);
+    await expect(casePanel).toHaveAttribute('aria-labelledby', overviewTabId);
+    await expect(caseTabs.getByRole('tab', { name: 'Timeline' })).toHaveAttribute('tabindex', '-1');
+    await overviewTab.focus();
+    await overviewTab.press('ArrowRight');
+    const timelineTab = caseTabs.getByRole('tab', { name: 'Timeline' });
+    await expect(timelineTab).toHaveAttribute('aria-selected', 'true');
+    await expect(timelineTab).toHaveAttribute('tabindex', '0');
+    await expect(timelineTab).toBeFocused();
+    await expect(casePanel).toHaveAttribute('aria-labelledby', (await timelineTab.getAttribute('id'))!);
+
+    const strategyTab = caseTabs.getByRole('tab', { name: 'Strategy' });
+    await strategyTab.click();
+    const embeddedTabs = page.getByRole('tablist', { name: 'Case strategy sections' });
+    const embeddedTheory = embeddedTabs.getByRole('tab', { name: 'Case Theory' });
+    const embeddedPanelId = (await embeddedTheory.getAttribute('aria-controls'))!;
+    const embeddedPanel = page.locator(`[id="${embeddedPanelId}"]`);
+    await expect(embeddedPanel).toHaveAttribute(
+      'aria-labelledby',
+      (await embeddedTheory.getAttribute('id'))!,
+    );
+    await embeddedTheory.focus();
+    await embeddedTheory.press('ArrowRight');
+    const embeddedIssues = embeddedTabs.getByRole('tab', { name: 'Key Issues' });
+    await expect(embeddedIssues).toHaveAttribute('aria-selected', 'true');
+    await expect(embeddedIssues).toBeFocused();
+    await expect(embeddedPanel).toHaveAttribute(
+      'aria-labelledby',
+      (await embeddedIssues.getAttribute('id'))!,
+    );
+
+    await page.goto(`/strategy?case_id=${caseId}&tab=Case%20Theory`);
+    const strategyTabs = page.getByRole('tablist', { name: 'Strategy sections' });
+    const theoryTab = strategyTabs.getByRole('tab', { name: 'Case Theory' });
+    const strategyPanel = page.getByRole('tabpanel');
+    await expect(theoryTab).toHaveAttribute('aria-controls', (await strategyPanel.getAttribute('id'))!);
+    await expect(strategyPanel).toHaveAttribute('aria-labelledby', (await theoryTab.getAttribute('id'))!);
+    await theoryTab.focus();
+    await theoryTab.press('ArrowRight');
+    const issuesTab = strategyTabs.getByRole('tab', { name: 'Key Issues' });
+    await expect(issuesTab).toHaveAttribute('aria-selected', 'true');
+    await expect(issuesTab).toBeFocused();
+    await expect(page).toHaveURL(/tab=Key\+Issues|tab=Key%20Issues/);
+    await expect(strategyPanel).toHaveAttribute('aria-labelledby', (await issuesTab.getAttribute('id'))!);
   } finally {
     await del(taskId ? `/tasks/${taskId}` : '');
     await del(hearingId ? `/hearings/${hearingId}` : '');
