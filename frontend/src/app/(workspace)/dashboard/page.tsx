@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -16,20 +16,19 @@ import {
   Scale,
   CheckCircle2,
 } from 'lucide-react';
-import { api, isReadOnlyPreview } from '@/lib/api/client';
+import { api } from '@/lib/api/client';
 import { endpoints } from '@/lib/api/endpoints';
 import { keys } from '@/lib/api/keys';
 import type { Summary, Activity, Upcoming, Case } from '@/lib/api/types';
+import { MattersCard } from '@/features/dashboard/matters';
 function Offline({ retry }: { retry: () => void }) {
   return (
     <div className="offline" role="status">
-      <strong>Backend not reachable at 127.0.0.1:8010</strong>
+      <strong>Backend not reachable</strong>
       <div style={{ fontSize: 13 }}>
         <details>
           <summary>Start command</summary>
-          <code>
-            cd backend &amp;&amp; .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
-          </code>
+          <code>cd backend &amp;&amp; .venv/bin/python -m uvicorn app.main:app</code>
         </details>
       </div>
       <button className="primary" onClick={retry}>
@@ -43,8 +42,6 @@ export default function Dashboard() {
     activity = useQuery({ queryKey: keys.activity, queryFn: endpoints.activity }),
     upcoming = useQuery({ queryKey: keys.upcoming, queryFn: endpoints.upcoming });
   const cases = useQuery({ queryKey: keys.cases(''), queryFn: () => endpoints.cases() });
-  const [preview, setPreview] = useState(false);
-  useEffect(() => setPreview(isReadOnlyPreview()), []);
   const [question, setQuestion] = useState(''),
     [answer, setAnswer] = useState<Awaited<ReturnType<typeof endpoints.ask>> | null>(null),
     [askBusy, setAskBusy] = useState(false),
@@ -166,16 +163,10 @@ export default function Dashboard() {
               <input
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                disabled={preview}
-                title={preview ? 'Sign in to ask TANTARA' : ''}
                 placeholder="Ask about arbitration law, cases, strategy, or a draft…"
                 aria-label="Ask an arbitration law question"
               />
-              <button
-                disabled={askBusy || preview}
-                title={preview ? 'Sign in to ask TANTARA' : ''}
-                aria-label="Submit question"
-              >
+              <button disabled={askBusy} aria-label="Submit question">
                 <ArrowRight size={18} />
               </button>
             </form>
@@ -186,12 +177,7 @@ export default function Dashboard() {
                 'Draft statement of claim',
                 'Relief options',
               ].map((x) => (
-                <button
-                  key={x}
-                  disabled={preview}
-                  title={preview ? 'Sign in to ask TANTARA' : ''}
-                  onClick={() => void ask(x)}
-                >
+                <button key={x} onClick={() => void ask(x)}>
                   {x}
                 </button>
               ))}
@@ -312,7 +298,9 @@ export default function Dashboard() {
           <p className="muted workspace-tools-note">Additional workspace tools are not available yet.</p>
         </div>
         <aside className="dashboard-aside">
-          <section className="matters-slot" data-slot="dashboard-matters" />
+          <section className="matters-slot" data-slot="dashboard-matters">
+            <MattersCard />
+          </section>
           <section className="card surface">
             <h2 className="section-title">
               Upcoming hearings &amp; deadlines <CalendarDays size={16} color="#4f46e5" />
