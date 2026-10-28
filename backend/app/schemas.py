@@ -6,6 +6,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
+from app.timezone import workspace_now
+
 
 class RequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -40,6 +42,16 @@ class CaseCreate(RequestModel):
     next_hearing_at: datetime | None = None
     notice_date: datetime | None = None
     limitation_date: datetime | None = None
+
+    @field_validator("filed_at")
+    @classmethod
+    def filed_date_must_not_be_in_future(cls, value: datetime | None) -> datetime | None:
+        if value is not None:
+            now = workspace_now()
+            filed_date = value.astimezone(now.tzinfo).date() if value.tzinfo else value.date()
+            if filed_date > now.date():
+                raise ValueError("Filing date cannot be in the future")
+        return value
 
 
 class HearingCreate(RequestModel):
