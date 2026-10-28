@@ -171,7 +171,7 @@ def test_ai_session_saved_community_and_settings_routes(client):
     message = client.post(
         f"/api/v1/ai/sessions/{sid}/messages", headers=headers, json={"question": "No evidence yet?"}
     )
-    assert message.status_code == 200 and message.json()["status"] == "no_evidence"
+    assert message.status_code == 200 and message.json()["status"] == "insufficient_evidence"
     assert (
         client.post(
             "/api/v1/ai/saved", headers=headers, json={"item_type": "research_item", "item_id": sid}
