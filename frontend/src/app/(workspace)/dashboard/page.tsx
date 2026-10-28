@@ -310,7 +310,6 @@ export default function Dashboard() {
               </div>
             )}
           </section>
-          <p className="muted workspace-tools-note">Additional workspace tools are not available yet.</p>
         </div>
         <aside className="dashboard-aside">
           <section className="matters-slot" data-slot="dashboard-matters">
