@@ -22,6 +22,7 @@ let seededDocId = '';
 let noEvidenceCaseId = '';
 let workflowBundleId = '';
 let workflowBundleName = '';
+let strategyTestCaseId = '';
 let originalAiSettings: Record<string, unknown> = {};
 
 async function login(email: string, password: string) {
@@ -85,6 +86,10 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  if (strategyTestCaseId) {
+    await api.patch(endpoint(`/documents/${seededDocId}`), { headers: { Authorization: `Bearer ${token}` }, data: { case_id: seededCaseId } }).catch(() => undefined);
+    await api.delete(endpoint(`/cases/${strategyTestCaseId}`), { headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
+  }
   if (originalAiSettings.base_url) {
     await api.patch(endpoint('/settings/ai'), { headers: { Authorization: `Bearer ${token}` }, data: originalAiSettings }).catch(() => undefined);
   }
@@ -225,15 +230,20 @@ test('page-range 400 is shown and duplicate documents are unavailable for select
 
 test('strategy shows source excerpts honestly, saves edits, creates a task, and opens a prefilled research question', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  const createdCase = await api.post(endpoint('/cases'), { headers: { Authorization: `Bearer ${token}` }, data: { title: `Strategy source test ${Date.now()}`, status: 'active' } });
+  expect(createdCase.status()).toBe(200);
+  strategyTestCaseId = (await createdCase.json()).id as string;
+  const movedDocument = await api.patch(endpoint(`/documents/${seededDocId}`), { headers: { Authorization: `Bearer ${token}` }, data: { case_id: strategyTestCaseId } });
+  expect(movedDocument.status()).toBe(200);
   const settings = await apiGet<Record<string, unknown>>('/settings/ai');
   originalAiSettings = { base_url: settings.base_url, model: settings.model, top_k: settings.top_k, temperature: settings.temperature };
   const dead = await api.patch(endpoint('/settings/ai'), { headers: { Authorization: `Bearer ${token}` }, data: { ...originalAiSettings, base_url: 'http://127.0.0.1:59999/v1' } });
   expect(dead.status()).toBe(200);
 
   await authenticatePage(page);
-  await page.goto(`/cases/${seededCaseId}/strategy`);
+  await page.goto(`/cases/${strategyTestCaseId}/strategy`);
   await expect(page.getByRole('heading', { name: 'AI Strategy Advisor' })).toBeVisible();
-  await expect(page.getByLabel('Select case for analysis')).toHaveValue(seededCaseId);
+  await expect(page.getByLabel('Select case for analysis')).toHaveValue(strategyTestCaseId);
   await expect(page.getByText('Not analysed')).toBeVisible();
   await capture(page, 'strategy-1440x900-template-empty-real.png');
   await page.getByRole('button', { name: 'Generate' }).click();
@@ -265,8 +275,8 @@ test('strategy shows source excerpts honestly, saves edits, creates a task, and 
 
   await page.getByRole('button', { name: 'Create research task' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Task created:' })).toBeVisible();
-  const tasks = await apiGet<{ items: Array<{ title: string; case_id: string }> }>(`/tasks?case_id=${seededCaseId}&page_size=100`);
-  expect(tasks.items.some((task) => task.title === 'Review AI Strategy Advisor evidence gaps' && task.case_id === seededCaseId)).toBeTruthy();
+  const tasks = await apiGet<{ items: Array<{ title: string; case_id: string }> }>(`/tasks?case_id=${strategyTestCaseId}&page_size=100`);
+  expect(tasks.items.some((task) => task.title === 'Review AI Strategy Advisor evidence gaps' && task.case_id === strategyTestCaseId)).toBeTruthy();
   await capture(page, 'strategy-1440x900-task-created-real.png');
 
   await page.getByRole('link', { name: 'Create follow-up question' }).click();
