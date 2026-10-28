@@ -1,4 +1,4 @@
-import { api, apiBase, authToken } from '@/lib/api/client';
+import { api } from '@/lib/api/client';
 
 export type ResearchSource = {
   citation_ref?: string;
@@ -13,7 +13,14 @@ export type ResearchSource = {
 };
 
 export type ResearchAnswer = {
-  status: 'ok' | 'answered' | 'no_evidence' | 'model_unavailable' | 'embedding_unavailable' | 'error';
+  status:
+    | 'ok'
+    | 'answered'
+    | 'no_evidence'
+    | 'insufficient_evidence'
+    | 'model_unavailable'
+    | 'embedding_unavailable'
+    | 'error';
   answer?: string;
   citations?: ResearchSource[];
   sources?: ResearchSource[];
@@ -82,15 +89,6 @@ export const researchApi = {
     }>('/documents?page_size=100'),
   document: (id: string) =>
     api.get<{ id: string; title?: string; filename?: string }>(`/documents/${encodeURIComponent(id)}`),
-  collections: () =>
-    api.get<{ items?: Array<{ id: string; name: string }> } | Array<{ id: string; name: string }>>(
-      '/meta/collections',
-    ),
-  jurisdictions: () =>
-    api.get<
-      | { items?: Array<{ id?: string; name?: string } | string> }
-      | Array<{ id?: string; name?: string } | string>
-    >('/meta/jurisdictions'),
   ask: (
     body: {
       question: string;
@@ -118,15 +116,7 @@ export const researchApi = {
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
-    const authorization = authToken();
-    return fetch(`${apiBase.replace(/\/api\/v1$/, '')}/ingest/file`, {
-      method: 'POST',
-      headers: authorization ? { Authorization: `Bearer ${authorization}` } : {},
-      body: form,
-    }).then(async (response) => {
-      if (!response.ok) throw new Error('The document could not be uploaded. Check its type and try again.');
-      return (await response.json()) as { document_id?: string; id?: string; status?: string };
-    });
+    return api.post<{ document_id?: string; id?: string; status?: string }>('/ingest/file', form);
   },
   ingestJob: (id: string) =>
     api.get<{ status?: string; document_id?: string }>(`/documents/${encodeURIComponent(id)}/job`),
