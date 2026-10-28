@@ -11,7 +11,7 @@ export default defineConfig({
       testIgnore: /documents-round(4|5)-mobile\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3013',
+        baseURL: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3012',
         viewport: { width: 1440, height: 900 },
       },
     },
@@ -20,14 +20,14 @@ export default defineConfig({
       testMatch: /documents-round(4|5)-mobile\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3013',
+        baseURL: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3012',
         viewport: { width: 390, height: 844 },
       },
     },
   ],
   webServer: {
-    command: 'pnpm exec next dev -H 127.0.0.1 -p 3013',
-    url: 'http://127.0.0.1:3013',
+    command: 'pnpm exec next dev -H 127.0.0.1 -p 3012',
+    url: 'http://127.0.0.1:3012',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
