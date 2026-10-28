@@ -83,7 +83,7 @@ test("real API workflow persists client, case, party, hearing and task", async (
         await route.fulfill({
           status: 204,
           headers: {
-            "access-control-allow-origin": "http://localhost:3011",
+            "access-control-allow-origin": "http://localhost:3012",
             "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
             "access-control-allow-headers": "authorization,content-type",
           },
@@ -101,7 +101,7 @@ test("real API workflow persists client, case, party, hearing and task", async (
         headers: {
           "content-type":
             upstream.headers()["content-type"] || "application/json",
-          "access-control-allow-origin": "http://localhost:3011",
+          "access-control-allow-origin": "http://localhost:3012",
           "access-control-allow-credentials": "true",
         },
       });
@@ -316,11 +316,54 @@ test("calendar mobile defaults to readable agenda view", async ({
   await expect(
     page.locator("[data-calendar-agenda-settled='true']"),
   ).toBeVisible();
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  const nextMonthStart = new Date(
+    monthStart.getFullYear(),
+    monthStart.getMonth() + 1,
+    1,
+  );
+  const from = monthStart.toISOString().slice(0, 10);
+  const to = nextMonthStart.toISOString().slice(0, 10);
+  const calendarResponse = await request.get(
+    `${base}/calendar?from=${from}&to=${to}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  expect(calendarResponse.ok()).toBeTruthy();
+  const apiEvents = (await calendarResponse.json()) as Array<{ at: string }>;
+  const datedEventCount = new Set(
+    apiEvents.map((event) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(event.at)),
+    ),
+  ).size;
+  if (datedEventCount > 7) {
+    const firstPageHeading = await page
+      .locator(".calendar-agenda > section h2")
+      .first()
+      .innerText();
+    await page.getByRole("button", { name: "Next days" }).click();
+    await expect(page.locator(".calendar-agenda > section")).toHaveCount(7);
+    expect(
+      await page.locator(".calendar-agenda > section h2").first().innerText(),
+    ).not.toBe(firstPageHeading);
+  }
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBeTruthy();
+  expect(
+    await page.locator(".calendar-agenda > section").count(),
+  ).toBeLessThanOrEqual(7);
+  await page.locator(".calendar-agenda-row").first().click();
+  await expect(
+    page.getByRole("dialog", { name: "Event details" }),
+  ).toBeVisible();
   expect(
     await page
       .locator(".calendar-agenda-row span")
@@ -409,7 +452,39 @@ test("case, calendar and client routes each expose one active navigation link", 
   ]) {
     await page.goto(route);
     await expect(page.locator('.nav a[aria-current="page"]')).toHaveCount(1);
+    await expect(page.locator(".nav a")).toHaveCount(9);
   }
+});
+
+test("mobile task actions remain available and open a labelled menu", async ({
+  page,
+  request,
+}) => {
+  test.skip(!(await apiReady()), "TANTARA API is not running");
+  const login = await request.post(`${base}/auth/login`, {
+    data: {
+      email: process.env.TANTARA_E2E_EMAIL || "advocate@tantara.local",
+      password: process.env.TANTARA_E2E_PASSWORD || "tantara-local",
+    },
+  });
+  const token = (await login.json()).access_token;
+  await page.addInitScript((value) => {
+    localStorage.setItem("tantara_token", value as string);
+    document.cookie = `tantara_token=${value}; Path=/; SameSite=Lax`;
+  }, token);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tasks");
+  const row = page.locator(".task-row").first();
+  await expect(row.locator(".task-case")).not.toHaveText("Linked case");
+  const actions = row.getByRole("button", { name: /^Actions for / });
+  await expect(actions).toBeVisible();
+  await actions.click();
+  await expect(row.getByRole("button", { name: "Edit" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBeTruthy();
 });
 
 test("preview case form cannot submit a mutation", async ({
