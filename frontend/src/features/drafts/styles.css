@@ -35,4 +35,23 @@
 .draft-citation a { color:#5147bd; }
 .draft-version { display:flex; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px solid #edf0f4; font-size:12px; }
 .draft-foot { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.draft-row-head { display:flex; justify-content:space-between; align-items:center; }
+.draft-row-head h2 { margin-bottom:10px; }
+.draft-recent-list .draft-version:nth-child(n+6) { display:none; }
+.draft-recent-list.expanded .draft-version { display:flex; }
+.draft-version-row { display:grid; grid-template-columns:90px minmax(80px,1fr) minmax(105px,auto) auto auto auto; align-items:center; gap:10px; }
+.draft-version-row time { display:flex; flex-direction:column; gap:3px; color:#748096; }
+.draft-current { color:#187347; background:#e9f7ef; border-radius:12px; padding:4px 8px; font-size:10px; }
+.draft-version-content { grid-column:1/-1; white-space:pre-wrap; max-height:220px; overflow:auto; background:#f7f8fb; padding:12px; border-radius:8px; }
+.draft-case-reference { margin:-8px 0 14px !important; font-size:12px; }
+.draft-review-summary,.draft-review-item { color:#825000; background:#fff4dc; border:1px solid #f0d69d; border-radius:9px; padding:12px 14px; margin:10px 0; }
+.draft-review-summary h3 { margin:0 0 4px; font-size:13px; }
+.draft-review-item p { color:#825000; margin-top:5px; }
+.draft-evidence { background:#f4f6fa; border-radius:6px; padding:8px 10px; font-size:13px; }
+.draft-evidence-link { display:inline-flex; color:#5147bd; background:#f0efff; border-radius:12px; padding:3px 7px; text-decoration:none; }
+.draft-page-chips { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.draft-page-chips a { padding:5px 9px; border-radius:14px; background:#f0efff; text-decoration:none; }
+.draft-start-link { margin-top:12px; text-decoration:none; }
+@media(max-width:760px){.draft-version-row{grid-template-columns:1fr auto}.draft-version-row>span,.draft-version-row time{grid-column:1/-1}.draft-version-row time{flex-direction:row}.draft-version-row button{font-size:11px;padding:8px}.draft-foot button{flex:1;justify-content:center}}
+@media(max-width:1023px){.workspace:has(.drafts) .sidebar:not(.open){transform:translateX(-105%)}.workspace:has(.drafts) .drafts{max-width:100%}}
 @media(max-width:850px){.drafts-grid,.draft-columns{grid-template-columns:1fr}.drafts-head{flex-direction:column}.draft-editor{min-height:350px}}
