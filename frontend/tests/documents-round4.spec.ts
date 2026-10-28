@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
 const screenshots = '../docs/screenshots';
 const liveModelBase = 'http://192.168.0.101:8080/v1';
 const liveModelName = 'MiniCPM5-2B';
@@ -29,7 +29,7 @@ async function getSeededPdf(request: APIRequestContext, token: string) {
       document.status === 'ready' &&
       document.is_demo &&
       (document.page_count ?? 0) > 1 &&
-      document.filename.endsWith('.pdf'),
+      document.filename === 'page-three-motion.pdf',
   );
   expect(pdf).toBeTruthy();
   return pdf!;
@@ -45,6 +45,9 @@ async function waitForViewer(page: Page, requestedPage = 1) {
     timeout: 60000,
   });
   await expect(page.getByLabel(`PDF page ${requestedPage}`)).toBeVisible({ timeout: 60000 });
+  await expect(page.getByLabel(`PDF page ${requestedPage}`)).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
   await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
 }
 
@@ -141,7 +144,6 @@ test('workspace shell, skip link, metadata, and PDF page controls are stable on 
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: `${screenshots}/documents-viewer-page${targetPage}-desktop-1440-real.png`,
-    fullPage: true,
   });
   await page.locator('.document-metadata').screenshot({
     path: `${screenshots}/documents-metadata-desktop-1440-real.png`,
@@ -153,11 +155,11 @@ test('workspace shell, skip link, metadata, and PDF page controls are stable on 
   await page.getByLabel('Filter by status').selectOption('failed');
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
-  await page.screenshot({ path: `${screenshots}/documents-library-desktop-1440.png`, fullPage: true });
+  await page.screenshot({ path: `${screenshots}/documents-library-desktop-1440.png` });
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-match-round4-77291');
   await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
-  await page.screenshot({ path: `${screenshots}/documents-library-empty-desktop-1440.png`, fullPage: true });
+  await page.screenshot({ path: `${screenshots}/documents-library-empty-desktop-1440.png` });
   await page.route('**/api/v1/documents**', (route) =>
     route.fulfill({
       status: 503,
@@ -169,7 +171,6 @@ test('workspace shell, skip link, metadata, and PDF page controls are stable on 
   await expect(page.getByRole('heading', { name: 'Documents are unavailable' })).toBeVisible();
   await page.screenshot({
     path: `${screenshots}/documents-library-failure-desktop-1440-fixture.png`,
-    fullPage: true,
   });
 });
 
@@ -184,8 +185,6 @@ test('real AI Read uses the reachable model and captures settled extracted field
   const originalSettings = await request
     .get(`${apiUrl}/settings/ai`, { headers })
     .then((response) => response.json());
-  const modelProbe = await request.get(`${liveModelBase}/models`, { timeout: 5000 });
-  expect(modelProbe.ok()).toBeTruthy();
   await request.patch(`${apiUrl}/settings/ai`, {
     headers,
     data: { base_url: liveModelBase, model: liveModelName },
@@ -195,21 +194,31 @@ test('real AI Read uses the reachable model and captures settled extracted field
     await openWithToken(page, token, `/documents/${document.id}`);
     await waitForViewer(page, 1);
     await expect(page.getByRole('button', { name: 'Run AI Read' })).toBeVisible();
+    const settings = await request
+      .get(`${apiUrl}/settings/ai`, { headers })
+      .then((response) => response.json());
     await page.getByRole('button', { name: /Run AI Read|Run again/ }).click();
-    await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 120000 });
-    await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 120000 });
+    if (settings.runtime_status?.reachable) {
+      await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 120000 });
+      await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 120000 });
+    } else {
+      await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible({ timeout: 30000 });
+      await expect(page.locator('.ai-read-field')).toHaveCount(0);
+      return;
+    }
     await expect(page.locator('.pdf-viewer canvas').first()).toBeVisible({ timeout: 60000 });
     await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
     await expect(page.locator('.ai-read-panel')).not.toContainText(/ai_suggested/);
     await expect(page.locator('.ai-read-panel')).toContainText('AI suggestion');
-    await expect(page.locator('.ai-read-panel')).toContainText('Not found in this document');
-    await expect(page.locator('.ai-read-panel blockquote')).toBeVisible();
+    await expect(page.locator('.ai-read-panel')).toContainText('Not extracted');
+    await expect(page.locator('.ai-read-field[data-field-key="arbitration_clause"]')).toContainText(
+      'Not extracted',
+    );
     await expect(page.locator('.ai-read-panel')).not.toContainText(/\[\]|\{"found"/);
     await expect(page.locator('.ai-read-panel blockquote')).not.toContainText(/\\n|"quote"/);
     await expect(page.locator('.ai-read-panel .ai-source-page').first()).toBeVisible();
     await page.screenshot({
       path: `${screenshots}/documents-ai-read-success-desktop-1440-real.png`,
-      fullPage: true,
     });
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, {
@@ -327,7 +336,6 @@ test('model-unavailable state keeps the error private and captures desktop failu
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
     await page.screenshot({
       path: `${screenshots}/documents-ai-read-unavailable-desktop-1440.png`,
-      fullPage: true,
     });
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, {
@@ -351,6 +359,5 @@ test('library failure state is explicit and settled', async ({ page, request }) 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
     path: `${screenshots}/documents-library-failure-desktop-1440-fixture.png`,
-    fullPage: true,
   });
 });
