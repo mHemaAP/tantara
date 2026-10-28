@@ -299,6 +299,7 @@ export function PdfDocumentViewer({
           <article
             className={`pdf-page-card ${page.pageNumber === requestedPage ? 'pdf-page-deep-link' : ''}`}
             data-page-card={page.pageNumber}
+            data-page-ratio={(page.width / page.height).toString()}
             id={`pdf-page-${page.pageNumber}`}
             key={page.pageNumber}
             ref={(element) => {
