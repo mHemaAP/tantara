@@ -1,31 +1,230 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowUpRight, Check, ClipboardList, RefreshCw, Save, Sparkles } from 'lucide-react';
+
 import Link from 'next/link';
-import { strategyApi, type StrategyBlock, type StrategyData } from './api';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowUpRight, Check, ClipboardList, Save, Sparkles } from 'lucide-react';
+import {
+  strategyApi,
+  strategyTabs,
+  type StrategyCase,
+  type StrategyCitation,
+  type StrategyData,
+  type StrategyTab,
+  type StrategyWrite,
+} from './api';
 import './strategy.css';
-const tabs=['Case Theory','Key Issues','Legal Arguments','Anticipated Counterarguments','Evidence Gaps','Strategy Plan'];
-type RenderBlock={title:string;content:string;citations:Array<{document_title?:string;document_id?:string;page_number?:number;chunk_id?:string}>;supported:boolean};
-function normalize(data:StrategyData|undefined,tab:string):RenderBlock[]{if(!data)return[];const key=tab.toLowerCase().replaceAll(' ','_');const value=data.tabs?.[tab]??data.tabs?.[key]??data.sections?.[tab]??data.sections?.[key]??data.blocks??[];const arr=Array.isArray(value)?value:typeof value==='string'?[{content:value}]:[];return arr.flatMap((b:StrategyBlock)=>b.items?.length?b.items.map(i=>({title:b.title??tab,content:i.text,citations:i.citations??[],supported:i.supported??(i.citations?.length??0)>0})): [{title:b.title??tab,content:b.content??b.text??'',citations:b.citations??[],supported:b.supported??(b.status==='supported'||(b.citations?.length??0)>0)}]).filter(x=>x.content);}
-export function StrategyPanel({caseId}:{caseId:string}){
- const router=useRouter(),path=usePathname(),params=useSearchParams();const initial=Math.max(0,tabs.findIndex(t=>t===params.get('tab')));const [tab,setTab]=useState(initial),[data,setData]=useState<StrategyData>(),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false),[error,setError]=useState(''),[task,setTask]=useState(false),[savedAt,setSavedAt]=useState('');
- useEffect(()=>{strategyApi.get(caseId).then(d=>{setData(d);setSavedAt(d.version_at??d.updated_at??'')}).catch(e=>setError(e instanceof Error?e.message:'Strategy unavailable.'));},[caseId]);
- useEffect(()=>{const next=tabs.findIndex(t=>t===params.get('tab'));if(next>=0)setTab(next)},[params]);
- const blocks=useMemo(()=>normalize(data,tabs[tab]),[data,tab]);const supported=blocks.filter(x=>x.supported).length;const hypotheses=blocks.length-supported;
- const choose=(n:number)=>{setTab(n);const q=new URLSearchParams(params.toString());q.set('tab',tabs[n]);router.replace(`${path}?${q.toString()}`,{scroll:false});};
- const change=(i:number,value:string)=>{if(!data)return;const all=[...normalize(data,tabs[tab])];all[i]={...all[i],content:value};setData({...data,tabs:{...data.tabs,[tabs[tab]]:all.map(x=>({title:x.title,content:x.content,citations:x.citations,supported:x.supported}))}});setDirty(true)};
- const generate=async()=>{setBusy(true);setError('');try{setData(await strategyApi.generate(caseId));setDirty(false)}catch(e){setError(e instanceof Error?e.message:'Strategy generation failed.')}finally{setBusy(false)}};
- const save=async()=>{if(!data)return;setBusy(true);try{const value=await strategyApi.save(caseId,data);setData(value);setSavedAt(value.version_at??value.updated_at??new Date().toISOString());setDirty(false)}catch(e){setError(e instanceof Error?e.message:'Notes could not be saved.')}finally{setBusy(false)}};
- const createTask=async()=>{setTask(true);try{await strategyApi.createTask({case_id:caseId,title:'Review strategy evidence gaps',description:'Review the AI Strategy Advisor evidence gaps and verify any hypotheses.'});}catch(e){setError(e instanceof Error?e.message:'Task could not be created.')}finally{setTask(false)}};
- return <main className="strategy-page"><header className="strategy-head"><div><span className="strategy-kicker">CASE WORKSPACE · STRATEGY</span><h1>AI Strategy Advisor</h1><p>Evidence-led analysis for your case team.</p></div><button className="strategy-generate" onClick={()=>void generate()} disabled={busy}><Sparkles size={16}/>{busy?'Generating…':'Generate'}</button></header>
- {error&&<div className="strategy-alert" role="alert">{error}<button onClick={()=>setError('')}>Dismiss</button></div>}
- <div className="strategy-evidence-bar"><div><strong>{supported}</strong><span>Supported by evidence</span></div><i/><div><strong>{hypotheses}</strong><span>Hypotheses to verify</span></div><p>Every recommendation is labelled by its evidence status.</p></div>
- <nav className="strategy-tabs" aria-label="Strategy sections">{tabs.map((t,i)=><button key={t} className={tab===i?'active':''} onClick={()=>choose(i)}>{t}</button>)}</nav>
- <section className="strategy-content"><div className="strategy-content-head"><div><span className="strategy-kicker">{String(tab+1).padStart(2,'0')} / 06</span><h2>{tabs[tab]}</h2></div><button onClick={()=>void save()} disabled={!dirty||busy} className="strategy-save"><Save size={15}/>{busy?'Saving…':'Save notes'}</button></div>
- {data?.status==='no_evidence'?<div className="strategy-empty"><ClipboardList size={25}/><strong>No evidence retrieved</strong><p>Add and process case documents to generate supported analysis.</p></div>:data?.status==='model_unavailable'?<div className="strategy-unavailable"><strong>Model unavailable</strong><p>Showing retrieved evidence only. No recommendations have been generated.</p>{blocks.map((b,i)=><article className="strategy-block" key={i}><h3>{b.title}</h3><p>{b.content}</p>{b.citations.map((c,j)=><Citation key={j} citation={c}/>)}</article>)}</div>:blocks.length?blocks.map((b,i)=><article className="strategy-block" key={`${tab}-${i}`}><div className="strategy-block-title"><h3>{b.title}</h3>{b.supported?<span className="strategy-supported"><Check size={12}/> Supported</span>:<span className="strategy-hypothesis">Hypothesis — needs verification</span>}</div><textarea aria-label={`${b.title} notes`} value={b.content} onChange={e=>change(i,e.target.value)} rows={Math.max(3,Math.min(8,Math.ceil(b.content.length/100)))}/>{b.supported&&b.citations.map((c,j)=><Citation key={`${c.chunk_id}-${j}`} citation={c}/>)}</article>):<div className="strategy-empty"><RefreshCw size={22}/><strong>{busy?'Generating case strategy…':'No strategy generated yet'}</strong><p>{busy?'Reviewing case documents and retrieved authorities.':'Generate an evidence-linked analysis from the case record.'}</p></div>}
- <footer className="strategy-footer"><span>{dirty?'Unsaved changes':savedAt?`Version saved ${new Date(savedAt).toLocaleString()}`:'No saved version'}</span><button className="strategy-link-button" onClick={()=>void createTask()} disabled={task}><ClipboardList size={14}/>{task?'Creating task…':'Create research task'}</button><Link className="strategy-link-button" href={`/research?case_id=${encodeURIComponent(caseId)}&question=${encodeURIComponent('Follow up on strategy evidence gaps')}`}><ArrowUpRight size={14}/>Create follow-up question</Link></footer></section>
- <p className="strategy-disclaimer">This analysis is a working aid and does not guarantee any outcome. Verify authorities, citations, and legal propositions before relying on them.</p>
- </main>;
+
+type Entry = { text: string; citations: StrategyCitation[] };
+const fields: Record<StrategyTab, keyof StrategyWrite> = {
+  'Case Theory': 'case_theory',
+  'Key Issues': 'key_issues',
+  'Legal Arguments': 'legal_arguments',
+  'Anticipated Counterarguments': 'counterarguments',
+  'Evidence Gaps': 'evidence_gaps',
+  'Strategy Plan': 'strategy_plan',
+};
+
+export function StrategyPanel({ caseId: routeCaseId }: { caseId?: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const [cases, setCases] = useState<StrategyCase[]>([]);
+  const [selectedCaseId, setSelectedCaseId] = useState(routeCaseId || params.get('case_id') || '');
+  const [caseInfo, setCaseInfo] = useState<StrategyCase>();
+  const [data, setData] = useState<StrategyData>();
+  const [aiReachable, setAiReachable] = useState<boolean>();
+  const [tab, setTab] = useState<StrategyTab>((strategyTabs.find((item) => item === params.get('tab')) ?? strategyTabs[0]));
+  const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [error, setError] = useState('');
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    strategyApi.cases().then((result) => {
+      setCases(result.items);
+      if (!selectedCaseId && result.items[0]) setSelectedCaseId(result.items[0].id);
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Cases are unavailable.'));
+  }, []);
+
+  const loadCase = useCallback(async (id: string) => {
+    if (!id) return;
+    setError('');
+    setData(undefined);
+    try {
+      const [overview, strategy] = await Promise.all([strategyApi.case(id), strategyApi.get(id)]);
+      setCaseInfo(overview);
+      setData(strategy);
+      setSavedAt(strategy.updated_at);
+      setDirty(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Strategy data could not be loaded.');
+    }
+    try {
+      const settings = await strategyApi.aiSettings();
+      setAiReachable(settings.runtime_status?.reachable);
+    } catch {
+      setAiReachable(undefined);
+    }
+  }, []);
+
+  useEffect(() => { void loadCase(selectedCaseId); }, [selectedCaseId, loadCase]);
+  useEffect(() => {
+    const next = strategyTabs.find((item) => item === params.get('tab'));
+    if (next) setTab(next);
+  }, [params]);
+  useEffect(() => {
+    if (!dirty) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  }, [dirty]);
+
+  const chooseCase = (nextId: string) => {
+    if (!nextId || nextId === selectedCaseId) return;
+    if (dirty && !window.confirm('Discard unsaved strategy notes and change case?')) return;
+    setSelectedCaseId(nextId);
+    setTab(strategyTabs[0]);
+    const query = new URLSearchParams();
+    query.set('case_id', nextId);
+    query.set('tab', strategyTabs[0]);
+    if (pathname.startsWith('/cases/')) router.push(`/cases/${nextId}/strategy?tab=${encodeURIComponent(strategyTabs[0])}`);
+    else router.replace(`/strategy?${query}`);
+  };
+
+  const selectTab = (next: StrategyTab) => {
+    setTab(next);
+    const query = new URLSearchParams(params.toString());
+    query.set('tab', next);
+    router.replace(`${pathname}?${query}`, { scroll: false });
+  };
+
+  const entriesFor = (section: StrategyTab, current: StrategyData | undefined = data): Entry[] => {
+    if (!current) return [];
+    const field = fields[section];
+    const claims = current.assertion_citations ?? [];
+    const citations = (index: number) => claims.find((claim) => claim.field === field && claim.index === index)?.citations ?? [];
+    if (section === 'Legal Arguments') {
+      return current.legal_arguments.map((argument) => ({ text: argument.statement, citations: argument.support ?? [] }));
+    }
+    if (section === 'Case Theory') return current.case_theory ? [{ text: current.case_theory, citations: citations(0) }] : [];
+    if (section === 'Strategy Plan') return current.strategy_plan ? [{ text: current.strategy_plan, citations: citations(0) }] : [];
+    const values = section === 'Key Issues' ? current.key_issues : section === 'Anticipated Counterarguments' ? current.counterarguments : current.evidence_gaps;
+    return values.map((text, index) => ({ text, citations: citations(index) }));
+  };
+
+  const generated = !!data?.generated_at || !!data?.updated_at;
+  const sourceMode = generated && data?.status !== 'model_generated' && data?.status !== 'no_evidence';
+  const modelUnavailable = generated && data?.status !== 'no_evidence' && (data?.status === 'model_unavailable' || aiReachable === false);
+  const entries = entriesFor(tab);
+  const sourceExcerptCount = data?.legal_arguments.length ?? 0;
+  const absentSectionCount = data ? strategyTabs.filter((section) => entriesFor(section).length === 0).length : 0;
+
+  const editEntry = (index: number, value: string) => {
+    if (!data) return;
+    const next: StrategyData = { ...data };
+    if (tab === 'Case Theory') next.case_theory = value;
+    else if (tab === 'Strategy Plan') next.strategy_plan = value;
+    else if (tab === 'Legal Arguments') next.legal_arguments = next.legal_arguments.map((entry, at) => at === index ? { ...entry, statement: value } : entry);
+    else if (tab === 'Key Issues') next.key_issues = next.key_issues.map((entry, at) => at === index ? value : entry);
+    else if (tab === 'Anticipated Counterarguments') next.counterarguments = next.counterarguments.map((entry, at) => at === index ? value : entry);
+    else next.evidence_gaps = next.evidence_gaps.map((entry, at) => at === index ? value : entry);
+    setData(next);
+    setDirty(true);
+  };
+
+  const generate = async () => {
+    if (!selectedCaseId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await strategyApi.generate(selectedCaseId);
+      setData(result);
+      setSavedAt(result.updated_at);
+      setDirty(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Strategy generation failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = async () => {
+    if (!data || !selectedCaseId || !dirty) return;
+    setBusy(true);
+    setError('');
+    const payload: StrategyWrite = {
+      case_theory: data.case_theory,
+      key_issues: data.key_issues,
+      legal_arguments: data.legal_arguments,
+      counterarguments: data.counterarguments,
+      evidence_gaps: data.evidence_gaps,
+      strategy_plan: data.strategy_plan,
+    };
+    try {
+      const result = await strategyApi.save(selectedCaseId, payload);
+      setData(result);
+      setSavedAt(result.updated_at);
+      setDirty(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Strategy notes could not be saved.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createTask = async () => {
+    if (!selectedCaseId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const title = 'Review AI Strategy Advisor evidence gaps';
+      await strategyApi.createTask({ title, case_id: selectedCaseId, notes: `Review evidence gaps for ${caseInfo?.title ?? 'this case'} and verify any source excerpts before relying on them.` });
+      setTaskTitle(title);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Research task could not be created.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="strategy-page">
+      <header className="strategy-head">
+        <div><span className="strategy-kicker">CASE WORKSPACE · STRATEGY</span><h1>AI Strategy Advisor</h1><p>Evidence-led analysis for your case team.</p></div>
+        <button className="strategy-generate" onClick={() => void generate()} disabled={busy || !selectedCaseId}><Sparkles size={16} />{busy ? 'Working…' : 'Generate'}</button>
+      </header>
+      {error && <div className="strategy-alert" role="alert">{error}<button onClick={() => setError('')}>Dismiss</button></div>}
+
+      <section className="strategy-case-context" aria-label="Strategy case context">
+        <div className="strategy-case-picker"><label htmlFor="strategy-case">Select case for analysis</label><select id="strategy-case" value={selectedCaseId} onChange={(event) => chooseCase(event.target.value)}>{cases.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></div>
+        {caseInfo ? <div className="strategy-case-overview"><strong>{caseInfo.title}</strong><span>{[caseInfo.reference_number, caseInfo.forum, caseInfo.seat, caseInfo.claimant && caseInfo.respondent ? `${caseInfo.claimant} v. ${caseInfo.respondent}` : undefined].filter(Boolean).join(' · ')}</span></div> : <div className="strategy-case-overview" role="status">Select a case to see its overview.</div>}
+      </section>
+
+      <div className="strategy-evidence-bar" aria-live="polite">
+        {!generated ? <><strong>—</strong><span>Not analysed</span><p>Generate a case strategy to see evidence and source excerpts.</p></> : sourceMode ? <><div><strong>{sourceExcerptCount}</strong><span>Source excerpts</span></div><i /><div><strong>{absentSectionCount}</strong><span>Sections not generated</span></div><p>These excerpts were assembled without a language model.</p></> : <><div><strong>{data?.assertion_citations.length ?? 0}</strong><span>Cited assertions</span></div><i /><div><strong>{data?.citations.length ?? 0}</strong><span>Retrieved sources</span></div><p>Counts are from the generated response and its citations.</p></>}
+      </div>
+
+      <nav className="strategy-tabs" aria-label="Strategy sections">{strategyTabs.map((label) => <button key={label} className={tab === label ? 'active' : ''} aria-current={tab === label ? 'page' : undefined} onClick={() => selectTab(label)}>{label}</button>)}</nav>
+
+      <section className="strategy-content">
+        <div className="strategy-content-head"><div><span className="strategy-kicker">{String(strategyTabs.indexOf(tab) + 1).padStart(2, '0')} / 06</span><h2>{tab}</h2></div><button onClick={() => void save()} disabled={!dirty || busy} className="strategy-save"><Save size={15} />{busy ? 'Saving…' : 'Save notes'}</button></div>
+        {data?.status === 'no_evidence' ? <div className="strategy-empty"><strong>No indexed evidence is available for this case.</strong><p>No strategy was generated. Add and index case documents, then try again.</p></div> : modelUnavailable ? <div className="strategy-unavailable"><strong>Model unavailable · source excerpts only</strong><p>{data?.generation_note || 'The configured model is unavailable. The following are retrieved source excerpts, not model analysis.'}</p></div> : sourceMode ? <div className="strategy-source-mode"><strong>Source excerpts assembled without a language model</strong><p>{data?.generation_note}</p></div> : generated && data?.status === 'model_generated' ? <div className="strategy-mode-label">Model-generated, with citations checked against retrieved case chunks.</div> : null}
+        {entries.length ? entries.map((entry, index) => <article className="strategy-block" key={`${tab}-${index}`}>
+          <div className="strategy-block-title"><h3>{tab === 'Legal Arguments' ? `Argument ${index + 1}` : tab === 'Case Theory' ? 'Case theory' : tab === 'Strategy Plan' ? 'Plan' : `${tab.replace(/s$/, '')} ${index + 1}`}</h3>{sourceMode ? <span className="strategy-source-tag">Source excerpt</span> : data?.status === 'model_generated' && entry.citations.length ? <span className="strategy-supported"><Check size={12} /> Supported by cited evidence</span> : <span className="strategy-hypothesis">Hypothesis — needs verification</span>}</div>
+          <textarea aria-label={`${tab} note ${index + 1}`} value={entry.text} onChange={(event) => editEntry(index, event.target.value)} rows={Math.max(3, Math.min(8, Math.ceil(entry.text.length / 100)))} />
+          {entry.citations.length > 0 && <div className="strategy-citations">{entry.citations.map((citation) => <Citation key={`${citation.chunk_id}-${citation.page_number}`} citation={citation} />)}</div>}
+        </article>) : <div className="strategy-empty"><strong>{generated ? 'Not generated from available evidence.' : 'Generate a strategy to populate this section.'}</strong><p>{generated && data?.status === 'no_evidence' ? 'No indexed evidence was available for this case.' : 'The backend returned no content for this section; no analysis is inferred here.'}</p></div>}
+
+        <footer className="strategy-footer"><span>{dirty ? 'Unsaved changes' : savedAt ? `Version saved ${new Date(savedAt).toLocaleString()}` : 'No saved version'}</span><button className="strategy-link-button" onClick={() => void createTask()} disabled={busy || !selectedCaseId}><ClipboardList size={14} />Create research task</button><Link className="strategy-link-button" href={`/research?case_id=${encodeURIComponent(selectedCaseId)}&question=${encodeURIComponent(`Follow up on strategy evidence for ${caseInfo?.title ?? 'this case'}`)}`}><ArrowUpRight size={14} />Create follow-up question</Link></footer>
+        {taskTitle && <p className="strategy-task-created" role="status">Task created: {taskTitle}</p>}
+      </section>
+      <p className="strategy-disclaimer">This analysis provides no outcome guarantees. Verify every authority, citation, and proposition before relying on it.</p>
+    </main>
+  );
 }
-function Citation({citation}:{citation:{document_title?:string;document_id?:string;page_number?:number;chunk_id?:string}}){return <a className="strategy-citation" href={citation.document_id?`/documents/${citation.document_id}?page=${citation.page_number??1}`:'#'} onClick={e=>{if(!citation.document_id)e.preventDefault()}} title={citation.chunk_id?`Evidence chunk ${citation.chunk_id}`:'Evidence citation'}>{citation.document_title??'Source document'} · p. {citation.page_number??'—'} <ArrowUpRight size={11}/></a>}
+
+function Citation({ citation }: { citation: StrategyCitation }) {
+  return <a className="strategy-citation" href={`/documents/${citation.document_id}?page=${citation.page_number}`} title={`Evidence chunk ${citation.chunk_id}`}><span>{citation.document_title}</span><span>p. {citation.page_number}</span><ArrowUpRight size={11} /></a>;
+}
