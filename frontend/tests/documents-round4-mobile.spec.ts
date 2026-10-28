@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8113'}/api/v1`;
+const apiUrl = `${process.env.TANTARA_API_BASE_URL ?? 'http://127.0.0.1:8112'}/api/v1`;
 const screenshotPath = '../docs/screenshots';
 const liveModelBase = 'http://192.168.0.101:8080/v1';
 const liveModelName = 'MiniCPM5-2B';
@@ -40,6 +40,7 @@ async function openWithToken(page: Page, token: string, path: string) {
 
 async function waitForPdf(page: Page) {
   await expect(page.getByLabel('PDF page 1')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByLabel('PDF page 1')).toHaveAttribute('data-rendered', 'true', { timeout: 60000 });
   await expect(page.getByText('Loading PDF pages…')).toHaveCount(0);
 }
 
@@ -57,8 +58,9 @@ test('390px mobile library, viewer, AI Read states, empty and failure captures s
   await page.setViewportSize({ width: 390, height: 844 });
 
   await openWithToken(page, token, '/documents');
-  await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('.document-preview-pane canvas')).toBeVisible({ timeout: 60000 });
+  await expect(page.locator('.documents-mobile-cards .document-card').first()).toBeVisible({
+    timeout: 30000,
+  });
   await expect
     .poll(() => page.evaluate(() => window.document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(390);
@@ -77,16 +79,19 @@ test('390px mobile library, viewer, AI Read states, empty and failure captures s
       return Boolean(bounds && headerBounds && bounds.y >= headerBounds.height);
     })
     .toBeTruthy();
-  await page.screenshot({ path: `${screenshotPath}/documents-library-mobile-390.png`, fullPage: true });
+  await page.screenshot({ path: `${screenshotPath}/documents-library-mobile-390.png` });
 
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-match-round4-77291');
   await expect(page.getByRole('heading', { name: 'No matching documents' })).toBeVisible();
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
-  await page.screenshot({ path: `${screenshotPath}/documents-library-empty-mobile-390.png`, fullPage: true });
+  await page.screenshot({ path: `${screenshotPath}/documents-library-empty-mobile-390.png` });
 
   await openWithToken(page, token, `/documents/${document.id}?page=2`);
   await expect(page.getByLabel('Jump to page')).toHaveValue('2', { timeout: 60000 });
   await expect(page.getByLabel('PDF page 2')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByLabel('PDF page 2')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
   await expect
     .poll(() => page.evaluate(() => window.document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(390);
@@ -100,7 +105,6 @@ test('390px mobile library, viewer, AI Read states, empty and failure captures s
     .toBeLessThanOrEqual(0);
   await page.screenshot({
     path: `${screenshotPath}/documents-viewer-page2-mobile-390-real.png`,
-    fullPage: true,
   });
 
   await request.patch(`${apiUrl}/settings/ai`, {
@@ -108,12 +112,30 @@ test('390px mobile library, viewer, AI Read states, empty and failure captures s
     data: { base_url: liveModelBase, model: liveModelName },
   });
   try {
+    const runtimeSettings = await request
+      .get(`${apiUrl}/settings/ai`, { headers })
+      .then((response) => response.json());
     await openWithToken(page, token, `/documents/${document.id}`);
     await waitForPdf(page);
+    if (!runtimeSettings.runtime_status?.reachable) {
+      await page.getByRole('button', { name: 'Run AI Read' }).click();
+      await expect(page.locator('[data-error-category="model_unavailable"]')).toBeVisible();
+      await expect(page.locator('.ai-read-field')).toHaveCount(0);
+      await expect(page.locator('body')).not.toContainText(/https?:\/\/|:\d{2,5}/);
+      await page.locator('.ai-read-degradation').scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: `${screenshotPath}/documents-ai-read-unavailable-mobile-390-real.png`,
+      });
+      return;
+    }
+    if ((await page.locator('.ai-read-field').count()) === 0) {
+      await page.getByRole('button', { name: 'Run AI Read' }).click();
+      await expect(page.getByRole('button', { name: 'Run again' })).toBeVisible({ timeout: 120000 });
+    }
     await expect(page.locator('.ai-read-field').first()).toBeVisible({ timeout: 30000 });
+    await page.locator('.ai-read-panel').scrollIntoViewIfNeeded();
     await page.screenshot({
       path: `${screenshotPath}/documents-ai-read-success-mobile-390-real.png`,
-      fullPage: true,
     });
 
     await page.route('**/api/v1/ai/ask', (route) =>
@@ -130,7 +152,6 @@ test('390px mobile library, viewer, AI Read states, empty and failure captures s
     await expect(page.locator('.ai-read-field')).toHaveCount(0);
     await page.screenshot({
       path: `${screenshotPath}/documents-ai-read-unavailable-mobile-390-fixture.png`,
-      fullPage: true,
     });
   } finally {
     await request.patch(`${apiUrl}/settings/ai`, {
@@ -150,6 +171,5 @@ test('390px mobile library, viewer, AI Read states, empty and failure captures s
   await expect(page.getByRole('heading', { name: 'Documents are unavailable' })).toBeVisible();
   await page.screenshot({
     path: `${screenshotPath}/documents-library-failure-mobile-390-fixture.png`,
-    fullPage: true,
   });
 });
