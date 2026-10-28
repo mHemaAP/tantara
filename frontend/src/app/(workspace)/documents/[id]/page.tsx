@@ -48,8 +48,7 @@ type ChunkHit = {
 type AiFailure = 'auth_failure' | 'embedding_failure' | 'extraction_failure' | 'response_loading_failure';
 
 function renderExtractionValue(value: unknown): ReactNode {
-  if (value == null || value === '')
-    return <span className="ai-read-not-found">Not extracted</span>;
+  if (value == null || value === '') return <span className="ai-read-not-found">Not extracted</span>;
   if (Array.isArray(value)) {
     if (!value.length) return <span className="ai-read-not-found">Not extracted</span>;
     return (
@@ -404,7 +403,7 @@ export default function DocumentDetailPage() {
                 <h2>
                   <Sparkles size={17} /> AI Read
                 </h2>
-          <p>Candidate extraction — review before relying on it.</p>
+                <p>Candidate extraction — review before relying on it.</p>
               </div>
               <button className="primary" disabled={reading} onClick={() => void runAiRead()}>
                 {reading ? 'Reading…' : aiOutcome === 'ready' ? 'Run again' : 'Run AI Read'}
@@ -475,7 +474,10 @@ export default function DocumentDetailPage() {
                         <div className="ai-read-value">
                           {key === 'summary' && typeof value === 'string' ? (
                             <details className="ai-read-summary-disclosure">
-                              <summary>{value.slice(0, 180)}{value.length > 180 ? '…' : ''}</summary>
+                              <summary>
+                                {value.slice(0, 180)}
+                                {value.length > 180 ? '…' : ''}
+                              </summary>
                               <div>{renderExtractionValue(value)}</div>
                             </details>
                           ) : (
