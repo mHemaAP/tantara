@@ -181,7 +181,7 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
     advocate_feed = client.get("/api/v1/community/posts", headers=headers).json()
     assert set(advocate_feed) == {"items", "total", "page", "page_size", "pages"}
     assert {post["author_name"] for post in advocate_feed["items"]} >= {
-        "Aarav Mehta",
+        "Workspace Advocate",
         "Mira Shah",
         "Dev Patel",
     }
@@ -256,7 +256,7 @@ def test_demo_seed_has_multpage_content_calendar_extractions_and_feed(client, mo
     assert junior_login.status_code == 200
     junior_headers = {"Authorization": f"Bearer {junior_login.json()['access_token']}"}
     junior_feed = client.get("/api/v1/community/posts", headers=junior_headers).json()
-    assert {post["author_name"] for post in junior_feed["items"]} >= {"Aarav Mehta", "Dev Patel", "Mira Shah"}
+    assert {post["author_name"] for post in junior_feed["items"]} >= {"Workspace Advocate", "Dev Patel", "Mira Shah"}
     assert not foreign_private_demo_ids.intersection(post["id"] for post in junior_feed["items"])
     junior_clients = client.get("/api/v1/clients", headers=junior_headers).json()["items"]
     assert [row["name"] for row in junior_clients] == ["Junior Demo Client"]
