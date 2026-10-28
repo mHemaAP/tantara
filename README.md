@@ -190,21 +190,21 @@ Playwright starts an isolated migrated and demo-seeded backend and frontend usin
 
 ## Workspace screenshots
 
-These desktop and mobile captures come from the authenticated, demo-seeded workspace. The `Captured (UTC)` value is the recorded capture time for the referenced image pair; rows are refreshed when their route is recaptured.
+These desktop and mobile captures come from the authenticated, demo-seeded workspace. Capture times are read from each image file mtime in UTC; desktop and mobile times are recorded separately.
 
-| Module | Desktop (1440×900) | Mobile (390×844) | Rendered | Captured (UTC) |
+| Module | Desktop (1440×900) | Mobile (390×844) | Rendered | Desktop captured (UTC) | Mobile captured (UTC) |
 |---|---|---|---|---|
-| Dashboard | ![Dashboard desktop](docs/screenshots/dashboard-1440x900.png) | ![Dashboard mobile](docs/screenshots/dashboard-390x844.png) | 1440×900 / 390×844 | 10-28 18:45 |
-| Cases | ![Cases desktop](docs/screenshots/cases-1440x900.png) | ![Cases mobile](docs/screenshots/cases-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
-| Clients | ![Clients desktop](docs/screenshots/clients-1440x900.png) | ![Clients mobile](docs/screenshots/clients-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
-| Tasks | ![Tasks desktop](docs/screenshots/tasks-1440x900.png) | ![Tasks mobile](docs/screenshots/tasks-390x844.png) | 1440×900 / 390×844 | 10-28 18:45 |
-| Calendar | ![Calendar desktop](docs/screenshots/calendar-1440x900.png) | ![Calendar mobile](docs/screenshots/calendar-390x844.png) | 1440×900 / 390×844 | 10-28 18:45 |
-| Documents | ![Documents desktop](docs/screenshots/documents-1440x900.png) | ![Documents mobile](docs/screenshots/documents-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
-| Search | ![Search desktop](docs/screenshots/search-1440x900.png) | ![Search mobile](docs/screenshots/search-390x844.png) | 1440×900 / 390×844 | 10-28 12:06 |
-| Research | ![Research desktop](docs/screenshots/research-1440x900.png) | ![Research mobile](docs/screenshots/research-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
-| Drafts | ![Drafts desktop](docs/screenshots/drafts-1440x900.png) | ![Drafts mobile](docs/screenshots/drafts-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
-| Autofill | ![Autofill desktop](docs/screenshots/autofill-1440x900.png) | ![Autofill mobile](docs/screenshots/autofill-390x844.png) | 1440×900 / 390×844 | 10-28 12:06 |
-| Bundles | ![Bundles desktop](docs/screenshots/bundles-1440x900.png) | ![Bundles mobile](docs/screenshots/bundles-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
-| Strategy | ![Strategy desktop](docs/screenshots/strategy-1440x900.png) | ![Strategy mobile](docs/screenshots/strategy-390x844.png) | 1440×900 / 390×844 | 10-28 12:06 |
-| Community | ![Community desktop](docs/screenshots/community-1440x900.png) | ![Community mobile](docs/screenshots/community-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
-| Settings | ![Settings desktop](docs/screenshots/settings-profile-1440x900.png) | ![Settings mobile](docs/screenshots/settings-profile-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 |
+| Dashboard | ![Dashboard desktop](docs/screenshots/dashboard-1440x900.png) | ![Dashboard mobile](docs/screenshots/dashboard-390x844.png) | 1440×900 / 390×844 | 10-28 18:45 | 10-28 11:59 |
+| Cases | ![Cases desktop](docs/screenshots/cases-1440x900.png) | ![Cases mobile](docs/screenshots/cases-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
+| Clients | ![Clients desktop](docs/screenshots/clients-1440x900.png) | ![Clients mobile](docs/screenshots/clients-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
+| Tasks | ![Tasks desktop](docs/screenshots/tasks-1440x900.png) | ![Tasks mobile](docs/screenshots/tasks-390x844.png) | 1440×900 / 390×844 | 10-28 18:45 | 10-28 11:59 |
+| Calendar | ![Calendar desktop](docs/screenshots/calendar-1440x900.png) | ![Calendar mobile](docs/screenshots/calendar-390x844.png) | 1440×900 / 390×844 | 10-28 18:45 | 10-28 11:59 |
+| Documents | ![Documents desktop](docs/screenshots/documents-1440x900.png) | ![Documents mobile](docs/screenshots/documents-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
+| Search | ![Search desktop](docs/screenshots/search-1440x900.png) | ![Search mobile](docs/screenshots/search-390x844.png) | 1440×900 / 390×844 | 10-28 12:06 | 10-28 12:06 |
+| Research | ![Research desktop](docs/screenshots/research-1440x900.png) | ![Research mobile](docs/screenshots/research-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
+| Drafts | ![Drafts desktop](docs/screenshots/drafts-1440x900.png) | ![Drafts mobile](docs/screenshots/drafts-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
+| Autofill | ![Autofill desktop](docs/screenshots/autofill-1440x900.png) | ![Autofill mobile](docs/screenshots/autofill-390x844.png) | 1440×900 / 390×844 | 10-28 12:06 | 10-28 12:06 |
+| Bundles | ![Bundles desktop](docs/screenshots/bundles-1440x900.png) | ![Bundles mobile](docs/screenshots/bundles-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
+| Strategy | ![Strategy desktop](docs/screenshots/strategy-1440x900.png) | ![Strategy mobile](docs/screenshots/strategy-390x844.png) | 1440×900 / 390×844 | 10-28 12:06 | 10-28 12:06 |
+| Community | ![Community desktop](docs/screenshots/community-1440x900.png) | ![Community mobile](docs/screenshots/community-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
+| Settings | ![Settings desktop](docs/screenshots/settings-profile-1440x900.png) | ![Settings mobile](docs/screenshots/settings-profile-390x844.png) | 1440×900 / 390×844 | 10-28 11:59 | 10-28 11:59 |
