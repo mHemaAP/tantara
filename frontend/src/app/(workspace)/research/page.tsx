@@ -568,7 +568,7 @@ export default function ResearchPage() {
   };
 
   return (
-    <main className="research-page">
+    <div className="research-page">
       <div className="research-heading">
         <div>
           <div className="research-eyebrow">
@@ -1033,6 +1033,6 @@ export default function ResearchPage() {
           </section>
         </aside>
       </div>
-    </main>
+    </div>
   );
 }
