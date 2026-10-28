@@ -135,3 +135,24 @@
   color: #6b7890;
   font-size: 11px;
 }
+.search-collection-filter {
+  display: grid;
+  gap: 3px;
+  min-width: 165px;
+  color: #52617e;
+  font-size: 11px;
+}
+.search-collection-filter select {
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  color: #24365f;
+  background: #fff;
+  border: 1px solid #dce3ef;
+  border-radius: 8px;
+}
+@media (max-width: 600px) {
+  .search-collection-filter {
+    width: 100%;
+  }
+}
