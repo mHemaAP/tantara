@@ -247,9 +247,11 @@ test('staff sees the real empty bundle state and module navigation is available 
   const drawer = page.getByRole('navigation', { name: 'Main navigation' });
   await expect(drawer.getByRole('link', { name: 'Bundles' })).toBeVisible();
   await expect(drawer.getByRole('link', { name: 'Strategy' })).toBeVisible();
+  await expect.poll(async () => (await page.locator('.sidebar').boundingBox())?.x).toBe(0);
   await drawer.getByRole('link', { name: 'Strategy' }).click();
   await expect(page).toHaveURL(/\/strategy/);
   await expect(page.getByRole('heading', { name: 'AI Strategy Advisor' })).toBeVisible();
+  await expect(page.locator('.sidebar')).not.toHaveClass(/\bopen\b/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
