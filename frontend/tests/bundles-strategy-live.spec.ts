@@ -24,6 +24,14 @@ let workflowBundleId = '';
 let workflowBundleName = '';
 let strategyTestCaseId = '';
 let originalAiSettings: Record<string, unknown> = {};
+const browserErrors = new WeakMap<Page, string[]>();
+
+test.beforeEach(async ({ page }) => {
+  const errors: string[] = [];
+  browserErrors.set(page, errors);
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+  page.on('pageerror', (error) => errors.push(error.message));
+});
 
 async function login(email: string, password: string) {
   const response = await api.post(endpoint('/auth/login'), { data: { email, password } });
@@ -53,6 +61,7 @@ async function assertAuthenticatedAndSettled(page: Page) {
 
 async function capture(page: Page, filename: string) {
   await assertAuthenticatedAndSettled(page);
+  expect(browserErrors.get(page) ?? [], `browser console errors before ${filename}`).toEqual([]);
   fs.mkdirSync(screenshots, { recursive: true });
   await page.screenshot({ path: path.join(screenshots, filename), fullPage: true, animations: 'disabled' });
 }
@@ -303,4 +312,19 @@ test('desktop navigation marks active bundles and strategy routes', async ({ pag
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Strategy' }).click();
   await expect(page).toHaveURL(/\/strategy/);
   await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Strategy' })).toHaveAttribute('aria-current', 'page');
+});
+
+test('bundle and strategy routes remain settled without overflow at supported widths', async ({ page }) => {
+  await authenticatePage(page);
+  for (const width of [1440, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.goto('/bundles');
+    await expect(page.getByRole('heading', { name: 'Filing Bundles' })).toBeVisible();
+    await expect(page.getByText(/Loading bundles/)).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), `bundles overflow at ${width}`).toBeLessThanOrEqual(width);
+    await page.goto(`/cases/${noEvidenceCaseId}/strategy`);
+    await expect(page.getByRole('heading', { name: 'AI Strategy Advisor' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), `strategy overflow at ${width}`).toBeLessThanOrEqual(width);
+  }
+  expect(browserErrors.get(page) ?? []).toEqual([]);
 });
