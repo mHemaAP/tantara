@@ -130,12 +130,14 @@ def test_dead_model_is_honest_on_all_generation_and_assistance_surfaces(client, 
     assert autofill["status"] == "record_based" and autofill["model"] is None
     assert "dead-local-model" not in str(autofill)
     strategy = client.post(f"/api/v1/cases/{case['id']}/strategy/generate", headers=headers).json()
-    assert strategy["status"] == "template" and strategy["model"] is None
-    assert strategy["generation_kind"] == "excerpt_listing"
+    assert strategy["status"] == "model_unavailable" and strategy["model"] is None
+    assert strategy["generation_kind"] == "source_excerpt_review"
+    assert strategy["key_issues"] == strategy["counterarguments"] == []
+    assert "assembled without a model" in strategy["generation_note"]
     assert "dead-local-model" not in str(strategy)
 
     assert attempted and set(attempted) == {("127.0.0.1", 9)}
-    assert len(attempted) == 5  # settings status, AI status, Ask, session Ask, and Draft only
+    assert len(attempted) == 6  # includes Strategy generation
 
 
 def test_no_evidence_embedding_unavailable_and_model_unavailable_are_distinct(client, monkeypatch):
