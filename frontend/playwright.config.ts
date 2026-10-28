@@ -50,7 +50,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `"${python}" ../scripts/seed.py --demo >> "${backendLogFile}" 2>&1 && "${python}" -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort} >> "${backendLogFile}" 2>&1`,
+      command: `"${python}" ../scripts/seed.py --demo >> "${backendLogFile}" 2>&1 && exec "${python}" -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort} >> "${backendLogFile}" 2>&1`,
       url: `${apiOrigin}/health`,
       cwd: path.join(repoRoot, 'backend'),
       env: {
