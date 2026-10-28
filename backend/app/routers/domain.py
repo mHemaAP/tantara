@@ -1,6 +1,6 @@
 """Typed paginated CRUD routes for clients, cases, hearings, tasks, drafts, and bundles."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -27,6 +27,7 @@ from app.security import current_user
 from app.storage_paths import stored_path
 from app.services.audit import record
 from app.services.draft_versions import snapshot_draft
+from app.timezone import to_workspace_iso, to_workspace_naive, workspace_now
 
 router = APIRouter(prefix="/api/v1")
 
@@ -86,13 +87,14 @@ def add_derived_fields(session, cls, item, owner_id):
             or 0
         )
     if cls is Case:
-        item["next_hearing_at"] = session.scalar(
+        next_hearing = session.scalar(
             select(func.min(Hearing.at)).where(
                 Hearing.owner_id == owner_id,
                 Hearing.case_id == item["id"],
-                Hearing.at >= datetime.now(UTC).replace(tzinfo=None),
+                Hearing.at >= workspace_now().replace(tzinfo=None),
             )
         )
+        item["next_hearing_at"] = to_workspace_iso(next_hearing) if next_hearing else None
     return item
 
 
@@ -117,11 +119,11 @@ def register_crud(path, cls):
                 if from_:
                     filters.append(
                         Hearing.at
-                        >= datetime.fromisoformat(from_.replace("Z", "+00:00")).replace(tzinfo=None)
+                        >= to_workspace_naive(datetime.fromisoformat(from_.replace("Z", "+00:00")))
                     )
                 if to:
                     filters.append(
-                        Hearing.at <= datetime.fromisoformat(to.replace("Z", "+00:00")).replace(tzinfo=None)
+                        Hearing.at <= to_workspace_naive(datetime.fromisoformat(to.replace("Z", "+00:00")))
                     )
             except ValueError:
                 raise HTTPException(400, "from and to must be ISO dates")
