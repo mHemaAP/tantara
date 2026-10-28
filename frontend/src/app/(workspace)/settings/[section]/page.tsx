@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { endpoints } from '@/lib/api/endpoints';
-import { api, authToken, isReadOnlyPreview } from '@/lib/api/client';
+import { api, authToken } from '@/lib/api/client';
 import { keys } from '@/lib/api/keys';
 import { CorpusImportPanel } from '@/features/settings-data/CorpusImportPanel';
 import {
@@ -89,8 +89,6 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
     ),
   });
   const [saving, setSaving] = useState(false);
-  const [preview, setPreview] = useState(false);
-  useEffect(() => setPreview(isReadOnlyPreview()), []);
   const fieldLabel = (k: string) =>
     section === 'local-ai'
       ? ({ base_url: 'Base URL', model: 'Model', temperature: 'Temperature', top_k: 'Top-k' }[k] ?? k)
@@ -132,10 +130,8 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
             {['theme', 'density', 'font'].includes(k) ? (
               <select
                 id={k}
-                disabled={preview}
                 aria-invalid={Boolean(errors[k])}
                 aria-describedby={describedBy}
-                title={preview ? 'Sign in to change settings' : ''}
                 {...register(k)}
               >
                 {(k === 'theme'
@@ -162,8 +158,6 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
                 step={k === 'temperature' ? '.1' : undefined}
                 aria-invalid={Boolean(errors[k])}
                 aria-describedby={describedBy}
-                disabled={preview}
-                title={preview ? 'Sign in to edit settings' : ''}
                 {...register(k)}
               />
             )}
@@ -187,11 +181,7 @@ function SettingsForm({ section, data }: { section: string; data: Record<string,
         );
       })}
       <div className="settings-actions">
-        <button
-          className="primary"
-          disabled={saving || preview}
-          title={preview ? 'Sign in to save settings' : ''}
-        >
+        <button className="primary" disabled={saving}>
           {saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
@@ -243,7 +233,7 @@ export default function SettingsSection() {
   const backup = async () => {
     try {
       const res = await fetch(
-        `${(process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:8010').replace(/\/$/, '')}/api/v1/settings/database/backup`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL ? process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/$/, '') + '/api/v1' : '/api/v1'}/settings/database/backup`,
         { headers: authToken() ? { Authorization: `Bearer ${authToken()}` } : {} },
       );
       if (!res.ok) throw new Error('Backup endpoint unavailable');
@@ -298,12 +288,10 @@ export default function SettingsSection() {
             </p>
           ) : query.isError ? (
             <div className="offline">
-              <strong>Backend not reachable at 127.0.0.1:8010</strong>
+              <strong>Backend not reachable</strong>
               <details>
                 <summary>Start command</summary>
-                <code>
-                  cd backend &amp;&amp; .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8010
-                </code>
+                <code>cd backend &amp;&amp; .venv/bin/python -m uvicorn app.main:app</code>
               </details>
               <button className="primary" onClick={() => void query.refetch()}>
                 <RefreshCw size={14} /> Retry
@@ -389,8 +377,6 @@ function SpecialSettings({
   status: Record<string, unknown> | null;
 }) {
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState(false);
-  useEffect(() => setPreview(isReadOnlyPreview()), []);
   const trigger = async (path: string) => {
     setBusy(true);
     try {
