@@ -65,9 +65,20 @@ function eventDayKey(event: Event) {
 function eventCaseTitle(event: Event, caseTitles: Map<string, string>) {
   return event.case_title || caseTitles.get(event.case_id || '') || '';
 }
+function eventDescription(event: Event) {
+  const title = (event.title || '').trim();
+  const normalizedType = (event.event_type || event.type || '').replaceAll('_', ' ').trim();
+  return [event.type, event.event_type, normalizedType].some(
+    (value) => value && title.toLocaleLowerCase() === value.toLocaleLowerCase(),
+  )
+    ? ''
+    : title;
+}
 function eventAccessibleLabel(event: Event, caseTitles: Map<string, string>) {
   const caseTitle = eventCaseTitle(event, caseTitles);
   const parts = [`View ${calendarEventLabel(event)}`];
+  const description = eventDescription(event);
+  if (description) parts.push(description);
   if (caseTitle) parts.push(caseTitle);
   parts.push(eventDayKey(event));
   return parts.join(' · ');
@@ -233,6 +244,7 @@ export default function CalendarPage() {
                       )}
                       <span>
                         {calendarEventLabel(event)}
+                        {eventDescription(event) ? ` · ${eventDescription(event)}` : ''}
                         {eventCaseTitle(event, caseTitles) ? ` · ${eventCaseTitle(event, caseTitles)}` : ''}
                       </span>
                     </button>
@@ -301,6 +313,7 @@ export default function CalendarPage() {
                       )}
                       {!isAllDay(event) && ' '}
                       {calendarEventLabel(event)}
+                      {eventDescription(event) ? ` · ${eventDescription(event)}` : ''}
                       {eventCaseTitle(event, caseTitles) ? ` · ${eventCaseTitle(event, caseTitles)}` : ''}
                     </button>
                   ))}
@@ -319,10 +332,11 @@ export default function CalendarPage() {
               ×
             </button>
             <h2>{calendarEventLabel(selectedEvent)}</h2>
+            {eventDescription(selectedEvent) && <p>{eventDescription(selectedEvent)}</p>}
             <p>{eventCaseTitle(selectedEvent, caseTitles) || 'Case event'}</p>
-            {selectedEvent.detail && selectedEvent.detail !== selectedEvent.title && (
-              <p>{selectedEvent.detail}</p>
-            )}
+            {selectedEvent.detail &&
+              selectedEvent.detail !== selectedEvent.title &&
+              selectedEvent.detail !== calendarEventLabel(selectedEvent) && <p>{selectedEvent.detail}</p>}
             <p>
               {isAllDay(selectedEvent)
                 ? 'All day'
