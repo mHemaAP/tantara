@@ -57,14 +57,15 @@ test('captures seeded document and search states before fixture uploads', async 
   await openWithToken(page, token, '/documents');
   await expect(page.locator('.documents-table tbody tr').first()).toBeVisible({ timeout: 30000 });
   await expect(page.locator('.document-preview-pane canvas')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('.document-preview-pane canvas')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 60000,
+  });
   await page.screenshot({
     path: '../docs/screenshots/documents-library-desktop-1440-real.png',
-    fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: '../docs/screenshots/documents-library-mobile-390-real.png',
-    fullPage: true,
   });
 
   await page.getByRole('textbox', { name: 'Search documents' }).fill('no-document-with-this-title-9472');
@@ -72,12 +73,10 @@ test('captures seeded document and search states before fixture uploads', async 
   await expect(page.getByLabel('Filter by status')).toHaveValue('');
   await page.screenshot({
     path: '../docs/screenshots/documents-library-empty-mobile-390-real.png',
-    fullPage: true,
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
     path: '../docs/screenshots/documents-library-empty-desktop-1440-real.png',
-    fullPage: true,
   });
 
   await page.goto('/search');
@@ -88,10 +87,9 @@ test('captures seeded document and search states before fixture uploads', async 
   await expect(page.getByText(/fusion rank score.*not a confidence value/i)).toBeVisible();
   await page.screenshot({
     path: '../docs/screenshots/documents-search-desktop-1440-real.png',
-    fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: '../docs/screenshots/documents-search-mobile-390-real.png', fullPage: true });
+  await page.screenshot({ path: '../docs/screenshots/documents-search-mobile-390-real.png' });
 });
 
 test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async ({ page, request }) => {
@@ -103,6 +101,7 @@ test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async
   await expect(targetPage).toHaveClass(/pdf-page-deep-link/);
   const pageCanvas = targetPage.getByLabel('PDF page 2');
   await expect(pageCanvas).toBeVisible({ timeout: 45000 });
+  await expect(pageCanvas).toHaveAttribute('data-rendered', 'true', { timeout: 45000 });
   await expect(pageCanvas).toHaveJSProperty('tagName', 'CANVAS');
   await expect
     .poll(() =>
@@ -133,7 +132,6 @@ test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
     path: '../docs/screenshots/documents-viewer-page2-desktop-1440-fixture.png',
-    fullPage: true,
   });
   const mobilePage = await page.context().newPage();
   await mobilePage.setViewportSize({ width: 390, height: 844 });
@@ -141,6 +139,9 @@ test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async
   const mobilePageTwo = mobilePage.locator('.pdf-page-card[data-page-card="2"]');
   await expect(mobilePageTwo).toBeVisible({ timeout: 45000 });
   await expect(mobilePageTwo.getByLabel('PDF page 2')).toBeVisible({ timeout: 45000 });
+  await expect(mobilePageTwo.getByLabel('PDF page 2')).toHaveAttribute('data-rendered', 'true', {
+    timeout: 45000,
+  });
   await expect
     .poll(() => mobilePage.locator('.sidebar').evaluate((node) => node.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0);
@@ -151,7 +152,6 @@ test('uploaded multi-page PDF deep-link scrolls to and highlights page 2', async
     .toBe(0);
   await mobilePage.screenshot({
     path: '../docs/screenshots/documents-viewer-page2-mobile-390-fixture.png',
-    fullPage: true,
   });
   await mobilePage.close();
 });
@@ -169,7 +169,9 @@ test('viewer metadata uses separated definition rows and an accessible copy conf
   );
   expect(document).toBeTruthy();
   await openWithToken(page, token, `/documents/${document.id}`);
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:3012' });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+    origin: process.env.TANTARA_WEB_URL ?? 'http://127.0.0.1:3013',
+  });
   await expect(page.getByRole('group', { name: 'Filename arbitration-text-layer.pdf' })).toHaveText(
     /Filename\s+arbitration-text-layer\.pdf/,
   );
@@ -252,12 +254,10 @@ test('AI Read renders real API fields and persists an edited field after reload'
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({
     path: '../docs/screenshots/documents-ai-read-success-desktop-1440-fixture.png',
-    fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: '../docs/screenshots/documents-ai-read-success-mobile-390-fixture.png',
-    fullPage: true,
   });
 });
 
@@ -357,11 +357,18 @@ test('no_evidence is shown without candidate extraction fields', async ({ page, 
   await expect(page.locator('.ai-read-field')).toHaveCount(0);
   await page.screenshot({
     path: '../docs/screenshots/documents-ai-read-no-evidence-desktop-1440-fixture.png',
-    fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: '../docs/screenshots/documents-ai-read-no-evidence-mobile-390-fixture.png',
-    fullPage: true,
   });
+
+  const remainingDocuments = await request
+    .get(`${apiUrl}/documents?page_size=100`, { headers })
+    .then((response) => response.json());
+  for (const document of remainingDocuments.items as Array<{ id: string; filename: string }>) {
+    if (['arbitration-text-layer.pdf', 'arbitration-scanned.pdf'].includes(document.filename)) {
+      await request.delete(`${apiUrl}/documents/${document.id}`, { headers });
+    }
+  }
 });
