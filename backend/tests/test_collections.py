@@ -14,6 +14,8 @@ def test_collection_pagination_ownership_membership_and_filtered_retrieval(clien
     for name in ("Agreements & Contracts", "Awards & Authorities", "Pleadings & Evidence"):
         response = client.post("/api/v1/collections", headers=headers, json={"name": name})
         assert response.status_code == 201
+        assert response.json()["created_at"].endswith("+00:00")
+        assert response.json()["updated_at"].endswith("+00:00")
         collections.append(response.json())
 
     listing = client.get("/api/v1/collections?page=1&page_size=2", headers=headers)
