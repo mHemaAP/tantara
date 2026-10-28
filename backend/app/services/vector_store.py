@@ -7,6 +7,9 @@ import numpy as np
 
 from app.config import get_settings
 
+# Serializes DB chunk mutations with FAISS updates/reconciliation.
+INDEX_LOCK = threading.RLock()
+
 
 class FaissStore:
     def __init__(self):
