@@ -3,10 +3,12 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ApiError, api, authToken } from '@/lib/api/client';
+import { api, authToken } from '@/lib/api/client';
 import { RefreshCw, FileText, Download, Sparkles, Pencil, Check } from 'lucide-react';
 import { documentsApi } from '@/features/documents/api';
+import { aiFailureMessage, classifyAiFailure, type AiFailure } from '@/features/documents/ai-read-errors';
 import { DocumentStatus } from '@/features/documents/DocumentStatus';
+import { WorkspaceModuleNav } from '@/features/documents/WorkspaceModuleNav';
 import { PdfDocumentViewer } from '@/features/viewer/PdfDocumentViewer';
 import { toast } from 'sonner';
 import '@/features/documents/documents.css';
@@ -44,8 +46,6 @@ type ChunkHit = {
   retreival_score?: number;
   score?: number;
 };
-
-type AiFailure = 'auth_failure' | 'embedding_failure' | 'extraction_failure' | 'response_loading_failure';
 
 function renderExtractionValue(value: unknown): ReactNode {
   if (value == null || value === '') return <span className="ai-read-not-found">Not extracted</span>;
@@ -98,7 +98,9 @@ function extractionSourcePage(value: unknown): number | undefined {
   return extractionSourcePage(fields.value);
 }
 
-function provenanceLabel(value?: string) {
+function provenanceLabel(value?: string, source?: string) {
+  if (source?.toLowerCase().includes('local text extraction'))
+    return 'Local text extraction · candidate only';
   if (value === 'ai_suggested') return 'AI suggestion';
   if (value === 'extracted_reviewed') return 'Reviewed extraction';
   return value ? value.replaceAll('_', ' ') : 'Candidate extraction';
@@ -117,25 +119,6 @@ function deduplicateExtractedText(value: unknown): unknown {
       return true;
     })
     .join(' ');
-}
-
-function aiFailureMessage(failure: AiFailure) {
-  const messages: Record<AiFailure, string> = {
-    auth_failure: 'Your access could not be verified. Sign in again, then retry AI Read.',
-    embedding_failure:
-      'The embedding service could not prepare document passages. Retry when it is available.',
-    extraction_failure: 'The document extraction request failed. No new candidate fields were saved.',
-    response_loading_failure: 'The extraction finished, but its response could not be loaded. Retry AI Read.',
-  };
-  return messages[failure];
-}
-
-function classifyApiFailure(
-  error: unknown,
-  fallback: AiFailure | 'model_unavailable',
-): AiFailure | 'model_unavailable' {
-  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return 'auth_failure';
-  return fallback;
 }
 
 function formatMetadataDate(value?: string) {
@@ -158,6 +141,10 @@ export default function DocumentDetailPage() {
   const extraction = useQuery({
     queryKey: ['documents', id, 'ai-read'],
     queryFn: () => api.get<Extraction>(`/documents/${id}/ai-read`),
+  });
+  const aiSettings = useQuery({
+    queryKey: ['settings', 'ai'],
+    queryFn: () => documentsApi.aiStatus(),
   });
   const [reading, setReading] = useState(false);
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -218,7 +205,7 @@ export default function DocumentDetailPage() {
       try {
         await documentsApi.aiStatus();
       } catch (error) {
-        setAiOutcome(classifyApiFailure(error, 'response_loading_failure'));
+        setAiOutcome(classifyAiFailure(error, 'response_loading_failure'));
         return;
       }
       let readiness;
@@ -228,7 +215,7 @@ export default function DocumentDetailPage() {
           doc.data?.case_id,
         );
       } catch (error) {
-        setAiOutcome(classifyApiFailure(error, 'model_unavailable'));
+        setAiOutcome(classifyAiFailure(error, 'model_unavailable'));
         return;
       }
       if (readiness.status === 'model_unavailable') {
@@ -246,7 +233,7 @@ export default function DocumentDetailPage() {
       try {
         await documentsApi.aiRead(id);
       } catch (error) {
-        setAiOutcome(classifyApiFailure(error, 'extraction_failure'));
+        setAiOutcome(classifyAiFailure(error, 'extraction_failure'));
         return;
       }
       const loadedExtraction = await extraction.refetch();
@@ -273,6 +260,7 @@ export default function DocumentDetailPage() {
     aiOutcome === 'ready' || (aiOutcome === 'idle' && Boolean(extraction.data?.fields));
   return (
     <div className="document-detail-page">
+      <WorkspaceModuleNav />
       <div
         style={{
           display: 'flex',
@@ -397,16 +385,32 @@ export default function DocumentDetailPage() {
           </section>
         </div>
         <aside className="document-detail-aside">
-          <section className="card ai-read-panel" aria-label="AI Read">
+          <section className="card ai-read-panel" aria-label="Document extraction">
             <div className="ai-read-heading">
               <div>
                 <h2>
-                  <Sparkles size={17} /> AI Read
+                  <Sparkles size={17} /> Document extraction
                 </h2>
-                <p>Candidate extraction — review before relying on it.</p>
+                <p>Local text extraction · candidate only · review before relying on it.</p>
+                {aiSettings.data?.model && (
+                  <small className="ai-configured-model">
+                    Configured model (not used for these fields): {aiSettings.data.model}
+                  </small>
+                )}
               </div>
-              <button className="primary" disabled={reading} onClick={() => void runAiRead()}>
-                {reading ? 'Reading…' : aiOutcome === 'ready' ? 'Run again' : 'Run AI Read'}
+              <button
+                className="primary"
+                aria-label={
+                  reading
+                    ? 'Extracting document'
+                    : aiOutcome === 'ready'
+                      ? 'Run again'
+                      : 'Run document extraction'
+                }
+                disabled={reading}
+                onClick={() => void runAiRead()}
+              >
+                {reading ? 'Extracting…' : aiOutcome === 'ready' ? 'Run again' : 'Run extraction'}
               </button>
             </div>
             {aiOutcome === 'model_unavailable' && (
@@ -414,7 +418,7 @@ export default function DocumentDetailPage() {
                 <strong>AI model unavailable</strong>
                 <p>The configured model could not respond. No extraction fields are being shown.</p>
                 <button className="primary" onClick={() => void runAiRead()}>
-                  Retry AI Read
+                  Retry extraction
                 </button>
               </div>
             )}
@@ -429,12 +433,12 @@ export default function DocumentDetailPage() {
             )}
             {(
               ['auth_failure', 'embedding_failure', 'extraction_failure', 'response_loading_failure'] as const
-            ).includes(aiOutcome as AiFailure) && (
+            ).includes(aiOutcome as Exclude<AiFailure, 'model_unavailable'>) && (
               <div className="ai-read-error-category" role="status" data-error-category={aiOutcome}>
                 <strong>{aiOutcome.replaceAll('_', ' ')}</strong>
-                <p>{aiFailureMessage(aiOutcome as AiFailure)}</p>
+                <p>{aiFailureMessage(aiOutcome as Exclude<AiFailure, 'model_unavailable'>)}</p>
                 <button className="primary" onClick={() => void runAiRead()}>
-                  Retry AI Read
+                  Retry extraction
                 </button>
               </div>
             )}
@@ -462,7 +466,7 @@ export default function DocumentDetailPage() {
                       key={key}
                     >
                       <strong>
-                        {key === 'summary' ? 'Extracted text (raw, de-duplicated)' : key.replaceAll('_', ' ')}
+                        {key === 'summary' ? 'Extracted text (de-duplicated)' : key.replaceAll('_', ' ')}
                       </strong>
                       {editingField === key ? (
                         <textarea
@@ -483,8 +487,11 @@ export default function DocumentDetailPage() {
                           ) : (
                             renderExtractionValue(value)
                           )}
-                          <small>
-                            {provenanceLabel(field.provenance)} · {field.source || 'Source unavailable'}
+                          <small className="ai-read-provenance">
+                            {provenanceLabel(field.provenance, field.source)}
+                            {field.source &&
+                              !field.source.toLowerCase().includes('local text extraction') &&
+                              ` · ${field.source}`}
                             {field.review_required ? ' · Review required' : ''}
                           </small>
                           {sourcePage ? (
@@ -492,7 +499,7 @@ export default function DocumentDetailPage() {
                               Page {sourcePage}
                             </a>
                           ) : (
-                            <span className="ai-source-page">Page —</span>
+                            <span className="ai-source-page-unavailable">Source page unavailable</span>
                           )}
                         </div>
                       )}
