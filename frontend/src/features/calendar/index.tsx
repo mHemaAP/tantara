@@ -153,7 +153,7 @@ export default function CalendarPage() {
             },
             (_, i) => calendarDay(cursorParts.year, cursorParts.month, i + 1),
           ),
-    [view, cursor, firstDay],
+    [view, cursorParts.month, cursorParts.year, firstDay],
   );
   const today = workspaceDateKey(new Date(), zone);
   const back = () =>
