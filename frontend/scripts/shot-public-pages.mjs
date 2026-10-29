@@ -8,7 +8,7 @@
 // 3D hero is the thing most likely to throw, so errors are reported per route
 // rather than in aggregate. Nothing here signs in — these pages must be public.
 import { chromium } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -58,6 +58,7 @@ for (const route of routes) {
       const scene = page.locator('.landing-scene');
       if (await scene.count()) {
         const a = await scene.screenshot();
+        await writeFile(path.join(shotDir, `scene-${name}.png`), a);
         await page.waitForTimeout(1200);
         const b = await scene.screenshot();
         animates = sha(a) !== sha(b);
