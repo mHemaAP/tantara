@@ -1,4 +1,8 @@
-"""Live Workflow A/B acceptance flows against http://127.0.0.1:8010."""
+"""Live Workflow A/B acceptance flows against a running backend.
+
+Set TANTARA_E2E_BASE to point at another deployment (for example
+https://tantra.theessencetimes.com/api/v1) and TANTARA_ADMIN_PASSWORD to its password.
+"""
 
 import io
 import os
@@ -9,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from pypdf import PdfReader
 
-BASE = "http://127.0.0.1:8010/api/v1"
+BASE = os.environ.get("TANTARA_E2E_BASE", "http://127.0.0.1:8010/api/v1")
 
 
 def pdf_fixture(body):

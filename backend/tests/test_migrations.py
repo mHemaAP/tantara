@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 from alembic import command
@@ -78,9 +79,13 @@ def test_legacy_collection_revision_stamp_bridges_without_losing_rows(tmp_path, 
             "Preserved collection",
             "Kept across rename",
         )
-        assert (
-            connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0010_collections"
-        )
+        # The bridge revision must be traversed and the database must end at head,
+        # whatever later revisions have been added on top of the bridge.
+        script = ScriptDirectory.from_config(cfg)
+        head = script.get_current_head()
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == head
+        ancestors = {revision.revision for revision in script.iterate_revisions(head, "base")}
+        assert {"0010_knowledge_collections", "0010_collections"} <= ancestors
     engine.dispose()
 
 

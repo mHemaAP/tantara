@@ -19,13 +19,13 @@ from app.db import SessionLocal, session_scope
 from app.embeddings import embed_documents
 from app.ingestion import DocumentExtractor, DocumentStorage
 from app.models import Case, Document, DocumentChunk, DocumentPage, ExtractionField, IngestionJob
+from app.object_store import MissingObject, object_store
 from app.repositories.domain import get_owned, serialize
 from app.repositories.domain import update as repo_update
 from app.routers.domain import owned
 from app.security import current_user
 from app.services.audit import record
 from app.services.vector_store import INDEX_LOCK, store
-from app.storage_paths import stored_path
 
 router = APIRouter(prefix="/api/v1", tags=["documents"])
 
@@ -355,13 +355,12 @@ def delete_document(did: str, user=Depends(current_user)):
     with INDEX_LOCK:
         with session_scope() as s:
             d = owned(s, Document, did, user)
-            path = stored_path("uploads", d.stored_path)
+            stored_key = d.stored_path
             chunk_ids = list(s.scalars(select(DocumentChunk.id).where(DocumentChunk.document_id == did)))
             s.delete(d)
             record(s, user["id"], "delete", "document", did)
         store().remove(chunk_ids)
-    if path:
-        path.unlink(missing_ok=True)
+    object_store().delete(stored_key)
     return {"deleted": True}
 
 
@@ -388,12 +387,9 @@ def retry_doc(did: str, user=Depends(current_user)):
     with session_scope() as s:
         d = owned(s, Document, did, user)
         try:
-            path = stored_path("uploads", d.stored_path)
-        except ValueError:
+            data = object_store().get(d.stored_path)
+        except (ValueError, MissingObject):
             raise HTTPException(404, "Stored upload is unavailable") from None
-        if not path.is_file():
-            raise HTTPException(404, "Stored upload is unavailable")
-        data = path.read_bytes()
         jid = str(uuid.uuid4())
         d.status = "queued"
         s.add(
@@ -432,12 +428,13 @@ def doc_pages(did: str, user=Depends(current_user)):
 def _document_file_response(did: str, user):
     with SessionLocal() as s:
         d = owned(s, Document, did, user)
-        try:
-            path = stored_path("uploads", d.stored_path)
-        except ValueError:
-            raise HTTPException(404, "Stored upload is unavailable") from None
+        stored_key = d.stored_path
         filename = d.filename
-    if not path.is_file():
+    try:
+        path = object_store().local_path(stored_key)
+    except ValueError:
+        path = None
+    if not path:
         raise HTTPException(404, "Stored upload is unavailable")
     # FileResponse implements single byte-range requests for local previews.
     return FileResponse(

@@ -3,19 +3,17 @@
 import io
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.config import get_settings
 from app.db import SessionLocal, session_scope
 from app.models import BundleItem, BundleSection, Case, Document, FilingBundle, Hearing
+from app.object_store import object_store
 from app.repositories.domain import get_owned
 from app.security import current_user
-from app.storage_paths import stored_path
 from app.services.audit import record
 
 router = APIRouter(prefix="/api/v1/bundles", tags=["bundles"])
@@ -51,8 +49,8 @@ def _items(s, bundle, user):
         try:
             from pypdf import PdfReader
 
-            upload_path = stored_path("uploads", d.stored_path)
-            pages = len(PdfReader(upload_path).pages)
+            upload = object_store().get(d.stored_path)
+            pages = len(PdfReader(io.BytesIO(upload)).pages)
         except Exception:
             pages = 0
         page_start = x.page_start or 1
@@ -265,8 +263,7 @@ def generate(rid: str, user=Depends(current_user)):
         for x in items:
             d = s.get(Document, x["document_id"])
             try:
-                upload_path = stored_path("uploads", d.stored_path)
-                reader = PdfReader(upload_path)
+                reader = PdfReader(io.BytesIO(object_store().get(d.stored_path)))
             except Exception:
                 continue
             source_start = x["page_start"]
@@ -373,19 +370,20 @@ def generate(rid: str, user=Depends(current_user)):
     expected_pages = sum(len(reader.pages) for _, reader in front) + source_pages
     if len(writer.pages) != expected_pages:
         raise HTTPException(500, "Generated bundle page count did not match source pages")
-    output = get_settings().data_dir / "bundles" / f"{rid}.pdf"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("wb") as f:
-        writer.write(f)
+    buf = io.BytesIO()
+    writer.write(buf)
+    rendered = buf.getvalue()
+    output_key = object_store().put(f"bundles/{rid}.pdf", rendered)
     with session_scope() as s:
         b = get_owned(s, FilingBundle, rid, user["id"])
-        b.output_path = f"bundles/{output.name}"
+        b.output_path = output_key
         b.status = "ready"
         record(s, user["id"], "generate", "bundle", rid)
     return {
         "job_id": str(uuid.uuid4()),
         "status": "ready",
         "pages": len(writer.pages),
+        "bytes": len(rendered),
         "download_url": f"/api/v1/bundles/{rid}/download",
     }
 
@@ -398,9 +396,9 @@ def download(rid: str, user=Depends(current_user)):
     if not b:
         raise HTTPException(404, "Bundle not found")
     try:
-        safe_path = stored_path("bundles", path) if path else None
+        safe_path = object_store().local_path(path) if path else None
     except ValueError:
         safe_path = None
-    if not safe_path or not safe_path.is_file():
+    if not safe_path:
         raise HTTPException(404, "Bundle has not been generated")
     return FileResponse(safe_path, filename=f"{rid}.pdf", media_type="application/pdf")

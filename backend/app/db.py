@@ -18,11 +18,19 @@ def engine():
         s = get_settings()
         s.data_dir.mkdir(parents=True, exist_ok=True)
         url = s.database_url
-        _engine = create_engine(
-            url,
-            connect_args={"check_same_thread": False, "timeout": 30} if url.startswith("sqlite") else {},
-            future=True,
-        )
+        if s.database_dialect == "sqlite":
+            _engine = create_engine(
+                url, connect_args={"check_same_thread": False, "timeout": 30}, future=True
+            )
+        else:
+            _engine = create_engine(
+                url,
+                pool_pre_ping=True,
+                pool_size=s.db_pool_size,
+                max_overflow=s.db_pool_max_overflow,
+                pool_recycle=s.db_pool_recycle,
+                future=True,
+            )
         if url.startswith("sqlite"):
 
             @event.listens_for(_engine, "connect")

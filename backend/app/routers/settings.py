@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.db import SessionLocal, session_scope
 from app.db import engine as get_engine
 from app.models import AppPreference, AuditEvent, Case, Client, Document, DocumentChunk, Draft, Task, User
+from app.object_store import object_store
 from app.security import current_user, hash_password
 from app.services.audit import record
 from app.timezone import to_utc_iso
@@ -162,13 +163,65 @@ def db_stats(user=Depends(current_user)):
         return result
 
 
+def _sql_literal(value, dialect: str) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        if dialect == "postgresql":
+            return "TRUE" if value else "FALSE"
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        hexed = bytes(value).hex()
+        return f"'\\x{hexed}'::bytea" if dialect == "postgresql" else f"X'{hexed}'"
+    if isinstance(value, (dict, list)):
+        value = json.dumps(value, ensure_ascii=False)
+    elif isinstance(value, datetime):
+        value = value.isoformat(sep=" ")
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _logical_dump(engine, dialect: str) -> str:
+    """Portable logical export for non-SQLite workspaces (no vendor client needed)."""
+    from app.models import Base
+
+    lines = [f"-- TANTARA logical export ({dialect}); restore into an empty schema"]
+    with engine.connect() as conn:
+        for table in Base.metadata.sorted_tables:
+            quoted = ", ".join(column.name for column in table.columns)
+            for row in conn.execute(table.select()).mappings().all():
+                values = ", ".join(_sql_literal(row[column.name], dialect) for column in table.columns)
+                lines.append(f"INSERT INTO {table.name} ({quoted}) VALUES ({values});")
+    return "\n".join(lines) + "\n"
+
+
 @router.post("/database/backup")
 def backup(user=Depends(current_user)):
-    src = Path(get_engine().url.database or "")
+    engine = get_engine()
+    dialect = engine.url.get_backend_name()
+    if dialect != "sqlite":
+        stamp = f"{datetime.now(UTC):%Y%m%d%H%M%S}"
+        data = _logical_dump(engine, dialect).encode("utf-8")
+        try:
+            key = object_store().put(f"backups/tantara-backup-{stamp}.sql", data)
+        except Exception:  # noqa: BLE001 - report the storage failure honestly
+            raise HTTPException(500, "Backup could not be stored in workspace object storage") from None
+        with session_scope() as s:
+            record(
+                s,
+                user["id"],
+                "export",
+                "database",
+                "database",
+                {"dialect": dialect, "bytes": len(data), "object_key": key},
+            )
+        return {"path": key, "bytes": len(data), "kind": "sql"}
+    src = Path(engine.url.database or "")
     if not src.is_file():
         raise HTTPException(404, "Database not initialized")
     dest = get_settings().data_dir / f"backup-{datetime.now(UTC):%Y%m%d%H%M%S}.db"
-    source = get_engine().raw_connection()
+    source = engine.raw_connection()
     target = sqlite3.connect(dest)
     try:
         source.driver_connection.backup(target)
@@ -176,7 +229,7 @@ def backup(user=Depends(current_user)):
     finally:
         target.close()
         source.close()
-    return {"path": dest.name, "bytes": dest.stat().st_size}
+    return {"path": dest.name, "bytes": dest.stat().st_size, "kind": "sqlite"}
 
 
 @router.get("/security")

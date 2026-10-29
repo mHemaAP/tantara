@@ -6,22 +6,14 @@ import math
 import re
 from pathlib import Path
 
-from app.config import get_settings
-
 
 class DocumentStorage:
-    def __init__(self):
-        self.root = get_settings().data_dir / "uploads"
-        self.root.mkdir(parents=True, exist_ok=True)
+    """Persist an upload and return its stored key (`uploads/<sha256>.bin`)."""
 
-    def save(self, data: bytes):
-        name = hashlib.sha256(data).hexdigest() + ".bin"
-        path = (self.root / name).resolve()
-        if path.parent != self.root.resolve():
-            raise ValueError("Invalid storage path")
-        if not path.exists():
-            path.write_bytes(data)
-        return str(path)
+    def save(self, data: bytes) -> str:
+        from app.object_store import object_store, upload_key
+
+        return object_store().put(upload_key(data), data)
 
 
 class PdfExtractor:

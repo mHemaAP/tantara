@@ -1,5 +1,10 @@
-"""Hybrid retrieval: owner-scoped SQLite BM25 plus persistent FAISS, fused by RRF."""
+"""Hybrid retrieval: owner-scoped lexical index plus vector search, fused by RRF.
 
+SQLite workspaces use FTS5 + bm25 and the persistent FAISS index; PostgreSQL
+workspaces use a generated tsvector column (GIN) and in-database vectors.
+"""
+
+import logging
 import re
 
 from sqlalchemy import select, text
@@ -12,6 +17,26 @@ from app.services.passage_normalization import normalize_passage
 from app.services.vector_store import INDEX_LOCK, store
 
 MIN_SEMANTIC_SIMILARITY = 0.35
+
+
+def _lexical_ids(session, where: str, params: dict, tokens: list[str]) -> list[str]:
+    """Owner-scoped lexical candidates, ranked by the dialect's own relevance score."""
+    if session.bind.dialect.name == "postgresql":
+        tsquery = " OR ".join(tokens)
+        if not tsquery:
+            return []
+        sql = (
+            "SELECT c.id AS chunk_id FROM document_chunks c JOIN documents d ON d.id = c.document_id "
+            f"WHERE {where} AND c.search_tsv @@ websearch_to_tsquery('simple', :query) "
+            "ORDER BY ts_rank(c.search_tsv, websearch_to_tsquery('simple', :query)) DESC, c.id LIMIT 100"
+        )
+        return session.execute(text(sql), {**params, "query": tsquery}).scalars().all()
+    fts_query = " OR ".join('"' + token.replace('"', '""') + '"' for token in tokens) or '""'
+    sql = (
+        "SELECT f.chunk_id FROM chunk_fts f JOIN documents d ON d.id = f.document_id "
+        f"WHERE {where} AND chunk_fts MATCH :query ORDER BY bm25(chunk_fts) LIMIT 100"
+    )
+    return session.execute(text(sql), {**params, "query": fts_query}).scalars().all()
 
 
 class RetrievalService:
@@ -56,6 +81,7 @@ class RetrievalService:
             query_vector = embed_query(question)
             status = "ok"
         except Exception:
+            logging.getLogger(__name__).exception("query embedding failed")
             query_vector = None
             status = "embedding_unavailable"
         clauses = [Document.owner_id == owner_id]
@@ -92,8 +118,7 @@ class RetrievalService:
             # Hyphenated legal references are tokenized as their word parts so X-P2
             # retrieves the same evidence pool as X and does not become a dead FTS term.
             tokens = re.findall(r"[\w]{2,}", question)
-            fts_query = " OR ".join('"' + t.replace('"', '""') + '"' for t in tokens) or '""'
-            params = {"owner": owner_id, "query": fts_query}
+            params = {"owner": owner_id}
             if case_id:
                 where += " AND d.case_id=:case_id"
                 params["case_id"] = case_id
@@ -113,16 +138,7 @@ class RetrievalService:
                 where += f" AND d.collection_id IN ({marks})"
                 params.update({f"collection_{i}": value for i, value in enumerate(selected_collections)})
             try:
-                lexical = (
-                    session.execute(
-                        text(
-                            f"SELECT f.chunk_id FROM chunk_fts f JOIN documents d ON d.id=f.document_id WHERE {where} AND chunk_fts MATCH :query ORDER BY bm25(chunk_fts) LIMIT 100"
-                        ),
-                        params,
-                    )
-                    .scalars()
-                    .all()
-                )
+                lexical = _lexical_ids(session, where, params, tokens)
             except Exception:
                 lexical = []
         vector_store = store()
@@ -135,15 +151,28 @@ class RetrievalService:
                 )
             indexed_ids = vector_store.id_set()
             if expected_vector_ids != indexed_ids:
+                logging.getLogger(__name__).warning(
+                    "vector index out of sync: %s chunks in the database, %s in the %s index",
+                    len(expected_vector_ids),
+                    len(indexed_ids),
+                    vector_store.backend,
+                )
                 try:
                     repair = reconcile_index()
                 except Exception:
+                    logging.getLogger(__name__).exception("index reconciliation failed")
                     repair = {"consistent": False}
                 if not repair.get("consistent"):
                     status = "embedding_unavailable"
-            semantic = (
-                vector_store.search(query_vector, vector_store.count()) if query_vector is not None else []
-            )
+            semantic = []
+            if query_vector is not None:
+                try:
+                    semantic = vector_store.search(query_vector, vector_store.count())
+                except Exception:
+                    # Lexical retrieval still works, so answer from it and say so.
+                    logging.getLogger(__name__).exception("vector search failed")
+                    semantic = []
+                    status = "embedding_unavailable"
         semantic_scores = {cid: similarity for cid, similarity in semantic if cid in allowed}
         semantic_ids = [cid for cid in semantic_scores]
         return (

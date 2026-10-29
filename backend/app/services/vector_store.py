@@ -1,4 +1,9 @@
-"""Persistent FAISS inner-product index; vectors are normalized at write time."""
+"""Persistent vector index for the workspace.
+
+FAISS (SQLite workspaces) keeps a local flat inner-product index; PostgreSQL
+workspaces keep the same normalized vectors in the database so search, backup
+and the corpus live together. Both expose the same exact-cosine ranking.
+"""
 
 import json
 import threading
@@ -7,11 +12,23 @@ import numpy as np
 
 from app.config import get_settings
 
-# Serializes DB chunk mutations with FAISS updates/reconciliation.
+# Serializes DB chunk mutations with index updates/reconciliation.
 INDEX_LOCK = threading.RLock()
 
 
+def _normalized(rows):
+    """Return (chunk_ids, L2-normalized float32 vectors) so dot == cosine."""
+    matrix = np.asarray([row[1] for row in rows], dtype="float32")
+    if matrix.ndim != 2:
+        return [], []
+    norms = np.linalg.norm(matrix, axis=1)
+    matrix = matrix / np.where(norms == 0, 1.0, norms)[:, None]
+    return [row[0] for row in rows], matrix
+
+
 class FaissStore:
+    backend = "faiss"
+
     def __init__(self):
         import faiss
 
@@ -91,10 +108,101 @@ class FaissStore:
             return set(self.ids)
 
 
+class PostgresVectorStore:
+    """Exact cosine search over embeddings held in the `chunk_vectors` table.
+
+    Created by Alembic revision `0011_postgres_search`; vectors are normalized
+    here so the SQL `tantara_dot` helper is already a cosine score.
+    """
+
+    backend = "postgres"
+
+    def __init__(self):
+        from sqlalchemy import bindparam, text
+
+        from app.db import engine
+
+        self._bindparam = bindparam
+        self._text = text
+        self.engine = engine()
+        self.dimensions = get_settings().embedding_dimensions
+        self.lock = threading.RLock()
+        with self.engine.connect() as conn:
+            if not conn.exec_driver_sql("select to_regclass('chunk_vectors')").scalar():
+                raise RuntimeError(
+                    "PostgreSQL vector store requires Alembic revision 0011_postgres_search (run alembic upgrade head)"
+                )
+
+    def _write(self, rows):
+        chunk_ids, matrix = _normalized(rows)
+        if not chunk_ids:
+            return
+        statement = self._text(
+            "INSERT INTO chunk_vectors (chunk_id, embedding) VALUES (:chunk_id, CAST(:embedding AS real[])) "
+            "ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding"
+        )
+        with self.engine.begin() as conn:
+            conn.execute(
+                statement,
+                [
+                    {"chunk_id": chunk_id, "embedding": [float(value) for value in vector]}
+                    for chunk_id, vector in zip(chunk_ids, matrix, strict=True)
+                ],
+            )
+
+    def rebuild(self, rows):
+        with self.lock:
+            with self.engine.begin() as conn:
+                conn.exec_driver_sql("DELETE FROM chunk_vectors")
+            self._write(rows)
+
+    def add(self, rows):
+        with self.lock:
+            self._write(rows)
+
+    def remove(self, chunk_ids):
+        targets = list(dict.fromkeys(chunk_ids))
+        if not targets:
+            return
+        with self.lock:
+            statement = self._text("DELETE FROM chunk_vectors WHERE chunk_id IN :ids").bindparams(
+                self._bindparam("ids", expanding=True)
+            )
+            with self.engine.begin() as conn:
+                conn.execute(statement, {"ids": targets})
+
+    def search(self, vector, k=30):
+        with self.lock:
+            values = [float(value) for value in np.asarray(vector, dtype="float32").reshape(-1)]
+            norm = float(np.linalg.norm(values))
+            if not values or norm == 0:
+                return []
+            values = [value / norm for value in values]
+            statement = self._text(
+                "SELECT chunk_id, tantara_dot(embedding, CAST(:embedding AS real[])) AS score "
+                "FROM chunk_vectors ORDER BY score DESC, chunk_id LIMIT :limit"
+            )
+            with self.engine.connect() as conn:
+                return [
+                    (row.chunk_id, float(row.score))
+                    for row in conn.execute(statement, {"embedding": values, "limit": int(k)})
+                ]
+
+    def count(self):
+        with self.lock, self.engine.connect() as conn:
+            return int(conn.exec_driver_sql("SELECT count(*) FROM chunk_vectors").scalar() or 0)
+
+    def id_set(self):
+        with self.lock, self.engine.connect() as conn:
+            return {row[0] for row in conn.exec_driver_sql("SELECT chunk_id FROM chunk_vectors")}
+
+
 def store():
     global _store
     try:
         return _store
     except NameError:
-        _store = FaissStore()
+        _store = (
+            PostgresVectorStore() if get_settings().effective_vector_backend == "postgres" else FaissStore()
+        )
         return _store

@@ -36,14 +36,22 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
+    from app.object_store import ensure_bucket
+
+    bucket = ensure_bucket()
     from app.services.index_maintenance import reconcile_index
 
     state = reconcile_index()
     logging.info(
-        "TANTARA started: AI=%s embeddings=%s vector=faiss consistent=%s database=sqlite",
+        "TANTARA started: AI=%s embeddings=%s vector=%s storage=%s consistent=%s database=%s",
         get_settings().ai_provider,
         get_settings().embedding_provider,
+        get_settings().effective_vector_backend,
+        f"{get_settings().object_storage_backend}:{bucket}"
+        if bucket
+        else get_settings().object_storage_backend,
         state["consistent"],
+        get_settings().database_dialect,
     )
     yield
 
@@ -72,7 +80,8 @@ async def route_rate_limit(request: Request, call_next):
     with SessionLocal() as session:
         session.execute(
             text(
-                "INSERT INTO rate_buckets(client_key,route_key,minute,count) VALUES(:c,:r,:m,1) ON CONFLICT(client_key,route_key,minute) DO UPDATE SET count=count+1"
+                "INSERT INTO rate_buckets(client_key,route_key,minute,count) VALUES(:c,:r,:m,1) "
+                "ON CONFLICT(client_key,route_key,minute) DO UPDATE SET count=rate_buckets.count+1"
             ),
             {"c": client_key, "r": route_key, "m": minute},
         )
@@ -174,6 +183,31 @@ async def integrity_error(request, exc):
 @app.get("/api/v1/health")
 def health():
     return {"status": "ok", "service": "TANTARA Local Workspace API", "version": "1.1.0"}
+
+
+@app.get("/readyz")
+def readiness():
+    """Orchestration readiness: the database and object store must actually answer."""
+    checks: dict[str, str] = {}
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+        checks["database"] = f"error: {type(exc).__name__}"
+    try:
+        from app.object_store import ensure_bucket, object_store
+
+        ensure_bucket()
+        checks["objects"] = "ok" if get_settings().object_storage_backend == "s3" else "filesystem"
+        del object_store
+    except Exception as exc:  # noqa: BLE001
+        checks["objects"] = f"error: {type(exc).__name__}"
+    ready = all(not value.startswith("error") for value in checks.values())
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={"status": "ready" if ready else "not_ready", "version": "1.1.0", **checks},
+    )
 
 
 from app.routers.auth import router as auth_router
@@ -384,6 +418,7 @@ def ask(req: Ask, user=Depends(current_user)):
             collection_ids=collection_ids,
         )
     except Exception:
+        logging.getLogger(__name__).exception("retrieval failed for %s", req.question[:120])
         return {
             "status": "embedding_unavailable",
             "meta": {"retrieval_status": "embedding_unavailable"},
@@ -584,6 +619,7 @@ def ai_status(user=Depends(current_user)):
     except Exception:
         reachable = False
     from app.services.index_maintenance import reconcile_index
+    from app.services.vector_store import store
 
     index_state = reconcile_index()
     return {
@@ -600,7 +636,7 @@ def ai_status(user=Depends(current_user)):
             "dims": s.embedding_dimensions,
             "ready": True,
         },
-        "vector": {"backend": "faiss", **index_state},
+        "vector": {"backend": store().backend, **index_state},
     }
 
 
