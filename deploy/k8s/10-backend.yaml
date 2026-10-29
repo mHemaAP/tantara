@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tantara-backend
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-backend
+    app.kubernetes.io/part-of: tantara
+spec:
+  # A single process keeps the ingestion lock and per-process rate limiter exact;
+  # relational data, vectors and objects live in PostgreSQL and MinIO.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tantara-backend
+  template:
+    metadata:
+      labels:
+        app: tantara-backend
+        app.kubernetes.io/name: tantara-backend
+        app.kubernetes.io/part-of: tantara
+    spec:
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        app: app
+      imagePullSecrets:
+        - name: tantara-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: 192.168.0.100:5000/tantara-backend:pending
+          ports:
+            - name: http
+              containerPort: 8010
+          envFrom:
+            - configMapRef:
+                name: tantara-config
+            - secretRef:
+                name: tantara-secrets
+          volumeMounts:
+            - name: scratch
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: "3"
+              memory: 2500Mi
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        # Object read-through cache and upload spillover; nothing here is a
+        # system of record, PostgreSQL and MinIO hold the data.
+        - name: scratch
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tantara-backend
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-backend
+    app.kubernetes.io/part-of: tantara
+spec:
+  selector:
+    app: tantara-backend
+  ports:
+    - name: http
+      port: 8010
+      targetPort: http

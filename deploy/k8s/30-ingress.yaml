@@ -1,0 +1,48 @@
+# Local-area entry point. Public traffic arrives through the Cloudflare tunnel
+# (40-tunnel.yaml), which uses the same path rules.
+# Resolve tantra.local to a Traefik node address (192.168.0.100) and use the
+# Traefik web entrypoint port, e.g. http://tantra.local:8082/
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tantara
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-ingress
+    app.kubernetes.io/part-of: tantara
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: tantra.local
+      http:
+        paths:
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: tantara-backend
+                port:
+                  name: http
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: tantara-backend
+                port:
+                  name: http
+          - path: /readyz
+            pathType: Exact
+            backend:
+              service:
+                name: tantara-backend
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tantara-frontend
+                port:
+                  name: http

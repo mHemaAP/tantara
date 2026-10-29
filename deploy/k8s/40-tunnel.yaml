@@ -1,0 +1,108 @@
+# Public entry point. The tunnel is run with reconstructed credentials plus a local
+# ingress config, so the account's dashboard tunnel configuration is not required.
+# Both files come from the tantara-cloudflared Secret, which deploy/apply.sh builds
+# from the local credentials file (nothing secret is committed).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tantara-tunnel
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-tunnel
+    app.kubernetes.io/part-of: tantara
+spec:
+  # Two connectors keep the public route up while a node reboots or an image rolls.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tantara-tunnel
+  template:
+    metadata:
+      labels:
+        app: tantara-tunnel
+        app.kubernetes.io/name: tantara-tunnel
+        app.kubernetes.io/part-of: tantara
+    spec:
+      terminationGracePeriodSeconds: 30
+      nodeSelector:
+        app: app
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: tantara-tunnel
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cloudflared
+          image: docker.io/cloudflare/cloudflared:2026.10.5
+          args:
+            # This cloudflared version spells the metrics listener --metrics and
+            # accepts it, like --no-autoupdate, on the tunnel subcommand.
+            - tunnel
+            - --no-autoupdate
+            - --metrics
+            - 0.0.0.0:36001
+            - --config
+            - /etc/cloudflared/config.yml
+            - run
+          env:
+            - name: HOME
+              value: /tmp
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            tcpSocket:
+              port: 36001
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            tcpSocket:
+              port: 36001
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 36001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          projected:
+            sources:
+              - secret:
+                  name: tantara-cloudflared
+                  items:
+                    - key: config.yml
+                      path: config.yml
+                    - key: credentials.json
+                      path: credentials.json
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi

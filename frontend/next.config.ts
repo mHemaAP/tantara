@@ -2,6 +2,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   devIndicators: false,
+  // Self-contained server for the container image (deploy/Containerfile.frontend).
+  output: 'standalone',
   env: {
     NEXT_PUBLIC_WORKSPACE_TIME_ZONE: process.env.TANTARA_WORKSPACE_TIME_ZONE ?? 'Asia/Kolkata',
   },

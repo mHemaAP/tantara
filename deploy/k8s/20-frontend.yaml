@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tantara-frontend
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-frontend
+    app.kubernetes.io/part-of: tantara
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tantara-frontend
+  template:
+    metadata:
+      labels:
+        app: tantara-frontend
+        app.kubernetes.io/name: tantara-frontend
+        app.kubernetes.io/part-of: tantara
+    spec:
+      terminationGracePeriodSeconds: 30
+      nodeSelector:
+        app: app
+      imagePullSecrets:
+        - name: tantara-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: 192.168.0.100:5000/tantara-frontend:pending
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: TANTARA_WORKSPACE_TIME_ZONE
+              valueFrom:
+                configMapKeyRef:
+                  name: tantara-config
+                  key: TANTARA_WORKSPACE_TIME_ZONE
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /app/.next/cache
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # The standalone server answers on "/" only after the router is up, and
+          # "/" can redirect to the workspace; a socket check is the honest signal.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: cache
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tantara-frontend
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-frontend
+    app.kubernetes.io/part-of: tantara
+spec:
+  selector:
+    app: tantara-frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
