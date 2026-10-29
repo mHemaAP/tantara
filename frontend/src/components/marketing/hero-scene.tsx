@@ -13,7 +13,7 @@ function fatLine(
   linewidth: number,
   opacity = 0.92,
 ) {
-  const material = new LineMaterial({ color, linewidth, transparent: true, opacity, fog: true });
+  const material = new LineMaterial({ color, linewidth, transparent: true, opacity, fog: false });
   return new LineSegments2(geometry, material);
 }
 
@@ -49,9 +49,8 @@ export function HeroScene() {
     let targetX = 0;
     let targetY = 0;
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog('#10172a', 7, 15);
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 40);
-    camera.position.set(0, 0.18, 6.9);
+    camera.position.set(0, 0.1, 1);
     const sculpture = new THREE.Group();
     scene.add(sculpture);
 
@@ -59,7 +58,6 @@ export function HeroScene() {
       renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setClearColor('#10172a', 0);
-      sculpture.scale.setScalar(1.13);
 
       sculpture.add(rod(new THREE.Vector3(0, -2.15, 0), new THREE.Vector3(0, 1.95, 0)));
       sculpture.add(rod(new THREE.Vector3(-2.55, 1.17, 0), new THREE.Vector3(2.55, 1.17, 0)));
@@ -75,17 +73,36 @@ export function HeroScene() {
 
       const accent = new THREE.Mesh(
         new THREE.OctahedronGeometry(0.12, 0),
-        new THREE.MeshBasicMaterial({ color: '#4f46e5' }),
+        new THREE.MeshBasicMaterial({ color: '#4f46e5', fog: false }),
       );
       accent.position.set(0, 1.96, 0.02);
       sculpture.add(accent);
+
+      const bounds = new THREE.Box3().setFromObject(sculpture);
+      const size = bounds.getSize(new THREE.Vector3());
+      let halfWidth = size.x / 2;
+      let halfHeight = size.y / 2;
+      if (!Number.isFinite(halfWidth) || !Number.isFinite(halfHeight) || halfWidth <= 0 || halfHeight <= 0) {
+        // Fallback to the documented beam/pan envelope: x ±3.29, y −2.15 to 2.08.
+        halfWidth = 3.29;
+        halfHeight = (2.08 - -2.15) / 2;
+      }
+      const fitCamera = (width: number, height: number) => {
+        const aspect = width / height;
+        const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        const halfDepth = size.z / 2;
+        const distY = halfHeight / tanHalf;
+        const distX = (halfWidth / (tanHalf * aspect) + halfDepth) * 1.06;
+        camera.position.set(0, 0.1, Math.max(distX, distY));
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+      };
 
       const resize = () => {
         if (!renderer || !host) return;
         const { width, height } = host.getBoundingClientRect();
         if (!width || !height) return;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
+        fitCamera(width, height);
         renderer.setSize(width, height, false);
         scene.traverse((object) => {
           if (object instanceof LineSegments2) object.material.resolution.set(width, height);

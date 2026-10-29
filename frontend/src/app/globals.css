@@ -766,6 +766,11 @@ a {
   border: 1px solid #dfe3ea;
   border-radius: 8px;
 }
+.password-field input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+}
 .password-field button {
   border: 0;
   background: transparent;
@@ -1177,14 +1182,14 @@ a {
   top: 50%;
   width: 75%;
   aspect-ratio: 1;
-  border: 1px solid rgba(221, 194, 135, 0.09);
+  border: 1px solid rgba(221, 194, 135, 0.16);
   border-radius: 50%;
   transform: translate(-50%, -50%) rotateX(67deg);
   pointer-events: none;
 }
 .landing-scene::after {
   width: 94%;
-  border-color: rgba(221, 194, 135, 0.045);
+  border-color: rgba(221, 194, 135, 0.08);
 }
 .landing-scene canvas,
 .landing-scene-fallback {
@@ -1204,7 +1209,7 @@ a {
 .landing-scene-caption {
   position: absolute;
   z-index: 2;
-  bottom: 12%;
+  top: 7%;
   left: 0;
   right: 0;
   display: flex;
@@ -1836,11 +1841,6 @@ a {
 .login-password:focus {
   outline: 0;
 }
-.password-field:focus-within {
-  outline: 2px solid #6366f1;
-  outline-offset: 2px;
-}
-
 .search-toggle {
   display: none;
 }
