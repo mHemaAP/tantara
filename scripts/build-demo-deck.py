@@ -343,6 +343,22 @@ def main() -> int:
         footer(slide)
         return slide
 
+    def phone_slide(heading, sub, labels, note):
+        """Portrait 390×844 captures side by side. A phone frame has to keep its aspect,
+        so the row is sized by height rather than by width."""
+        slide = blank()
+        eyebrow(slide, heading)
+        header(slide, heading, sub)
+        gap = 0.45
+        available = 12.2
+        count = len(labels)
+        cell_w = (available - gap * (count - 1)) / count
+        for index, label in enumerate(labels):
+            picture(slide, label, box=(0.55 + index * (cell_w + gap), 1.95, cell_w, 4.7), center_x=True)
+        caption(slide, note, y=6.8)
+        footer(slide)
+        return slide
+
     # 1 — what it is / how it is built
     slide = blank()
     eyebrow(slide, "Overview")
@@ -522,9 +538,18 @@ def main() -> int:
 
     # 13 — mobile
     divider("11 · On the move", "The same workspace at 390×844", "Nothing is a desktop-only screen — the mobile pass runs the same flows.")
-    shot_slide("mobile-login-advocate", "Signing in on a phone", "Same public edge, same credentials, 390 px wide", "The mobile pass is a second real run through the shell, not a resized desktop capture.")
-    pair_slide("Mobile · cockpit and matters", "The shell reflows; the data is identical", "mobile-dashboard", "mobile-cases", "No horizontal overflow at 390 px — checked in the browser.")
-    pair_slide("Mobile · documents and research", "Reading statutes and asking questions from a phone", "mobile-documents", "mobile-research", "The same session token works; the API is the public edge.")
+    phone_slide(
+        "Mobile · sign in, cockpit, matters",
+        "A second real pass through the shell at 390 px wide",
+        ["mobile-login-advocate", "mobile-dashboard", "mobile-cases"],
+        "Same public edge, same session mechanics. No horizontal overflow at 390 px — asserted in the browser, not eyeballed.",
+    )
+    phone_slide(
+        "Mobile · statutes and research",
+        "Reading an act and asking the research desk from a phone",
+        ["mobile-documents", "mobile-research"],
+        "The statute viewer and the research desk both fit; the citation chips are still tappable.",
+    )
 
     # 14 — evidence
     evidence_slide = blank()
