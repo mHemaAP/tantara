@@ -43,7 +43,9 @@ export default function Home() {
         <div className="hero-content">
           <div className="hero-welcome">Welcome to</div>
           <h1 style={{ letterSpacing: '.18em', marginTop: 8 }}>
-            <img className="brandmark" src="/brand/t-mark.svg" alt="" /> TANTARA
+            <Link href="/" aria-label="TANTARA home" className="signin-hero-brand">
+              <img className="brandmark" src="/brand/t-mark.svg" alt="" /> TANTARA
+            </Link>
           </h1>
           <p>
             AI-Powered Legal Workspace
@@ -73,12 +75,10 @@ export default function Home() {
         </div>
       </section>
       <section className="card login-card" id="login">
-        <div className="brand" style={{ padding: 0, color: '#0f172a' }}>
+        <Link href="/" className="brand signin-brand" aria-label="TANTARA home">
           <img className="brandmark" src="/brand/t-mark.svg" alt="" />
-          <span className="brandword" style={{ color: '#0f172a' }}>
-            TANTARA
-          </span>
-        </div>
+          <span className="brandword">TANTARA</span>
+        </Link>
         <div className="separator" />
         <h2 style={{ fontSize: 22, margin: '0 0 6px' }}>Sign in to your workspace</h2>
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
@@ -133,20 +133,9 @@ export default function Home() {
             {busy ? 'Signing in…' : 'Continue as Advocate'} <ArrowRight size={16} />
           </button>
         </form>
-        <div
-          style={{
-            marginTop: 22,
-            padding: 12,
-            background: '#f7f8fb',
-            borderRadius: 9,
-            fontSize: 11,
-            color: '#64748b',
-          }}
-        >
-          <strong style={{ color: '#334155' }}>Local development account</strong>
-          <br />
-          advocate@tantara.local · tantara-local
-        </div>
+        <p className="signin-signup-link">
+          New here? <Link href="/signup">Create an account</Link>
+        </p>
         <p style={{ fontSize: 12, lineHeight: 1.5, color: '#64748b', marginTop: 18 }}>
           For legal research assistance only. Verify all authorities and advice against primary sources.
         </p>

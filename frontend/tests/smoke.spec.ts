@@ -16,7 +16,14 @@ const routes = (caseId: string, documentId: string) => [
 ];
 const apiOrigin = process.env.TANTARA_API_ORIGIN ?? 'http://127.0.0.1:8010';
 test.beforeEach(async ({ page, request }) => {
-  if (test.info().title === 'login form validates and submits with Enter') return;
+  if (
+    [
+      'login form validates and submits with Enter',
+      'public landing page links to sign in and sign up',
+      'logged-out dashboard does not expose workspace data',
+    ].includes(test.info().title)
+  )
+    return;
   const response = await request.post(`${apiOrigin}/api/v1/auth/login`, {
     data: { email: 'advocate@tantara.local', password: 'tantara-local' },
   });
@@ -60,7 +67,7 @@ test('existing routes render without console or hydration errors and overflow', 
   expect(errors).toEqual([]);
 });
 test('login form validates and submits with Enter', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/signin');
   const email = page.locator('#email');
   await expect(email).toHaveValue('advocate@tantara.local');
   await email.fill('invalid');
@@ -78,6 +85,25 @@ test('login form validates and submits with Enter', async ({ page }) => {
   await expect(page).toHaveURL(/dashboard/);
   await expect(page.getByRole('button', { name: 'Account menu' })).toContainText('Workspace Advocate');
   await expect(page.getByRole('button', { name: 'Account menu' })).toContainText('advocate@tantara.local');
+});
+test('public landing page links to sign in and sign up', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(
+    page.getByRole('heading', { name: 'Arbitration practice, organised end to end.' }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign in' }).first()).toHaveAttribute('href', '/signin');
+  await expect(page.getByRole('link', { name: 'Create an account' }).first()).toHaveAttribute(
+    'href',
+    '/signup',
+  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+});
+test('logged-out dashboard does not expose workspace data', async ({ page }) => {
+  await page.goto('/dashboard');
+  await expect(page).toHaveURL(/\/signin(?:\?.*)?$/);
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
+  await expect(page.locator('.dashboard-primary')).toHaveCount(0);
 });
 test('settings profile form is editable and navigation marks current route', async ({ page }) => {
   await page.goto('/settings/profile');

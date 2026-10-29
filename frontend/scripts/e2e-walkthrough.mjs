@@ -155,9 +155,9 @@ async function listAll(pathname) {
 async function login(email, shotPrefix = 'login') {
   currentEmail = email;
   await page.context().clearCookies();
-  await page.goto(`${webUrl}/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${webUrl}/signin`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => localStorage.clear());
-  await page.goto(`${webUrl}/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${webUrl}/signin`, { waitUntil: 'domcontentloaded' });
   await page.locator('#email').waitFor({ state: 'visible', timeout: 30_000 });
   await page.fill('#email', email);
   await page.fill('#password', password);

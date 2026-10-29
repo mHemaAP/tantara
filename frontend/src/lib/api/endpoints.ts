@@ -33,6 +33,8 @@ export function normalizeAskResponse(response: RawAskResponse): AskResponse {
 export const endpoints = {
   login: (body: { email: string; password: string }) =>
     api.post<{ access_token: string; token_type: string; user: User }>('/auth/login', body),
+  register: (body: { name: string; email: string; password: string; title?: string }) =>
+    api.post<{ access_token: string; token_type: string; user: User }>('/auth/register', body),
   me: () => api.get<User>('/auth/me'),
   meta: {
     institutions: () => api.get<{ items: string[] } | string[]>('/meta/institutions'),

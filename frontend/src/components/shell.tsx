@@ -75,8 +75,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       !!document.cookie.split('; ').find((x) => x.startsWith('tantara_token=')) ||
       !!localStorage.getItem('tantara_token');
     if (!hasToken) {
-      setAuthError(true);
-      setAuthReady(true);
+      router.replace('/signin');
     } else {
       api
         .get<{ full_name?: string; name?: string; email?: string; role: string }>('/auth/me')
@@ -104,7 +103,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [router]);
 
   const search = async (term: string) => {
     setQ(term);
@@ -179,6 +178,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+
+  if (!authReady) return null;
 
   return (
     <div className="workspace">
@@ -287,7 +288,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={() => {
                   clearToken();
-                  router.push('/');
+                  router.push('/signin');
                   toast.success('Signed out');
                 }}
               >

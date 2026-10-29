@@ -27,8 +27,12 @@ async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSi
     const bearer = authToken();
     if (bearer) headers.set('Authorization', `Bearer ${bearer}`);
     const response = await fetch(`${base}${path}`, { ...init, headers, signal: controller.signal });
-    if (response.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/') {
-      window.location.assign('/');
+    if (
+      response.status === 401 &&
+      typeof window !== 'undefined' &&
+      !['/', '/signin', '/signup'].includes(window.location.pathname)
+    ) {
+      window.location.assign('/signin');
     }
     if (!response.ok) {
       let payload: { error?: { code?: string; message?: string; details?: unknown } } = {};

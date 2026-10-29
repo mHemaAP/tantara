@@ -60,7 +60,12 @@ async function createPost(input: {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = payload.error ?? {};
-    if (response.status === 401 && typeof window !== 'undefined') window.location.assign('/');
+    if (
+      response.status === 401 &&
+      typeof window !== 'undefined' &&
+      !['/', '/signin', '/signup'].includes(window.location.pathname)
+    )
+      window.location.assign('/signin');
     throw new CommunityValidationError(
       error.message ?? response.statusText,
       response.status,
