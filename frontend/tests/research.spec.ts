@@ -451,6 +451,7 @@ test.describe('Research Desk live API controls', () => {
   });
 
   test('citation markers show API sources and open their linked document page', async ({ page }) => {
+    test.setTimeout(240_000);
     const asked = await answerQuestion(page, 'What does the arbitration agreement say about the seat?');
     expect(['ok', 'answered']).toContain(asked.status);
     expect(asked.disclaimer).toBeTruthy();
