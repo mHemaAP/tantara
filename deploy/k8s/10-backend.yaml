@@ -24,7 +24,12 @@ spec:
     spec:
       terminationGracePeriodSeconds: 60
       nodeSelector:
-        app: app
+        # Pinned to smallllm: `worker` (the node carrying the `app: app` label) is in a
+        # reboot loop — four distinct boot ids in ~35 min on 2026-10-29, each of which
+        # orphans in-flight ingestion jobs because the queue lives in the container's
+        # memory. Revert by labelling a healthy node `app: app` and restoring
+        # `nodeSelector: {app: app}` here and in 20-frontend.yaml / 40-tunnel.yaml.
+        kubernetes.io/hostname: smallllm
       imagePullSecrets:
         - name: tantara-registry
       securityContext:
@@ -39,6 +44,22 @@ spec:
           ports:
             - name: http
               containerPort: 8010
+          # Start-up gate. The PostgreSQL instance on 192.168.0.100 is shared with
+          # other applications (measured: platform_admin 64, mlflow 16, airflow 8 of
+          # 100 slots) and periodically sits at its connection ceiling. init_db runs
+          # Alembic before the app can answer, so without this gate the whole
+          # workspace crash-loops until a slot happens to free up.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              attempt=0
+              until python -c 'from app.db import engine; engine().connect().close()'; do
+                attempt=$((attempt + 1))
+                echo "waiting for a PostgreSQL connection slot (attempt $attempt)"
+                sleep 15
+              done
+              echo "PostgreSQL accepted a connection after $attempt waits"
+              exec uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 1
           envFrom:
             - configMapRef:
                 name: tantara-config
@@ -52,17 +73,26 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 768Mi
+              memory: 1Gi
             limits:
               cpu: "3"
-              memory: 2500Mi
+              # Ingestion keeps a document's pages, chunks, and embedding vectors in
+              # memory while it indexes one PDF, and the process does not return that
+              # memory to the OS afterwards. Measured on the statute library: a 24-page
+              # act reached ~1.2 GiB, and `Code of Civil Procedure, 1908` (347 pages,
+              # 4.5 MB) OOM-killed the container at this 4 Gi ceiling (exit 137, restart
+              # count 2) before finishing. The same file, retried at 6 Gi, completed and
+              # peaked at 4.83 GiB RSS — so 6 Gi is the working figure, not a guess.
+              memory: 6Gi
           startupProbe:
             httpGet:
               path: /readyz
               port: http
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 36
+            # Covers the start-up gate above: up to 20 minutes of waiting for the
+            # shared database before the container is considered failed.
+            failureThreshold: 240
           readinessProbe:
             httpGet:
               path: /readyz

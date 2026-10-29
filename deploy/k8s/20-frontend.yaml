@@ -20,7 +20,9 @@ spec:
     spec:
       terminationGracePeriodSeconds: 30
       nodeSelector:
-        app: app
+        # Kept on the same node as tantara-backend. `worker`, the node carrying the
+        # `app: app` label, is reboot-looping — see the note in 10-backend.yaml.
+        kubernetes.io/hostname: smallllm
       imagePullSecrets:
         - name: tantara-registry
       securityContext:

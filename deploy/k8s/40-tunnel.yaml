@@ -25,7 +25,9 @@ spec:
     spec:
       terminationGracePeriodSeconds: 30
       nodeSelector:
-        app: app
+        # Two tunnel replicas sit on the one healthy app node; `worker` is reboot-looping,
+        # see the note in 10-backend.yaml.
+        kubernetes.io/hostname: smallllm
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

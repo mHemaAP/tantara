@@ -35,3 +35,10 @@ data:
   MAX_UPLOAD_MB: "25"
   CORS_ORIGINS: https://tantra.theessencetimes.com,http://tantra.local:8082
   TANTARA_WORKSPACE_TIME_ZONE: Asia/Kolkata
+  # The PostgreSQL instance on 192.168.0.100 is shared and has a fixed connection
+  # budget, so the single backend process stays small and recycles connections
+  # often: after a node dies its sessions linger until TCP keepalive reaps them,
+  # and a wide pool then starves the next start-up (init_db runs Alembic).
+  DB_POOL_SIZE: "3"
+  DB_POOL_MAX_OVERFLOW: "4"
+  DB_POOL_RECYCLE: "600"
