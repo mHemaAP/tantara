@@ -471,10 +471,11 @@ try {
     await stepRun('associate: empty workspace', async () => {
       await login('associate@tantara.local');
       // Every pass uploads a fixture PDF and opens a matter, so the second run would
-      // otherwise be judged against the first run's leftovers. Documents can be deleted
-      // through the API; matters cannot (no delete route), so the matter assertions below
-      // check ownership rather than absolute emptiness.
-      const stale = await listAll('/api/v1/documents');
+      // otherwise be judged against the first run's leftovers. Only the account's own
+      // documents can be cleaned up: the shared law library is read-only for everyone,
+      // including this account. So isolation is measured with scope=mine, not by
+      // emptying the whole list, and the library must still be visible.
+      const stale = (await listAll('/api/v1/documents')).filter((d) => d.visibility !== 'library');
       for (const doc of stale) await api(`/api/v1/documents/${doc.id}`, { method: 'DELETE' });
       const body = await settled();
       check('associate: fresh account sees an empty workspace', /No |Create|Add|Start|Nothing/i.test(body), body.split('\n').find((line) => /no |create|start/i.test(line)) ?? '');
@@ -484,8 +485,14 @@ try {
       // There is no DELETE route for matters, so an earlier pass leaves its own matter
       // behind. Emptiness of the *seeded firm* is what isolation means here.
       check('associate: no matters of the seeded firm are visible', own.length === cases.length, `${own.length}/${cases.length} own matters`);
-      const documents = await listAll('/api/v1/documents');
-      check('associate: starts a pass with no documents', documents.length === 0, `${documents.length} documents after clearing ${stale.length}`);
+      const mine = await listAll('/api/v1/documents?scope=mine');
+      check('associate: starts a pass with no documents of its own', mine.length === 0, `${mine.length} own documents after clearing ${stale.length}`);
+      const library = await listAll('/api/v1/documents?scope=library');
+      check(
+        'associate: the law library is shared and flagged',
+        library.length > 0 && library.every((d) => d.visibility === 'library'),
+        `${library.length} library documents visible`,
+      );
     });
 
     await stepRun('associate: create a matter', async () => {

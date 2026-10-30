@@ -15,7 +15,11 @@ const api = `${base}/api/v1`;
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
 
 // The questions a real user asked on 2026-10-30 and every one of them came back empty.
-const REGRESSION_QUESTIONS = ['Relief options', 'Procedure under Arbitration Act', 'settlments'];
+const REGRESSION_QUESTIONS = ['Relief options', 'Procedure under Arbitration Act'];
+
+// A word that exists in no indexed page. The correct answer is an honest decline: the
+// grounding rule forbids inventing law, so a misspelling must not be answered by guessing.
+const NO_EVIDENCE_QUESTIONS = ['settlments'];
 
 const stamp = Date.now();
 const account = (name) => `${name}-${stamp}@example.invalid`;
@@ -107,13 +111,26 @@ async function main() {
     check(`  citation for "${question}" is library-sourced`, flagged.length > 0, `${flagged.length} flagged`);
   }
 
+  for (const question of NO_EVIDENCE_QUESTIONS) {
+    const ask = await call('POST', '/ai/ask', { token: strangerToken, body: { question, top_k: 8 } });
+    check(
+      `ask "${question}" declines instead of inventing law`,
+      ask.status === 200 && ask.json.status === 'insufficient_evidence' && (ask.json.citations || []).length === 0,
+      `status=${ask.json.status} citations=${(ask.json.citations || []).length}`,
+    );
+  }
+
   // 4. Read access to a statute: metadata, pages, and the original PDF.
   const statute = library.find((d) => /code of civil procedure/i.test(d.title)) || library[0];
   const detail = await call('GET', `/documents/${statute.id}`, { token: strangerToken });
   const pages = await call('GET', `/documents/${statute.id}/pages?page_size=5`, { token: strangerToken });
   const file = await call('GET', `/documents/${statute.id}/file`, { token: strangerToken, raw: true });
   check('library document detail readable', detail.status === 200 && detail.json.title === statute.title, statute.title);
-  check('library pages readable', pages.status === 200 && (pages.json.items || []).length > 0);
+  check(
+    'library pages readable',
+    pages.status === 200 && (pages.json.pages || []).length > 0,
+    `${(pages.json.pages || []).length} pages, first page ${pages.json.pages?.[0]?.page_number}`,
+  );
   check(
     'library original file downloadable',
     file.status === 200 && /pdf|octet-stream/.test(file.headers.get('content-type') || ''),
