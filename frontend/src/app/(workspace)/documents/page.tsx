@@ -26,6 +26,7 @@ export default function DocumentsPage() {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
+  const [scope, setScope] = useState<'all' | 'mine' | 'library'>('all');
   const [layout, setLayout] = useState<'grid' | 'list'>('list');
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -35,8 +36,9 @@ export default function DocumentsPage() {
     const search = new URLSearchParams();
     if (query) search.set('q', query);
     if (status) search.set('status', status);
+    if (scope !== 'all') search.set('scope', scope);
     return search.size ? `?${search}` : '';
-  }, [query, status]);
+  }, [query, scope, status]);
   const documents = useQuery({
     queryKey: ['documents', params],
     queryFn: () => documentsApi.list(params),
@@ -80,7 +82,7 @@ export default function DocumentsPage() {
         } catch (error) {
           const failure = error as Error & {
             status?: number;
-            body?: { detail?: { existing_document?: { id: string } } };
+            body?: { error?: { details?: { existing_document?: { id: string } } } };
           };
           const duplicate = failure.status === 409;
           setUploads((items) =>
@@ -88,9 +90,14 @@ export default function DocumentsPage() {
               at === index
                 ? {
                     ...item,
-                    status: duplicate ? 'Already in library' : 'Upload failed',
+                    status:
+                      duplicate && failure.message === 'Already in the law library'
+                        ? 'Already in library'
+                        : duplicate
+                          ? 'Duplicate document'
+                          : 'Upload failed',
                     error: failure.message,
-                    id: failure.body?.detail?.existing_document?.id,
+                    id: failure.body?.error?.details?.existing_document?.id,
                   }
                 : item,
             ),
@@ -217,6 +224,15 @@ export default function DocumentsPage() {
               />
             </label>
             <select
+              aria-label="Document scope"
+              value={scope}
+              onChange={(event) => setScope(event.target.value as 'all' | 'mine' | 'library')}
+            >
+              <option value="all">All</option>
+              <option value="mine">Mine</option>
+              <option value="library">Law library</option>
+            </select>
+            <select
               aria-label="Filter by status"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
@@ -243,7 +259,9 @@ export default function DocumentsPage() {
             </button>
           </div>
         </div>
-        {selected.length > 0 && (
+        {selected.some((id) =>
+          documentsList.some((document) => document.id === id && document.visibility !== 'library'),
+        ) && (
           <div className="bulk-bar">
             <span>{selected.length} selected</span>
             <button onClick={() => void bulkDelete()}>
@@ -292,6 +310,7 @@ export default function DocumentsPage() {
                     document={document}
                     selected={selected.includes(document.id)}
                     onSelect={() =>
+                      document.visibility !== 'library' &&
                       setSelected((current) =>
                         current.includes(document.id)
                           ? current.filter((id) => id !== document.id)
@@ -330,6 +349,7 @@ export default function DocumentsPage() {
                         selected={selected.includes(document.id)}
                         previewed={selectedPreview?.id === document.id}
                         onSelect={() =>
+                          document.visibility !== 'library' &&
                           setSelected((current) =>
                             current.includes(document.id)
                               ? current.filter((id) => id !== document.id)
@@ -339,6 +359,7 @@ export default function DocumentsPage() {
                         onPreview={() => setPreviewId(document.id)}
                         onDelete={() => void remove(document)}
                         onRetry={async () => {
+                          if (document.visibility === 'library') return;
                           await documentsApi.retry(document.id);
                           await queryClient.invalidateQueries({ queryKey: ['documents'] });
                         }}
@@ -354,6 +375,7 @@ export default function DocumentsPage() {
                       document={document}
                       selected={selected.includes(document.id)}
                       onSelect={() =>
+                        document.visibility !== 'library' &&
                         setSelected((current) =>
                           current.includes(document.id)
                             ? current.filter((id) => id !== document.id)
@@ -362,6 +384,7 @@ export default function DocumentsPage() {
                       }
                       onDelete={() => void remove(document)}
                       onRetry={async () => {
+                        if (document.visibility === 'library') return;
                         await documentsApi.retry(document.id);
                         await queryClient.invalidateQueries({ queryKey: ['documents'] });
                       }}
@@ -437,6 +460,7 @@ function DocumentRow({
       <td>
         <div className="document-row-title">
           <input
+            hidden={document.visibility === 'library'}
             type="checkbox"
             aria-label={`Select ${document.title}`}
             checked={selected}
@@ -456,8 +480,9 @@ function DocumentRow({
       <td>{pageCount == null ? '—' : pageCount}</td>
       <td>{uploaded}</td>
       <td>
+        {document.visibility === 'library' && <span className="document-library-badge">Law library</span>}
         <DocumentStatus status={job.data?.status || document.status} />
-        {job.data?.status === 'failed' && (
+        {document.visibility !== 'library' && job.data?.status === 'failed' && (
           <button
             className="row-retry"
             onClick={(event) => {
@@ -470,16 +495,18 @@ function DocumentRow({
         )}
       </td>
       <td>
-        <button
-          className="row-delete"
-          aria-label={`Delete ${document.title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-        >
-          <Trash2 size={14} />
-        </button>
+        {document.visibility !== 'library' && (
+          <button
+            className="row-delete"
+            aria-label={`Delete ${document.title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -508,11 +535,13 @@ function DocumentCard({
     <article className="document-card" data-document-id={document.id}>
       <div className="document-card-top">
         <input
+          hidden={document.visibility === 'library'}
           type="checkbox"
           aria-label={`Select ${document.title}`}
           checked={selected}
           onChange={onSelect}
         />
+        {document.visibility === 'library' && <span className="document-library-badge">Law library</span>}
         <DocumentStatus status={job.data?.status || document.status} />
       </div>
       <Link className="document-card-link" href={`/documents/${document.id}`}>
@@ -534,16 +563,20 @@ function DocumentCard({
               ? job.data.error || 'Processing failed'
               : `${job.data.progress}% · ${job.data.status}`}
           </span>
-          {job.data.status === 'failed' && <button onClick={onRetry}>Retry</button>}
+          {document.visibility !== 'library' && job.data.status === 'failed' && (
+            <button onClick={onRetry}>Retry</button>
+          )}
         </div>
       )}
       <div className="document-card-actions">
         <Link href={`/documents/${document.id}`}>
           Open document <ArrowUpRight size={13} />
         </Link>
-        <button aria-label={`Delete ${document.title}`} onClick={onDelete}>
-          <Trash2 size={15} />
-        </button>
+        {document.visibility !== 'library' && (
+          <button aria-label={`Delete ${document.title}`} onClick={onDelete}>
+            <Trash2 size={15} />
+          </button>
+        )}
       </div>
     </article>
   );

@@ -28,6 +28,7 @@ type Doc = {
   is_demo?: boolean;
   source_label?: string;
   processed_at?: string;
+  visibility?: 'private' | 'library';
 };
 type ExtractionWarning = string | { page?: number; warning: string };
 type Page = { page_number: number; text?: string; ocr_confidence?: number; warnings?: ExtractionWarning[] };
@@ -372,6 +373,9 @@ export default function DocumentDetailPage() {
           </section>
         </div>
         <aside className="document-detail-aside">
+          {doc.data.visibility === 'library' && (
+            <p className="document-library-note">Shared reference from the law library — read-only.</p>
+          )}
           <section className="card ai-read-panel" aria-label="Document extraction">
             <div className="ai-read-heading">
               <div>
@@ -386,28 +390,32 @@ export default function DocumentDetailPage() {
                   </small>
                 )}
               </div>
-              <button
-                className="primary"
-                aria-label={
-                  reading
-                    ? 'Extracting document'
-                    : aiOutcome === 'ready'
-                      ? 'Run again'
-                      : 'Run document extraction'
-                }
-                disabled={reading}
-                onClick={() => void runAiRead()}
-              >
-                {reading ? 'Extracting…' : aiOutcome === 'ready' ? 'Run again' : 'Run extraction'}
-              </button>
+              {doc.data.visibility !== 'library' && (
+                <button
+                  className="primary"
+                  aria-label={
+                    reading
+                      ? 'Extracting document'
+                      : aiOutcome === 'ready'
+                        ? 'Run again'
+                        : 'Run document extraction'
+                  }
+                  disabled={reading}
+                  onClick={() => void runAiRead()}
+                >
+                  {reading ? 'Extracting…' : aiOutcome === 'ready' ? 'Run again' : 'Run extraction'}
+                </button>
+              )}
             </div>
             {aiOutcome === 'model_unavailable' && (
               <div className="ai-read-degradation" role="status" data-error-category="model_unavailable">
                 <strong>AI model unavailable</strong>
                 <p>The configured model could not respond. No extraction fields are being shown.</p>
-                <button className="primary" onClick={() => void runAiRead()}>
-                  Retry extraction
-                </button>
+                {doc.data.visibility !== 'library' && (
+                  <button className="primary" onClick={() => void runAiRead()}>
+                    Retry extraction
+                  </button>
+                )}
               </div>
             )}
             {aiOutcome === 'no_evidence' && (
@@ -425,9 +433,11 @@ export default function DocumentDetailPage() {
               <div className="ai-read-error-category" role="status" data-error-category={aiOutcome}>
                 <strong>{aiOutcome.replaceAll('_', ' ')}</strong>
                 <p>{aiFailureMessage(aiOutcome as Exclude<AiFailure, 'model_unavailable'>)}</p>
-                <button className="primary" onClick={() => void runAiRead()}>
-                  Retry extraction
-                </button>
+                {doc.data.visibility !== 'library' && (
+                  <button className="primary" onClick={() => void runAiRead()}>
+                    Retry extraction
+                  </button>
+                )}
               </div>
             )}
             {extraction.isError && aiOutcome === 'ready' && (
@@ -456,7 +466,7 @@ export default function DocumentDetailPage() {
                       <strong>
                         {key === 'summary' ? 'Extracted text (de-duplicated)' : key.replaceAll('_', ' ')}
                       </strong>
-                      {editingField === key ? (
+                      {doc.data.visibility !== 'library' && editingField === key ? (
                         <textarea
                           aria-label={`Edit ${key}`}
                           value={editValue}
@@ -491,7 +501,7 @@ export default function DocumentDetailPage() {
                           )}
                         </div>
                       )}
-                      {editingField === key ? (
+                      {doc.data.visibility === 'library' ? null : editingField === key ? (
                         <button aria-label={`Save ${key}`} onClick={() => void saveExtraction(key)}>
                           <Check size={15} />
                         </button>

@@ -110,6 +110,7 @@ function CitationAnchor({
       data-chunk-id={citation.chunkId}
     >
       {display ?? citation.label}
+      {source.visibility === 'library' && <span className="citation-library-badge">Law library</span>}
     </a>
   );
 }
@@ -230,7 +231,10 @@ async function hydrateSession(session: ResearchSession): Promise<ResearchSession
       (message) => message.citations?.map((citation) => citation.document_id) ?? [],
     ) ?? [],
   );
-  const documents = new Map<string, { title?: string; filename?: string }>();
+  const documents = new Map<
+    string,
+    { title?: string; filename?: string; visibility?: 'private' | 'library' }
+  >();
   await Promise.all(
     [...citedIds].map(async (id) => {
       try {
@@ -251,6 +255,7 @@ async function hydrateSession(session: ResearchSession): Promise<ResearchSession
         return {
           ...citation,
           document_title: document?.title ?? document?.filename ?? 'Untitled document',
+          visibility: document?.visibility ?? citation.visibility,
           retrieval_score: citation.retrieval_score,
         };
       }),
@@ -265,6 +270,7 @@ export default function ResearchPage() {
   const [documents, setDocuments] = useState<
     Array<{ id: string; case_id?: string; jurisdiction?: string; collection_id?: string }>
   >([]);
+  const [mineDocumentCount, setMineDocumentCount] = useState<number | null>(null);
   const [collections, setCollections] = useState<Array<{ id: string; name: string }>>([]);
   const [collectionsUnavailable, setCollectionsUnavailable] = useState(false);
   const [jurisdictions, setJurisdictions] = useState<Choice[]>([]);
@@ -283,13 +289,15 @@ export default function ResearchPage() {
   const textarea = useRef<HTMLTextAreaElement>(null);
 
   const refreshHistory = useCallback(async () => {
-    const [history, library, caseData, documentData, collectionData] = await Promise.allSettled([
-      researchApi.sessions(),
-      researchApi.saved(),
-      researchApi.cases(),
-      researchApi.documents(),
-      researchApi.collections(),
-    ]);
+    const [history, library, caseData, documentData, collectionData, mineDocumentData] =
+      await Promise.allSettled([
+        researchApi.sessions(),
+        researchApi.saved(),
+        researchApi.cases(),
+        researchApi.documents(),
+        researchApi.collections(),
+        researchApi.documents('mine'),
+      ]);
     if (history.status === 'fulfilled') setSessions(history.value.items ?? []);
     if (library.status === 'fulfilled') {
       setSaved(library.value.items ?? []);
@@ -303,6 +311,9 @@ export default function ResearchPage() {
         ...new Set(items.map((document) => document.jurisdiction).filter(Boolean) as string[]),
       ];
       setJurisdictions(jurisdictionNames);
+    }
+    if (mineDocumentData.status === 'fulfilled') {
+      setMineDocumentCount(mineDocumentData.value.items?.length ?? 0);
     }
     if (collectionData.status === 'fulfilled') {
       setCollections(collectionData.value.items ?? []);
@@ -840,7 +851,7 @@ export default function ResearchPage() {
                       {answer.answer && <AnswerText text={answer.answer} citations={[]} />}
                       <p>
                         {answerHasInsufficientEvidence
-                          ? 'No indexed excerpt directly answers this question. Upload a document, widen the scope, or rephrase the question.'
+                          ? `No indexed excerpts in the shared law library or your documents matched this question.${mineDocumentCount === 0 ? ' Uploads are optional because the reference statutes are already indexed.' : ' Widen the scope or rephrase the question.'}`
                           : 'The available excerpts do not support a conclusion. Review them below before deciding how to proceed.'}
                       </p>
                       {answer.status === 'no_evidence' && (

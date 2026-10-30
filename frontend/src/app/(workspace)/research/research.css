@@ -432,6 +432,17 @@
   text-decoration: none;
   vertical-align: baseline;
 }
+
+.citation-library-badge {
+  display: inline-flex;
+  margin-left: 6px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--gold) 16%, white);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
 .answer-sentence {
   overflow-wrap: anywhere;
 }

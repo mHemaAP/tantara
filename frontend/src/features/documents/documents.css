@@ -441,6 +441,25 @@
   font-weight: 700;
   text-transform: capitalize;
 }
+
+.document-library-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--gold) 48%, transparent);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--gold) 12%, white);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.document-library-note {
+  margin: 0 0 12px;
+  color: var(--ink-muted, #777);
+  font-size: 0.86rem;
+}
 .document-status.ready {
   color: #087957;
   background: #e3f7ef;

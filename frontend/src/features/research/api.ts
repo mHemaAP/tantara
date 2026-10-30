@@ -10,6 +10,7 @@ export type ResearchSource = {
   page_number: number;
   excerpt: string;
   retrieval_score?: number;
+  visibility?: 'private' | 'library';
 };
 
 export type ResearchAnswer = {
@@ -88,7 +89,7 @@ export const researchApi = {
   cases: () =>
     api.get<{ items: Array<{ id: string; title: string; jurisdiction?: string }> }>('/cases?page_size=100'),
   collections: () => collectionsApi.list(),
-  documents: () =>
+  documents: (scope: 'all' | 'mine' | 'library' = 'all') =>
     api.get<{
       items: Array<{
         id: string;
@@ -99,10 +100,13 @@ export const researchApi = {
         case_id?: string;
         jurisdiction?: string;
         collection_id?: string;
+        visibility?: 'private' | 'library';
       }>;
-    }>('/documents?page_size=100'),
+    }>(`/documents?page_size=100${scope === 'all' ? '' : `&scope=${scope}`}`),
   document: (id: string) =>
-    api.get<{ id: string; title?: string; filename?: string }>(`/documents/${encodeURIComponent(id)}`),
+    api.get<{ id: string; title?: string; filename?: string; visibility?: 'private' | 'library' }>(
+      `/documents/${encodeURIComponent(id)}`,
+    ),
   ask: (
     body: {
       question: string;

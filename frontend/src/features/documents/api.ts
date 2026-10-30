@@ -19,6 +19,7 @@ export type DocumentRecord = {
   is_demo?: boolean;
   page_count?: number;
   case_title?: string;
+  visibility: 'private' | 'library';
 };
 
 export type IngestionJob = {
@@ -75,12 +76,14 @@ export const documentsApi = {
         })();
         if (request.status >= 200 && request.status < 300) resolve(body);
         else {
-          const detail = body.detail;
-          const message = Array.isArray(detail)
-            ? detail.map((entry: { msg?: string }) => entry.msg ?? 'Invalid upload').join('; ')
-            : typeof detail === 'object'
-              ? (detail.message ?? JSON.stringify(detail))
-              : (detail ?? 'Upload failed');
+          const detail = body.detail ?? body.error?.details;
+          const message =
+            body.error?.message ??
+            (Array.isArray(detail)
+              ? detail.map((entry: { msg?: string }) => entry.msg ?? 'Invalid upload').join('; ')
+              : typeof detail === 'object'
+                ? (detail.message ?? JSON.stringify(detail))
+                : (detail ?? 'Upload failed'));
           reject(Object.assign(new Error(String(message)), { status: request.status, body }));
         }
       };
