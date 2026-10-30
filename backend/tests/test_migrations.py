@@ -123,6 +123,49 @@ def test_0008_migrates_existing_community_posts_to_private(tmp_path, monkeypatch
     engine.dispose()
 
 
+def test_reference_library_backfill_normalizes_titles_and_keeps_uploads_private(tmp_path, monkeypatch):
+    path = tmp_path / "reference-library-backfill.db"
+    engine = _upgrade(path, tmp_path, monkeypatch, "0011_postgres_search")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users(id,name,email,password_hash,role,created_at) "
+                "VALUES('library-owner','Library Owner','library@example.local','hash','advocate',CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id,owner_id,title,document_type,filename,stored_path,content_hash,citation_metadata,text_content,warnings,page_count,is_demo,status,created_at,updated_at) VALUES "
+                "('limitation-law','library-owner','  LIMITATION Act  ','Other','law.pdf','law.pdf','law-hash','{}','','[]',0,0,'ready',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),"
+                "('limitation-upload','library-owner','My limitation evidence','Other','upload.pdf','upload.pdf','upload-hash','{}','','[]',0,0,'ready',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"
+            )
+        )
+    engine.dispose()
+
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(cfg, "0012_document_visibility")
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT id,visibility FROM documents ORDER BY id")
+        ).all() == [("limitation-law", "library"), ("limitation-upload", "private")]
+        connection.execute(
+            text("UPDATE documents SET visibility='private' WHERE id='limitation-law'")
+        )
+    engine.dispose()
+
+    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "head")
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT id,visibility FROM documents ORDER BY id")
+        ).all() == [("limitation-law", "library"), ("limitation-upload", "private")]
+    engine.dispose()
+
+
 def test_prototype_json_rows_are_exported_and_user_kept(tmp_path, monkeypatch):
     path = tmp_path / "prototype.db"
     con = sqlite3.connect(path)

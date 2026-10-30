@@ -4,6 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy import inspect
 
 from alembic import op
+from app.reference_library import reference_library_title_predicate
 
 revision = "0012_document_visibility"
 down_revision = "0011_postgres_search"
@@ -22,21 +23,11 @@ def upgrade() -> None:
     indexes = {index["name"] for index in inspect(op.get_bind()).get_indexes("documents")}
     if "ix_documents_visibility" not in indexes:
         op.create_index("ix_documents_visibility", "documents", ["visibility"])
-    op.execute(
-        """
-        UPDATE documents SET visibility = 'library'
-        WHERE title IN (
-            'ARBITRATION AND CONCILIATION ACT 1996',
-            'Code of Civil Procedure, 1908',
-            'Specific Relief Act, 1963',
-            'Limitation Act',
-            'Bharatiya Sakshya Adhiniyam, 2023',
-            'indian contracts act 1872',
-            'Information Technology Act, 2000',
-            'Commercial Courts Act, 2015',
-            'Sale of Goods Act, 1930'
-        ) OR title LIKE 'Relevant state stamp legislation%'
-        """
+    documents = sa.table("documents", sa.column("title"), sa.column("visibility"))
+    op.get_bind().execute(
+        sa.update(documents)
+        .where(reference_library_title_predicate(documents.c.title))
+        .values(visibility="library")
     )
 
 
