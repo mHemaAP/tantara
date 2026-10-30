@@ -209,6 +209,10 @@ def main():
                                 filename=source["title"][:180] + ".txt",
                                 stored_path=stored,
                                 content_hash=text_hash,
+                                # Everything this script imports is public-source law, so it joins the
+                                # shared reference library instead of being private to the importing
+                                # account. User uploads stay private; only this path publishes.
+                                visibility="library",
                                 status="queued",
                             )
                         )
