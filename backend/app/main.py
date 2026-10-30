@@ -525,6 +525,7 @@ def ask(req: Ask, user=Depends(current_user)):
                 "retrieval_score": hit["retrieval_score"],
                 "source_type": hit["source_type"],
                 "jurisdiction": hit["jurisdiction"],
+                "visibility": hit.get("visibility", "private"),
             }
         )
     with session_scope() as s:

@@ -199,6 +199,9 @@ class Document(Owned, Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_path: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    visibility: Mapped[str] = mapped_column(
+        String(16), default="private", server_default="private", nullable=False, index=True
+    )
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
     text_content: Mapped[str] = mapped_column(Text, default="")
     warnings: Mapped[list] = mapped_column(JSON, default=list)

@@ -43,8 +43,26 @@ CREATE_STATUS_CODES = {"cases": 201}
 def owned(session, cls, rid, user):
     item = get_owned(session, cls, rid, user["id"])
     if item is None:
+        if cls is Document:
+            doc = session.get(Document, rid)
+            if doc is not None:
+                assert_library_writable(doc, user)
         raise HTTPException(404, "Record not found")
     return item
+
+
+def readable_document(session, cls_id, user):
+    return session.scalar(
+        select(Document).where(
+            Document.id == cls_id,
+            (Document.owner_id == user["id"]) | (Document.visibility == "library"),
+        )
+    )
+
+
+def assert_library_writable(doc, user):
+    if doc.visibility == "library" and doc.owner_id != user["id"]:
+        raise HTTPException(403, {"message": "Reference library documents are read-only"})
 
 
 def assert_write_role(user, cls):

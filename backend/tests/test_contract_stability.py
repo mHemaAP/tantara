@@ -74,7 +74,7 @@ def test_generated_method_inventory_covers_every_openapi_operation():
     spec.loader.exec_module(module)
     inventory = Path(__file__).resolve().parents[2] / "docs" / "BACKEND_ROUTES.txt"
     assert inventory.read_text() == module.render_inventory()
-    assert sum(1 for line in inventory.read_text().splitlines() if line and not line.startswith("#")) == 131
+    assert sum(1 for line in inventory.read_text().splitlines() if line and not line.startswith("#")) == 133
     matrix = Path(__file__).resolve().parents[2] / "docs" / "TEST_MATRIX.md"
     generated_section = matrix.read_text().split("## Method-level expansion\n", 1)[1]
     assert generated_section == module.render_method_matrix().split("## Method-level expansion\n", 1)[1]

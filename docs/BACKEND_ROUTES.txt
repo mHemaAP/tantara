@@ -13,6 +13,7 @@ POST /api/v1/ai/sessions/{sid}/messages
 GET /api/v1/ai/status
 POST /api/v1/auth/login
 GET /api/v1/auth/me
+POST /api/v1/auth/register
 GET /api/v1/bundles
 POST /api/v1/bundles
 DELETE /api/v1/bundles/{rid}
@@ -131,3 +132,4 @@ PATCH /api/v1/tasks/{rid}
 GET /health
 POST /ingest/file
 POST /query
+GET /readyz

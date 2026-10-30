@@ -43,7 +43,12 @@ def _items(s, bundle, user):
         rows.sort(key=lambda item: (section_order.get(item.section, len(section_order)), item.order))
     out = []
     for x in rows:
-        d = s.scalar(select(Document).where(Document.id == x.document_id, Document.owner_id == user["id"]))
+        d = s.scalar(
+            select(Document).where(
+                Document.id == x.document_id,
+                (Document.owner_id == user["id"]) | (Document.visibility == "library"),
+            )
+        )
         if not d:
             continue
         try:
@@ -84,8 +89,9 @@ def set_items(rid: str, payload: Items, user=Depends(current_user)):
             d = s.scalar(
                 select(Document).where(
                     Document.id == x.get("document_id"),
-                    Document.owner_id == user["id"],
-                    Document.case_id == b.case_id,
+                    (Document.owner_id == user["id"])
+                    & (Document.case_id == b.case_id)
+                    | (Document.visibility == "library"),
                 )
             )
             if not d:

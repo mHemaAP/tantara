@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.chunking import chunk_text
 from app.config import get_settings
@@ -22,7 +22,7 @@ from app.models import Case, Document, DocumentChunk, DocumentPage, ExtractionFi
 from app.object_store import MissingObject, object_store
 from app.repositories.domain import get_owned, serialize
 from app.repositories.domain import update as repo_update
-from app.routers.domain import owned
+from app.routers.domain import owned, readable_document
 from app.security import current_user
 from app.services.audit import record
 from app.services.vector_store import INDEX_LOCK, store
@@ -229,11 +229,21 @@ async def upload(
     digest = hashlib.sha256(data).hexdigest()
     with SessionLocal() as s:
         old = s.scalar(
-            select(Document).where(Document.owner_id == user["id"], Document.content_hash == digest)
+            select(Document)
+            .where(
+                Document.content_hash == digest,
+                or_(Document.owner_id == user["id"], Document.visibility == "library"),
+            )
+            .order_by(Document.visibility.desc())
         )
     if old:
+        is_library = old.visibility == "library"
         raise HTTPException(
-            409, {"message": "Duplicate document", "existing_document": {"id": old.id, "title": old.title}}
+            409,
+            {
+                "message": "Already in the law library" if is_library else "Duplicate document",
+                "existing_document": {"id": old.id, "title": old.title},
+            },
         )
     did, jid = str(uuid.uuid4()), str(uuid.uuid4())
     path = DocumentStorage().save(data)
@@ -273,6 +283,7 @@ def documents(
     type: str | None = None,
     case_id: str | None = None,
     collection_id: str | None = None,
+    scope: str = Query("all", pattern="^(mine|library|all)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     sort: str = "-created_at",
@@ -280,7 +291,13 @@ def documents(
 ):
 
     with SessionLocal() as s:
-        stmt = select(Document).where(Document.owner_id == user["id"])
+        stmt = select(Document)
+        if scope == "mine":
+            stmt = stmt.where(Document.owner_id == user["id"])
+        elif scope == "library":
+            stmt = stmt.where(Document.visibility == "library")
+        else:
+            stmt = stmt.where(or_(Document.owner_id == user["id"], Document.visibility == "library"))
         if q:
             stmt = stmt.where(Document.title.ilike(f"%{q}%"))
         if status:
@@ -309,13 +326,18 @@ def documents(
 
 def get_document(did, user):
     with SessionLocal() as s:
-        return owned(s, Document, did, user)
+        doc = readable_document(s, did, user)
+        if doc is None:
+            raise HTTPException(404, "Record not found")
+        return doc
 
 
 @router.get("/documents/{did}")
 def document(did: str, user=Depends(current_user)):
     with SessionLocal() as s:
-        d = owned(s, Document, did, user)
+        d = readable_document(s, did, user)
+        if d is None:
+            raise HTTPException(404, "Record not found")
         out = serialize(d)
         out.pop("stored_path")
         out.pop("text_content")
@@ -367,10 +389,11 @@ def delete_document(did: str, user=Depends(current_user)):
 @router.get("/documents/{did}/job")
 def doc_job(did: str, user=Depends(current_user)):
     with SessionLocal() as s:
-        owned(s, Document, did, user)
+        if readable_document(s, did, user) is None:
+            raise HTTPException(404, "Record not found")
         j = s.scalar(
             select(IngestionJob)
-            .where(IngestionJob.document_id == did, IngestionJob.owner_id == user["id"])
+            .where(IngestionJob.document_id == did)
             .order_by(IngestionJob.created_at.desc())
         )
         if not j:
@@ -402,13 +425,17 @@ def retry_doc(did: str, user=Depends(current_user)):
 @router.get("/documents/{did}/text")
 def doc_text(did: str, user=Depends(current_user)):
     with SessionLocal() as s:
-        return {"text": owned(s, Document, did, user).text_content}
+        doc = readable_document(s, did, user)
+        if doc is None:
+            raise HTTPException(404, "Record not found")
+        return {"text": doc.text_content}
 
 
 @router.get("/documents/{did}/pages")
 def doc_pages(did: str, user=Depends(current_user)):
     with SessionLocal() as s:
-        owned(s, Document, did, user)
+        if readable_document(s, did, user) is None:
+            raise HTTPException(404, "Record not found")
         rows = s.scalars(
             select(DocumentPage).where(DocumentPage.document_id == did).order_by(DocumentPage.page_number)
         ).all()
@@ -427,7 +454,9 @@ def doc_pages(did: str, user=Depends(current_user)):
 
 def _document_file_response(did: str, user):
     with SessionLocal() as s:
-        d = owned(s, Document, did, user)
+        d = readable_document(s, did, user)
+        if d is None:
+            raise HTTPException(404, "Record not found")
         stored_key = d.stored_path
         filename = d.filename
     try:
@@ -459,6 +488,11 @@ class Review(BaseModel):
 def _doc(s, did, user):
     d = get_owned(s, Document, did, user["id"])
     if not d:
+        doc = s.get(Document, did)
+        if doc is not None:
+            from app.routers.domain import assert_library_writable
+
+            assert_library_writable(doc, user)
         raise HTTPException(404, "Document not found")
     return d
 
@@ -466,10 +500,12 @@ def _doc(s, did, user):
 @router.get("/documents/{did}/ai-read")
 def get_read(did: str, user=Depends(current_user)):
     with SessionLocal() as s:
-        _doc(s, did, user)
+        doc = readable_document(s, did, user)
+        if not doc:
+            raise HTTPException(404, "Record not found")
         rows = s.scalars(
             select(ExtractionField)
-            .where(ExtractionField.document_id == did, ExtractionField.owner_id == user["id"])
+            .where(ExtractionField.document_id == did)
             .order_by(ExtractionField.created_at)
         ).all()
         fields = {

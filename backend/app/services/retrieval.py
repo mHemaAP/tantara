@@ -7,7 +7,7 @@ workspaces use a generated tsvector column (GIN) and in-database vectors.
 import logging
 import re
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 
 from app.db import SessionLocal
 from app.embeddings import embed_query
@@ -84,7 +84,7 @@ class RetrievalService:
             logging.getLogger(__name__).exception("query embedding failed")
             query_vector = None
             status = "embedding_unavailable"
-        clauses = [Document.owner_id == owner_id]
+        clauses = [or_(Document.owner_id == owner_id, Document.visibility == "library")]
         if case_id:
             clauses.append(Document.case_id == case_id)
         elif case_ids:
@@ -108,13 +108,14 @@ class RetrievalService:
                     Document.title,
                     Document.document_type,
                     Document.jurisdiction,
+                    Document.visibility,
                 )
                 .join(Document, Document.id == DocumentChunk.document_id)
                 .where(*clauses)
             )
             rows = session.execute(stmt).all()
             allowed = {r.id: r for r in rows}
-            where = "d.owner_id=:owner"
+            where = "(d.owner_id=:owner OR d.visibility='library')"
             # Hyphenated legal references are tokenized as their word parts so X-P2
             # retrieves the same evidence pool as X and does not become a dead FTS term.
             tokens = re.findall(r"[\w]{2,}", question)
@@ -244,6 +245,7 @@ def fuse_rankings(
                 "retrieval_score": score,
                 "source_type": row.document_type,
                 "jurisdiction": row.jurisdiction,
+                "visibility": getattr(row, "visibility", "private"),
             }
         )
         if len(unique) == top_k:

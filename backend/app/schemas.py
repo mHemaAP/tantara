@@ -171,6 +171,7 @@ class SearchHit(BaseModel):
     page_number: int | None = None
     snippet: str
     retrieval_score: float
+    visibility: str = "private"
     source_type: str | None = None
     jurisdiction: str | None = None
 
@@ -195,6 +196,7 @@ class ResearchCitation(BaseModel):
     page_number: int | None = None
     excerpt: str
     retrieval_score: float
+    visibility: str = "private"
     source_type: str | None = None
     jurisdiction: str | None = None
 
