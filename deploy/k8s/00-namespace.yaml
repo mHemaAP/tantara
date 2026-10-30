@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tantara
+  labels:
+    app.kubernetes.io/part-of: tantara
+    app.kubernetes.io/managed-by: tantara-deploy-script
+---
+# Non-secret workspace configuration. Secrets live in the tantara-secrets Secret,
+# which deploy/apply.sh builds from the local credentials file; nothing secret is
+# committed here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tantara-config
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-config
+    app.kubernetes.io/part-of: tantara
+data:
+  DATA_DIR: /data
+  AI_PROVIDER: local
+  LOCAL_LLM_BASE_URL: http://192.168.0.101:8080/v1
+  LOCAL_LLM_MODEL: MiniCPM5-2B
+  EMBEDDING_PROVIDER: fastembed
+  FASTEMBED_MODEL: sentence-transformers/all-MiniLM-L6-v2
+  EMBEDDING_DIMENSIONS: "384"
+  # Postgres vectors + tsvector search; FAISS remains the SQLite-only fallback.
+  VECTOR_BACKEND: auto
+  OBJECT_STORAGE: s3
+  S3_ENDPOINT: http://192.168.0.100:9000
+  S3_BUCKET: tantara
+  ANALYTICS_BACKEND: "none"
+  ENABLE_CLOUD_PROVIDERS: "false"
+  MAX_UPLOAD_MB: "25"
+  CORS_ORIGINS: https://tantra.theessencetimes.com,http://tantra.local:8082
+  TANTARA_WORKSPACE_TIME_ZONE: Asia/Kolkata
+  # The PostgreSQL instance on 192.168.0.100 is shared and has a fixed connection
+  # budget, so the single backend process stays small and recycles connections
+  # often: after a node dies its sessions linger until TCP keepalive reaps them,
+  # and a wide pool then starves the next start-up (init_db runs Alembic).
+  DB_POOL_SIZE: "3"
+  DB_POOL_MAX_OVERFLOW: "4"
+  DB_POOL_RECYCLE: "600"

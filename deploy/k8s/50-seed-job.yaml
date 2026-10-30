@@ -1,0 +1,64 @@
+# One-shot demo workspace loader. Apply this only after the backend rollout is
+# ready (deploy/apply.sh does that in order) so Alembic runs once, not twice.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tantara-seed-demo
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-seed-demo
+    app.kubernetes.io/part-of: tantara
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: tantara-seed-demo
+        app.kubernetes.io/part-of: tantara
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        app: app
+      imagePullSecrets:
+        - name: tantara-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: 192.168.0.100:5000/tantara-backend:pending
+          command: ["python", "/app/scripts/seed.py", "--demo"]
+          envFrom:
+            - configMapRef:
+                name: tantara-config
+            - secretRef:
+                name: tantara-secrets
+          volumeMounts:
+            - name: scratch
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1500Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: scratch
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi

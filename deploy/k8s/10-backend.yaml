@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tantara-backend
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-backend
+    app.kubernetes.io/part-of: tantara
+spec:
+  # A single process keeps the ingestion lock and per-process rate limiter exact;
+  # relational data, vectors and objects live in PostgreSQL and MinIO.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: tantara-backend
+  template:
+    metadata:
+      labels:
+        app: tantara-backend
+        app.kubernetes.io/name: tantara-backend
+        app.kubernetes.io/part-of: tantara
+    spec:
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        # Pinned to smallllm: `worker` (the node carrying the `app: app` label) is in a
+        # reboot loop — four distinct boot ids in ~35 min on 2026-10-29, each of which
+        # orphans in-flight ingestion jobs because the queue lives in the container's
+        # memory. Revert by labelling a healthy node `app: app` and restoring
+        # `nodeSelector: {app: app}` here and in 20-frontend.yaml / 40-tunnel.yaml.
+        kubernetes.io/hostname: smallllm
+      imagePullSecrets:
+        - name: tantara-registry
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: 192.168.0.100:5000/tantara-backend:pending
+          ports:
+            - name: http
+              containerPort: 8010
+          # Start-up gate. The PostgreSQL instance on 192.168.0.100 is shared with
+          # other applications (measured: platform_admin 64, mlflow 16, airflow 8 of
+          # 100 slots) and periodically sits at its connection ceiling. init_db runs
+          # Alembic before the app can answer, so without this gate the whole
+          # workspace crash-loops until a slot happens to free up.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              attempt=0
+              until python -c 'from app.db import engine; engine().connect().close()'; do
+                attempt=$((attempt + 1))
+                echo "waiting for a PostgreSQL connection slot (attempt $attempt)"
+                sleep 15
+              done
+              echo "PostgreSQL accepted a connection after $attempt waits"
+              exec uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 1
+          envFrom:
+            - configMapRef:
+                name: tantara-config
+            - secretRef:
+                name: tantara-secrets
+          volumeMounts:
+            - name: scratch
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              cpu: "3"
+              # Ingestion keeps a document's pages, chunks, and embedding vectors in
+              # memory while it indexes one PDF, and the process does not return that
+              # memory to the OS afterwards. Measured on the statute library: a 24-page
+              # act reached ~1.2 GiB, and `Code of Civil Procedure, 1908` (347 pages,
+              # 4.5 MB) OOM-killed the container at this 4 Gi ceiling (exit 137, restart
+              # count 2) before finishing. The same file, retried at 6 Gi, completed and
+              # peaked at 4.83 GiB RSS — so 6 Gi is the working figure, not a guess.
+              memory: 6Gi
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            # Covers the start-up gate above: up to 20 minutes of waiting for the
+            # shared database before the container is considered failed.
+            failureThreshold: 240
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        # Object read-through cache and upload spillover; nothing here is a
+        # system of record, PostgreSQL and MinIO hold the data.
+        - name: scratch
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tantara-backend
+  namespace: tantara
+  labels:
+    app.kubernetes.io/name: tantara-backend
+    app.kubernetes.io/part-of: tantara
+spec:
+  selector:
+    app: tantara-backend
+  ports:
+    - name: http
+      port: 8010
+      targetPort: http

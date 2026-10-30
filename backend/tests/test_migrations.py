@@ -1,0 +1,189 @@
+import json
+import sqlite3
+from pathlib import Path
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, inspect, text
+
+from alembic import command
+from app import config, db
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _upgrade(path, tmp_path, monkeypatch, revision="head"):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{path}")
+    monkeypatch.setenv("TANTARA_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    config.get_settings.cache_clear()
+    if db._engine is not None:
+        db._engine.dispose()
+    db._engine = None
+    db._SessionLocal = None
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(cfg, revision)
+    command.upgrade(cfg, revision)
+    config.get_settings.cache_clear()
+    return create_engine(f"sqlite:///{path}")
+
+
+def test_fresh_upgrade_is_idempotent(tmp_path, monkeypatch):
+    engine = _upgrade(tmp_path / "fresh.db", tmp_path, monkeypatch)
+    names = set(inspect(engine).get_table_names())
+    assert {
+        "users",
+        "clients",
+        "cases",
+        "documents",
+        "document_chunks",
+        "filing_bundles",
+        "extraction_fields",
+    } <= names
+    assert "data" not in {c["name"] for c in inspect(engine).get_columns("cases")}
+    assert "embedding" not in {c["name"] for c in inspect(engine).get_columns("document_chunks")}
+    assert "visibility" in {c["name"] for c in inspect(engine).get_columns("community_posts")}
+    engine.dispose()
+
+
+def test_legacy_collection_revision_stamp_bridges_without_losing_rows(tmp_path, monkeypatch):
+    path = tmp_path / "legacy-collection-stamp.db"
+    engine = _upgrade(path, tmp_path, monkeypatch, "0010_knowledge_collections")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users(id,name,email,password_hash,role,created_at) "
+                "VALUES('legacy-owner','Legacy Owner','legacy@example.local','hash','advocate',CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO knowledge_collections "
+                "(id,owner_id,name,description,is_demo,created_at,updated_at) "
+                "VALUES('legacy-collection','legacy-owner','Preserved collection','Kept across rename',1,"
+                "CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(text("UPDATE alembic_version SET version_num='0010_knowledge_collections'"))
+    engine.dispose()
+
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(cfg, "head")
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT name,description FROM knowledge_collections WHERE id='legacy-collection'")
+        ).one() == (
+            "Preserved collection",
+            "Kept across rename",
+        )
+        # The bridge revision must be traversed and the database must end at head,
+        # whatever later revisions have been added on top of the bridge.
+        script = ScriptDirectory.from_config(cfg)
+        head = script.get_current_head()
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == head
+        ancestors = {revision.revision for revision in script.iterate_revisions(head, "base")}
+        assert {"0010_knowledge_collections", "0010_collections"} <= ancestors
+    engine.dispose()
+
+
+def test_0008_migrates_existing_community_posts_to_private(tmp_path, monkeypatch):
+    path = tmp_path / "existing-community.db"
+    engine = _upgrade(path, tmp_path, monkeypatch, "0007_demo_chunk_flag")
+    # Earlier revisions import current metadata, so remove the additive field to
+    # model the actual pre-0008 schema this upgrade must preserve.
+    with engine.begin() as connection:
+        connection.exec_driver_sql("ALTER TABLE community_posts DROP COLUMN visibility")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users(id,name,email,password_hash,role,created_at) "
+                "VALUES('owner','Owner','owner@example.local','hash','advocate',CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO community_posts "
+                "(id,owner_id,is_demo,created_at,updated_at,title,body,kind,case_ref,tags) "
+                "VALUES('legacy-post','owner',1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,"
+                "'Legacy private post','Existing text','discussion',NULL,'[]')"
+            )
+        )
+    engine.dispose()
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(cfg, "head")
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT body,visibility FROM community_posts WHERE id='legacy-post'")
+        ).one() == ("Existing text", "private")
+    engine.dispose()
+
+
+def test_reference_library_backfill_normalizes_titles_and_keeps_uploads_private(tmp_path, monkeypatch):
+    path = tmp_path / "reference-library-backfill.db"
+    engine = _upgrade(path, tmp_path, monkeypatch, "0011_postgres_search")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users(id,name,email,password_hash,role,created_at) "
+                "VALUES('library-owner','Library Owner','library@example.local','hash','advocate',CURRENT_TIMESTAMP)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO documents "
+                "(id,owner_id,title,document_type,filename,stored_path,content_hash,citation_metadata,text_content,warnings,page_count,is_demo,status,created_at,updated_at) VALUES "
+                "('limitation-law','library-owner','  LIMITATION Act  ','Other','law.pdf','law.pdf','law-hash','{}','','[]',0,0,'ready',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),"
+                "('limitation-upload','library-owner','My limitation evidence','Other','upload.pdf','upload.pdf','upload-hash','{}','','[]',0,0,'ready',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"
+            )
+        )
+    engine.dispose()
+
+    cfg = Config(str(ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(ROOT / "alembic"))
+    command.upgrade(cfg, "0012_document_visibility")
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT id,visibility FROM documents ORDER BY id")
+        ).all() == [("limitation-law", "library"), ("limitation-upload", "private")]
+        connection.execute(
+            text("UPDATE documents SET visibility='private' WHERE id='limitation-law'")
+        )
+    engine.dispose()
+
+    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "head")
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT id,visibility FROM documents ORDER BY id")
+        ).all() == [("limitation-law", "library"), ("limitation-upload", "private")]
+    engine.dispose()
+
+
+def test_prototype_json_rows_are_exported_and_user_kept(tmp_path, monkeypatch):
+    path = tmp_path / "prototype.db"
+    con = sqlite3.connect(path)
+    con.executescript("""
+    CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT NOT NULL,email TEXT NOT NULL UNIQUE,password_hash TEXT NOT NULL,role TEXT NOT NULL,avatar_initials TEXT,title TEXT,owner_id TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    INSERT INTO users(id,name,email,password_hash,role) VALUES('u1','Local User','u@example.local','scrypt','advocate');
+    CREATE TABLE cases(id TEXT PRIMARY KEY,owner_id TEXT,case_id TEXT,data TEXT NOT NULL,is_demo INTEGER DEFAULT 0,created_at TEXT,updated_at TEXT);
+    INSERT INTO cases(id,owner_id,data) VALUES('c1','u1','{"title":"legacy"}');
+    CREATE TABLE documents(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,case_id TEXT,title TEXT NOT NULL,document_type TEXT,jurisdiction TEXT,source_label TEXT,filename TEXT,stored_path TEXT,content_hash TEXT,status TEXT,text_content TEXT,warnings TEXT,page_count INTEGER,is_demo INTEGER,created_at TEXT);
+    CREATE TABLE document_chunks(id TEXT PRIMARY KEY,owner_id TEXT,case_id TEXT,data TEXT NOT NULL);
+    """)
+    con.commit()
+    con.close()
+    engine = _upgrade(path, tmp_path, monkeypatch)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT email FROM users WHERE id='u1'")).scalar() == "u@example.local"
+        assert conn.execute(text("SELECT count(*) FROM cases")).scalar() == 0
+        assert "cases_legacy_0002" not in inspect(engine).get_table_names()
+    exported = json.loads((tmp_path / "archive" / "legacy_export.json").read_text())
+    assert exported["tables"]["cases_legacy_0002"][0]["data"] == '{"title":"legacy"}'
+    engine.dispose()
